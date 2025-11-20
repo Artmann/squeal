@@ -6,6 +6,8 @@ import { requestId } from 'hono/request-id'
 import { serve } from '@hono/node-server'
 
 import { authRouter } from './main/auth/routes'
+import { providerRouter } from './main/providers/routes'
+import { errorHandler } from './main/middleware/error-handler'
 
 const app = new Hono()
 
@@ -19,8 +21,11 @@ app.get('/health', (c) => {
 })
 
 app.route('/auth', authRouter)
+app.route('/providers', providerRouter)
 
-export function startServer(port: number = 3000) {
+app.onError(errorHandler)
+
+export function startServer(port = 3000) {
   serve({
     fetch: app.fetch,
     port

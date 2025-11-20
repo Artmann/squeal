@@ -1,9 +1,8 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-@custom-variant dark (&:is(.dark *));´
-
-* {
+@custom-variant dark (&:is(.dark *));
+´ * {
   box-sizing: border-box;
 }
 
@@ -126,7 +125,7 @@
     @apply bg-background text-foreground;
   }
 
-   :root {
+  :root {
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);

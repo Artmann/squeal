@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import started from 'electron-squirrel-startup'
 
-import { startServer } from './server'
+import { startServer } from './api'
 
 export const apiPort = 7847
 
