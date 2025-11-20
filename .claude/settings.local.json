@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "WebFetch(domain:ui.shadcn.com)",
+      "Bash(npx shadcn@latest init)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -2,12 +2,17 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "commonjs",
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "noImplicitAny": true,
     "sourceMap": true,
     "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "outDir": "dist",
     "moduleResolution": "node",
     "resolveJsonModule": true
