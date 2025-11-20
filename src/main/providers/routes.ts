@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { safeStorage } from 'electron'
 import { Hono } from 'hono'
-import z from 'zod'
+import { log } from 'tiny-typescript-logger'
+import { z } from 'zod'
 
 import { database } from '../../database'
 import { providersTable } from '../../database/schema'
@@ -12,6 +13,8 @@ export const providerRouter = new Hono()
 
 providerRouter.get('/', async (context) => {
   const providers = await database.select().from(providersTable)
+
+  log.info(`Fetched ${providers.length} providers from database.`)
 
   return context.json({ providers: providers.map(transformProvider) })
 })
@@ -31,7 +34,11 @@ providerRouter.put('/:id', async (context) => {
     throw new ValidationError(result.error)
   }
 
-  const encryptedToken = safeStorage.encryptString(result.data.token)
+  const encryptedToken = safeStorage
+    .encryptString(result.data.token)
+    .toString('base64')
+
+  log.info(`Upserting provider with id: ${id} of type: ${result.data.type}.`)
 
   await database
     .insert(providersTable)
@@ -59,9 +66,11 @@ providerRouter.put('/:id', async (context) => {
 })
 
 function transformProvider(provider: any): ProviderDto {
+  const buffer = Buffer.from(provider.token ?? '', 'base64')
+
   return {
     id: provider.id,
-    token: safeStorage.decryptString(provider.token),
+    token: safeStorage.decryptString(buffer),
     type: provider.type
   }
 }

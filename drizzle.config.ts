@@ -5,7 +5,7 @@ import { databaseFilePath } from '@/database'
 
 export default defineConfig({
   out: './drizzle',
-  schema: './src/db/schema.ts',
+  schema: './src/database/schema.ts',
   dialect: 'sqlite',
   dbCredentials: {
     url: databaseFilePath

@@ -15,6 +15,9 @@ export function StartPage(): ReactElement {
   return (
     <div className="p-4">
       <Button onClick={handleSignIn}>Sign in with Claude</Button>
+      <Button asChild>
+        <a href="/providers">Configure Providers</a>
+      </Button>
     </div>
   )
 }
