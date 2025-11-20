@@ -1,6 +1,8 @@
-import { apiPort } from '../../main'
 import { randomBytes, createHash } from 'crypto'
 import { safeStorage, net } from 'electron'
+
+import { apiPort } from '../../main'
+import { store } from '../store'
 
 export interface AnthropicAuthConfig {
   clientId: string
@@ -48,7 +50,7 @@ export class AnthropicAuthManager {
 
   private constructor() {
     this.config = {
-      clientId: process.env.ANTHROPIC_CLIENT_ID || '',
+      clientId: 'Code Monkey',
       redirectUri: `http://localhost:${apiPort}/auth/callback`,
       scopes: ['api.access', 'account.read']
     }
@@ -62,32 +64,17 @@ export class AnthropicAuthManager {
     return AnthropicAuthManager.instance
   }
 
-  generatePKCE(): PKCEChallenge {
-    const verifier = this.base64URLEncode(randomBytes(32))
-    const challenge = this.base64URLEncode(
-      createHash('sha256').update(verifier).digest()
-    )
-    const state = this.base64URLEncode(randomBytes(16))
-
-    this.currentPKCE = {
-      codeChallenge: challenge,
-      codeVerifier: verifier,
-      state
-    }
-
-    return this.currentPKCE
-  }
-
   buildAuthorizationUrl(): string {
     const pkce = this.generatePKCE()
+
     const params = new URLSearchParams({
       client_id: this.config.clientId,
+      code_challenge_method: 'S256',
+      code_challenge: pkce.codeChallenge,
       redirect_uri: this.config.redirectUri,
       response_type: 'code',
       scope: this.config.scopes.join(' '),
-      state: pkce.state,
-      code_challenge: pkce.codeChallenge,
-      code_challenge_method: 'S256'
+      state: pkce.state
     })
 
     return `https://console.anthropic.com/oauth/authorize?${params.toString()}`
@@ -137,6 +124,30 @@ export class AnthropicAuthManager {
     return tokens
   }
 
+  generatePKCE(): PKCEChallenge {
+    const verifier = this.base64URLEncode(randomBytes(32))
+    const challenge = this.base64URLEncode(
+      createHash('sha256').update(verifier).digest()
+    )
+    const state = this.base64URLEncode(randomBytes(16))
+
+    this.currentPKCE = {
+      codeChallenge: challenge,
+      codeVerifier: verifier,
+      state
+    }
+
+    return this.currentPKCE
+  }
+
+  async logout(): Promise<void> {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer)
+    }
+
+    await store.delete('anthropic_tokens')
+  }
+
   async refreshAccessToken(): Promise<AnthropicTokens> {
     const tokens = await this.getStoredTokens()
     if (!tokens?.refreshToken) {
@@ -176,14 +187,17 @@ export class AnthropicAuthManager {
     return newTokens
   }
 
-  private async storeTokens(tokens: AnthropicTokens): Promise<void> {
-    const encrypted = safeStorage.encryptString(JSON.stringify(tokens))
-    // Store in electron-store or similar
-    await store.set('anthropic_tokens', encrypted.toString('base64'))
+  private base64URLEncode(buffer: Buffer): string {
+    return buffer
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '')
   }
 
   private async getStoredTokens(): Promise<AnthropicTokens | null> {
     const encrypted = await store.get('anthropic_tokens')
+
     if (!encrypted) return null
 
     const decrypted = safeStorage.decryptString(
@@ -207,18 +221,9 @@ export class AnthropicAuthManager {
     }
   }
 
-  private base64URLEncode(buffer: Buffer): string {
-    return buffer
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '')
-  }
+  private async storeTokens(tokens: AnthropicTokens): Promise<void> {
+    const encrypted = safeStorage.encryptString(JSON.stringify(tokens))
 
-  async logout(): Promise<void> {
-    if (this.refreshTimer) {
-      clearTimeout(this.refreshTimer)
-    }
-    await store.delete('anthropic_tokens')
+    await store.set('anthropic_tokens', encrypted.toString('base64'))
   }
 }
