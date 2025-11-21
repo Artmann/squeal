@@ -6,8 +6,9 @@ import { requestId } from 'hono/request-id'
 import { serve } from '@hono/node-server'
 
 import { authRouter } from './main/auth/routes'
-import { providerRouter } from './main/providers/routes'
+import { folderRouter } from './main/folders/routes'
 import { errorHandler } from './main/middleware/error-handler'
+import { providerRouter } from './main/providers/routes'
 
 const app = new Hono()
 
@@ -21,6 +22,7 @@ app.get('/health', (c) => {
 })
 
 app.route('/auth', authRouter)
+app.route('/folders', folderRouter)
 app.route('/providers', providerRouter)
 
 app.onError(errorHandler)

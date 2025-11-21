@@ -11,9 +11,11 @@ if (started) {
   app.quit()
 }
 
+export let mainWindow: BrowserWindow
+
 const createWindow = () => {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {

@@ -7,6 +7,7 @@ import ChartPage from './pages/ChartPage'
 import { ProvidersPage } from './pages/ProvidersPage'
 import { StartPage } from './pages/StartPage'
 import { ProviderPage } from './pages/ProviderPage'
+import { NewProjectPage } from './pages/NewProjectPage'
 
 export function App() {
   return (
@@ -19,6 +20,10 @@ export function App() {
             <Route
               path="/"
               element={<StartPage />}
+            />
+            <Route
+              path="/projects/new"
+              element={<NewProjectPage />}
             />
             <Route
               path="/chat"
