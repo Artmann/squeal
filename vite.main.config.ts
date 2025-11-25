@@ -9,12 +9,12 @@ export default defineConfig({
       dynamicRequireTargets: ['node_modules/@libsql/**']
     },
     rollupOptions: {
-      external: ['@libsql/win32-x64-msvc', /^@libsql(\/.*)?$/]
+      external: ['@libsql/win32-x64-msvc', /^@libsql(\/.*)?$/, 'pg']
     }
   },
   optimizeDeps: {
-    // don't try to pre-bundle this native package
-    exclude: ['@libsql/win32-x64-msvc', '@libsql']
+    // don't try to pre-bundle these native packages
+    exclude: ['@libsql/win32-x64-msvc', '@libsql', 'pg']
   },
   resolve: {
     alias: {

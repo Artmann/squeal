@@ -5,11 +5,11 @@ import { prettyJSON } from 'hono/pretty-json'
 import { requestId } from 'hono/request-id'
 import { serve } from '@hono/node-server'
 
-import { authRouter } from './main/auth/routes'
 import { chatRouter } from './main/chat/routes'
-import { folderRouter } from './main/folders/routes'
 import { errorHandler } from './main/middleware/error-handler'
-import { providerRouter } from './main/providers/routes'
+import { queryRouter } from './main/queries'
+
+export const apiPort = 7847
 
 const app = new Hono()
 
@@ -22,10 +22,8 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok' })
 })
 
-app.route('/auth', authRouter)
 app.route('/chat', chatRouter)
-app.route('/folders', folderRouter)
-app.route('/providers', providerRouter)
+app.route('/queries', queryRouter)
 
 app.onError(errorHandler)
 

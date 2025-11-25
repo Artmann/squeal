@@ -2,9 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import started from 'electron-squirrel-startup'
 
-import { startServer } from './api'
-
-export const apiPort = 7847
+import { apiPort, startServer } from './api'
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -41,6 +39,7 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   startServer(apiPort)
+
   createWindow()
 })
 

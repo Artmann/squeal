@@ -1,7 +1,7 @@
-import CodeMirror from '@uiw/react-codemirror'
-import { sql } from '@codemirror/lang-sql'
 import { autocompletion, completeFromList } from '@codemirror/autocomplete'
+import { sql } from '@codemirror/lang-sql'
 import { EditorView } from '@codemirror/view'
+import CodeMirror from '@uiw/react-codemirror'
 import { ReactElement, useMemo } from 'react'
 
 interface WorksheetEditorProps {
@@ -31,7 +31,7 @@ export function WorksheetEditor({
   }, [])
 
   return (
-    <div className="h-80 w-full overflow-hidden rounded-2xl border bg-background">
+    <div className="w-full h-full overflow-hidden">
       <CodeMirror
         basicSetup={{
           bracketMatching: true,
