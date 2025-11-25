@@ -6,6 +6,7 @@ import { requestId } from 'hono/request-id'
 import { serve } from '@hono/node-server'
 
 import { authRouter } from './main/auth/routes'
+import { chatRouter } from './main/chat/routes'
 import { folderRouter } from './main/folders/routes'
 import { errorHandler } from './main/middleware/error-handler'
 import { providerRouter } from './main/providers/routes'
@@ -22,6 +23,7 @@ app.get('/health', (c) => {
 })
 
 app.route('/auth', authRouter)
+app.route('/chat', chatRouter)
 app.route('/folders', folderRouter)
 app.route('/providers', providerRouter)
 

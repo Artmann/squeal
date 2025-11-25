@@ -3,7 +3,11 @@
     "allow": [
       "Bash(npm install:*)",
       "WebFetch(domain:ui.shadcn.com)",
-      "Bash(npx shadcn@latest init)"
+      "Bash(npx shadcn@latest init)",
+      "WebFetch(domain:ai-sdk.dev)",
+      "Bash(npx drizzle-kit generate:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(npm run lint)"
     ],
     "deny": [],
     "ask": []

@@ -1,4 +1,4 @@
-import { PlusIcon, ShapesIcon } from 'lucide-react'
+import { MessageSquareIcon, PlusIcon, ShapesIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
 import {
@@ -33,6 +33,15 @@ export function AppSidebar(): ReactElement {
           <SidebarGroupLabel>Application</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a href="/chat">
+                    <MessageSquareIcon className="size-3" />
+
+                    <span>Chat</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <a href="/providers">

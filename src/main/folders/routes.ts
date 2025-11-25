@@ -10,8 +10,6 @@ folderRouter.get('/select', async (context) => {
     properties: ['openDirectory']
   })
 
-  console.log('Folder selection result:', result)
-
   if (result.canceled || result.filePaths.length === 0) {
     return context.json({ path: null })
   }

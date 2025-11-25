@@ -47,6 +47,10 @@
     "vite": "^5.4.21"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.45",
+    "@ai-sdk/google": "^2.0.40",
+    "@ai-sdk/openai": "^2.0.71",
+    "@ai-sdk/react": "^2.0.98",
     "@hono/node-server": "^1.19.6",
     "@libsql/client": "^0.15.15",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -55,6 +59,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.1.17",
+    "ai": "^5.0.98",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
