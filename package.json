@@ -2,7 +2,7 @@
   "name": "squeal",
   "productName": "squeal",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Ergonomic SQL Client for Humans",
   "main": ".vite/build/main.js",
   "scripts": {
     "format": "prettier --write .",
