@@ -4,7 +4,7 @@ import { resolve } from 'path'
 import invariant from 'tiny-invariant'
 import { pathToFileURL } from 'url'
 
-const absolutePath = resolve('code-monkey.sqlite3')
+const absolutePath = resolve('squeal.sqlite3')
 export const databaseFilePath = pathToFileURL(absolutePath).toString()
 
 invariant(databaseFilePath, 'Database file name must be provided.')

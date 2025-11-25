@@ -8,6 +8,7 @@ import { ProvidersPage } from './pages/ProvidersPage'
 import { StartPage } from './pages/StartPage'
 import { ProviderPage } from './pages/ProviderPage'
 import { NewProjectPage } from './pages/NewProjectPage'
+import { WorksheetPage } from './pages/WorksheetPage'
 
 export function App() {
   return (
@@ -40,6 +41,10 @@ export function App() {
             <Route
               path="/providers/:id"
               element={<ProviderPage />}
+            />
+            <Route
+              path="/worksheet"
+              element={<WorksheetPage />}
             />
           </Routes>
         </main>
