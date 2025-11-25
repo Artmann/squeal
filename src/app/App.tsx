@@ -1,10 +1,12 @@
 import { ReactElement, useState } from 'react'
 
+import { GetQueryResponse, QueryDto } from '@/main/queries'
 import { WorksheetEditor } from './components/WorksheetEditor'
+import { QueryResultTable } from './components/QueryResultTable'
 import { Button } from './components/ui/button'
 
 const apiBaseUrl = `http://localhost:7847`
-const POLL_INTERVAL = 500
+const pollInterval = 500
 
 interface QueryResult {
   id: string
@@ -14,7 +16,7 @@ interface QueryResult {
   result: string | null
 }
 
-async function pollForResult(queryId: string): Promise<QueryResult> {
+async function pollForResult(queryId: string): Promise<QueryDto> {
   while (true) {
     const response = await fetch(`${apiBaseUrl}/queries/${queryId}`)
 
@@ -22,25 +24,27 @@ async function pollForResult(queryId: string): Promise<QueryResult> {
       throw new Error(`Failed to fetch query: ${response.statusText}`)
     }
 
-    const data = await response.json()
-    const query: QueryResult = data.query
+    const data = (await response.json()) as GetQueryResponse
+    const query = data.query
 
     if (query.result !== null || query.error !== null) {
       return query
     }
 
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL))
+    await new Promise((resolve) => setTimeout(resolve, pollInterval))
   }
 }
 
 export function App(): ReactElement {
-  const [content, setContent] = useState('SELECT * FROM users;')
+  const [content, setContent] = useState('SELECT * FROM actor;')
   const [isRunning, setIsRunning] = useState(false)
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null)
+  const [queryResult, setQueryResult] = useState<any>(null)
+  const [queryError, setQueryError] = useState<string | null>(null)
 
   const handleRunQuery = async () => {
     setIsRunning(true)
     setQueryResult(null)
+    setQueryError(null)
 
     try {
       const response = await fetch(`${apiBaseUrl}/queries`, {
@@ -56,8 +60,17 @@ export function App(): ReactElement {
       const data = await response.json()
       const createdQuery: QueryResult = data.query
 
-      const result = await pollForResult(createdQuery.id)
-      setQueryResult(result)
+      const finishedQuery = await pollForResult(createdQuery.id)
+
+      if (finishedQuery.error) {
+        setQueryError(finishedQuery.error)
+      }
+
+      if (finishedQuery.result) {
+        setQueryResult({
+          result: finishedQuery.result
+        })
+      }
     } catch (error) {
       console.error('Error running query:', error)
     } finally {
@@ -92,14 +105,11 @@ export function App(): ReactElement {
             onChange={setContent}
           />
           <div>
-            {queryResult?.error && (
-              <pre className="text-red-500 p-4">{queryResult.error}</pre>
-            )}
-            {queryResult?.result && (
-              <pre className="p-4">{queryResult.result}</pre>
-            )}
-            {!queryResult && (
-              <div className="p-4 text-muted-foreground">Results</div>
+            {queryError && <div>{queryError}</div>}
+            {queryResult && (
+              <div className="p-2">
+                <QueryResultTable result={queryResult.result} />
+              </div>
             )}
           </div>
         </div>

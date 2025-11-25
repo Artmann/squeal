@@ -88,6 +88,6 @@ function transformQuery(query: any): QueryDto {
     error: query.error ?? null,
     id: query.id,
     queriedAt: query.queriedAt,
-    result: query.result ?? null
+    result: query.result ? JSON.parse(query.result) : null
   }
 }
