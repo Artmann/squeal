@@ -7,7 +7,8 @@
       "WebFetch(domain:ai-sdk.dev)",
       "Bash(npx drizzle-kit generate:*)",
       "Bash(npx drizzle-kit:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "Bash(yarn add:*)"
     ],
     "deny": [],
     "ask": []
