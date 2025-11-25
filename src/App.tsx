@@ -1,5 +1,7 @@
 import { ReactElement } from 'react'
 
+import { WorksheetEditor } from './components/WorksheetEditor'
+
 export function App(): ReactElement {
   return (
     <main className="w-full flex">
@@ -14,7 +16,7 @@ export function App(): ReactElement {
         <header className="w-full py-3"></header>
 
         <div>
-          <div>Editor</div>
+          <WorksheetEditor />
           <div>Results</div>
         </div>
       </div>

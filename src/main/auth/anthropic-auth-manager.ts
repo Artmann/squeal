@@ -50,7 +50,7 @@ export class AnthropicAuthManager {
 
   private constructor() {
     this.config = {
-      clientId: 'Code Monkey',
+      clientId: 'Squeal',
       redirectUri: `http://localhost:${apiPort}/auth/callback`,
       scopes: ['api.access', 'account.read']
     }
