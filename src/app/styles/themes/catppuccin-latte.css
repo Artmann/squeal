@@ -1,0 +1,37 @@
+/* Catppuccin Latte - Light mode theme */
+
+[data-theme='catppuccin'][data-mode='light'] {
+  /* Base colors */
+  --base: hsl(220deg 23% 95%);
+  --crust: hsl(220deg 21% 89%);
+  --mantle: hsl(220deg 22% 92%);
+  --surface-0: hsl(223deg 16% 83%);
+  --surface-1: hsl(225deg 14% 77%);
+  --surface-2: hsl(227deg 12% 71%);
+
+  /* Text colors */
+  --text: hsl(234deg 16% 35%);
+  --subtext-0: hsl(233deg 10% 47%);
+  --subtext-1: hsl(233deg 13% 41%);
+
+  /* Overlay colors */
+  --overlay-0: hsl(228deg 11% 65%);
+  --overlay-1: hsl(231deg 10% 59%);
+  --overlay-2: hsl(232deg 10% 53%);
+
+  /* Accent colors */
+  --blue: hsl(220deg 91% 54%);
+  --flamingo: hsl(0deg 60% 67%);
+  --green: hsl(109deg 58% 40%);
+  --lavender: hsl(231deg 97% 72%);
+  --maroon: hsl(355deg 76% 59%);
+  --mauve: hsl(266deg 85% 58%);
+  --peach: hsl(22deg 99% 52%);
+  --pink: hsl(316deg 73% 69%);
+  --red: hsl(347deg 87% 44%);
+  --rosewater: hsl(11deg 59% 67%);
+  --sapphire: hsl(189deg 70% 42%);
+  --sky: hsl(197deg 97% 46%);
+  --teal: hsl(183deg 74% 35%);
+  --yellow: hsl(35deg 77% 49%);
+}

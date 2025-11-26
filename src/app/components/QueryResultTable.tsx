@@ -21,12 +21,12 @@ export const QueryResultTable = memo(function QueryResultTable({
 
   return (
     <Table className="w-full text-xs">
-      <TableHeader className="sticky top-0 bg-background border-t border-border">
-        <TableRow className="bg-background">
-          <TableHead className="border-r border-border"></TableHead>
+      <TableHeader className="sticky top-0 bg-base border-t border-surface-0">
+        <TableRow className="bg-base">
+          <TableHead className="border-r border-surface-0"></TableHead>
           {fieldNames.map((name: string) => (
             <TableHead
-              className="border-r border-border font-normal last:border-r-0"
+              className="border-r border-surface-0 font-normal last:border-r-0"
               key={name}
             >
               {name}
@@ -37,7 +37,7 @@ export const QueryResultTable = memo(function QueryResultTable({
       <TableBody>
         {result.rows.map((row: any, rowIndex: number) => (
           <TableRow key={String(rowIndex)}>
-            <TableCell className="border-r border-border px-0.5 text-center text-muted-foreground">
+            <TableCell className="border-r border-surface-0 px-0.5 text-center text-subtext-0">
               {rowIndex + 1}
             </TableCell>
             {fieldNames.map((name: string) => {
@@ -47,7 +47,7 @@ export const QueryResultTable = memo(function QueryResultTable({
               return (
                 <TableCell
                   className={cn(
-                    'border-r border-border last:border-r-0',
+                    'border-r border-surface-0 last:border-r-0',
                     isNumber ? 'text-right' : 'text-left'
                   )}
                   key={`${rowIndex}-${name}`}

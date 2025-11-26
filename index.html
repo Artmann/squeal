@@ -3,6 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <title>Squeal</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme')
+          var theme = stored ? JSON.parse(stored) : { mode: 'system', name: 'catppuccin' }
+          var mode =
+            theme.mode === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : theme.mode
+
+          document.documentElement.setAttribute('data-theme', theme.name)
+          document.documentElement.setAttribute('data-mode', mode)
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

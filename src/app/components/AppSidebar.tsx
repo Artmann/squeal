@@ -24,7 +24,7 @@ export function AppSidebar(): ReactElement {
           <SidebarGroupLabel>Projects</SidebarGroupLabel>
           <SidebarGroupAction title="New Project">
             <a href="/projects/new">
-              <PlusIcon className="size-3 text-muted-foreground hover:text-foreground" />{' '}
+              <PlusIcon className="size-3 text-subtext-0 hover:text-text" />{' '}
               <span className="sr-only">New Project</span>
             </a>
           </SidebarGroupAction>

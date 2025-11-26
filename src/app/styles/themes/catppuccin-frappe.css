@@ -1,0 +1,37 @@
+/* Catppuccin Frappe - Dark mode theme */
+
+[data-theme='catppuccin'][data-mode='dark'] {
+  /* Base colors */
+  --base: hsl(229deg 19% 23%);
+  --crust: hsl(229deg 20% 17%);
+  --mantle: hsl(231deg 19% 20%);
+  --surface-0: hsl(230deg 16% 30%);
+  --surface-1: hsl(227deg 15% 37%);
+  --surface-2: hsl(228deg 13% 44%);
+
+  /* Text colors */
+  --text: hsl(227deg 70% 87%);
+  --subtext-0: hsl(228deg 29% 73%);
+  --subtext-1: hsl(227deg 44% 80%);
+
+  /* Overlay colors */
+  --overlay-0: hsl(229deg 13% 52%);
+  --overlay-1: hsl(227deg 17% 58%);
+  --overlay-2: hsl(228deg 22% 66%);
+
+  /* Accent colors */
+  --blue: hsl(222deg 74% 74%);
+  --flamingo: hsl(0deg 59% 84%);
+  --green: hsl(96deg 44% 68%);
+  --lavender: hsl(239deg 66% 84%);
+  --maroon: hsl(358deg 66% 76%);
+  --mauve: hsl(277deg 59% 76%);
+  --peach: hsl(20deg 79% 70%);
+  --pink: hsl(316deg 73% 84%);
+  --red: hsl(359deg 68% 71%);
+  --rosewater: hsl(10deg 57% 88%);
+  --sapphire: hsl(199deg 55% 69%);
+  --sky: hsl(189deg 48% 73%);
+  --teal: hsl(172deg 39% 65%);
+  --yellow: hsl(40deg 62% 73%);
+}
