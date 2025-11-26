@@ -1,12 +1,5 @@
-import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { streamText, convertToModelMessages } from 'ai'
-import { log } from 'tiny-typescript-logger'
 import { z } from 'zod'
-
-import { database } from '../../database'
-import { ValidationError } from '@/errors'
-import { saveChat } from './persistence'
 
 export const chatRouter = new Hono()
 
@@ -18,6 +11,7 @@ const messageSchema = z.object({
   toolInvocations: z.array(z.any()).optional()
 })
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const chatRequestSchema = z.object({
   messages: z.array(messageSchema),
   chatId: z.string()
