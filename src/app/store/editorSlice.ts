@@ -1,17 +1,21 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 import { QueryDto } from '@/main/queries'
+import { WorksheetDto } from '@/glue/worksheets'
 
-interface QueriesState {
+interface EditorState {
+  openWorksheetId?: string
   queries: QueryDto[]
+  worksheets: WorksheetDto[]
 }
 
-const initialState: QueriesState = {
-  queries: []
+const initialState: EditorState = {
+  queries: [],
+  worksheets: []
 }
 
-export const queriesSlice = createSlice({
-  name: 'queries',
+export const editorSlice = createSlice({
+  name: 'editor',
   initialState,
   reducers: {
     queriesFetched: (state, action: PayloadAction<QueryDto[]>) => {
@@ -35,6 +39,6 @@ export const queriesSlice = createSlice({
 })
 
 export const { queriesFetched, queryCreated, queryFetched } =
-  queriesSlice.actions
+  editorSlice.actions
 
-export default queriesSlice.reducer
+export default editorSlice.reducer

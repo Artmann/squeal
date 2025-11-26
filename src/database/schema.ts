@@ -35,3 +35,14 @@ export const queriesTable = sqliteTable('queries', {
   result: text(),
   worksheetId: text().notNull()
 })
+
+export const worksheetsTable = sqliteTable('worksheets', {
+  id: text()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  createdAt: integer({ mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  deletedAt: integer({ mode: 'timestamp' }),
+  name: text().notNull().default('Untitled Worksheet')
+})

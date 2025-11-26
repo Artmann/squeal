@@ -1,5 +1,6 @@
-- [ ] Add a Getting Started screen
 - [ ] Add Worksheets
+- [ ] Add a Getting Started screen
+- [ ] Persist the editor state
 - [ ] Support for multiple queries in the editor
 - [ ] List Databases
 - [ ] Add Database

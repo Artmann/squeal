@@ -10,25 +10,29 @@ import { Button } from './components/ui/button'
 import { ResultSheet } from './components/ResultSheet'
 import { Separator } from './components/ui/separator'
 import { useAppDispatch, useAppSelector } from './store'
-import { queryCreated, queryFetched } from './store/queriesSlice'
-
-const worksheetId = '00d34098-2fb3-4d5e-901e-272eb783784b'
+import { queryCreated, queryFetched } from './store/editorSlice'
 
 export function App(): ReactElement {
   const [content, setContent] = useState('SELECT * FROM actor;')
 
-  const queries = useAppSelector((state) => state.queries.queries)
+  const queries = useAppSelector((state) => state.editor.queries)
+  const worksheets = useAppSelector((state) => state.editor.worksheets)
+  const openWorksheetId = useAppSelector(
+    (state) => state.editor.openWorksheetId
+  )
+  const worksheet = worksheets.find((w) => w.id === openWorksheetId)
+
   const [query] = useMemo(
     () =>
       queries
-        .filter((q) => q.worksheetId === worksheetId)
+        .filter((q) => q.worksheetId === openWorksheetId)
         .sort((a, b) => b.queriedAt - a.queriedAt),
-    [queries, worksheetId]
+    [queries, openWorksheetId]
   )
 
   const isQueryRunning = query && !query.finishedAt
 
-  console.log({ isQueryRunning, queries })
+  console.log({ isQueryRunning, openWorksheetId, queries, worksheets })
 
   const dispatch = useAppDispatch()
 
@@ -76,7 +80,7 @@ export function App(): ReactElement {
       id: v7(),
       queriedAt: Date.now(),
       result: null,
-      worksheetId
+      worksheetId: openWorksheetId ?? ''
     }
 
     dispatch(queryCreated(queryData))
