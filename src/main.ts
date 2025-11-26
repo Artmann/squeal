@@ -12,6 +12,22 @@ ipcMain.handle('get-bootstrap-data', () => {
   return bootstrapData
 })
 
+ipcMain.handle('window-minimize', () => {
+  mainWindow?.minimize()
+})
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize()
+  } else {
+    mainWindow?.maximize()
+  }
+})
+
+ipcMain.handle('window-close', () => {
+  mainWindow?.close()
+})
+
 if (started) {
   app.quit()
 }
@@ -20,11 +36,13 @@ export let mainWindow: BrowserWindow
 
 const createWindow = async () => {
   mainWindow = new BrowserWindow({
-    width: 1300,
+    frame: false,
     height: 880,
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js')
-    }
+    },
+    width: 1300
   })
 
   bootstrapData = await bootstrap()

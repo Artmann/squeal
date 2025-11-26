@@ -65,4 +65,12 @@
   .cm-editor.cm-focused {
     outline: none !important;
   }
+
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .title-bar button {
+    -webkit-app-region: no-drag;
+  }
 }

@@ -4,14 +4,15 @@ import { ReactElement, useEffect, useMemo, useState } from 'react'
 import { v7 } from 'uuid'
 
 import { CreateQueryResponse, GetQueryResponse, QueryDto } from '@/main/queries'
-import { WorksheetEditor } from './components/WorksheetEditor'
+import { AppSidebar } from './components/AppSidebar'
 import { QueryResultTable } from './components/QueryResultTable'
-import { Button } from './components/ui/button'
 import { ResultSheet } from './components/ResultSheet'
+import { TitleBar } from './components/TitleBar'
+import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
+import { WorksheetEditor } from './components/WorksheetEditor'
 import { useAppDispatch, useAppSelector } from './store'
 import { queryCreated, queryFetched } from './store/editorSlice'
-import { AppSidebar } from './components/AppSidebar'
 
 export function App(): ReactElement {
   const [content, setContent] = useState('SELECT * FROM actor;')
@@ -110,66 +111,72 @@ export function App(): ReactElement {
   }
 
   return (
-    <main className="w-full h-screen flex bg-mantle overflow-hidden text-sm">
-      <div className="h-full flex flex-col border-r border-surface-0">
-        <AppSidebar />
-      </div>
+    <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
+      <TitleBar />
 
-      <div className="flex-1 min-h-0 flex flex-col">
-        <header className="w-full p-3 border-b border-surface-0">
-          <Button
-            className="cursor-pointer"
-            disabled={isQueryRunning}
-            size="icon-sm"
-            onClick={handleRunQuery}
-          >
-            {isQueryRunning ? (
-              <Loader2Icon className="size-3 animate-spin" />
-            ) : (
-              <PlayIcon className="size-3" />
-            )}
-          </Button>
-        </header>
+      <div className="flex-1 min-h-0 flex">
+        <div className="h-full flex flex-col border-r border-surface-0">
+          <AppSidebar />
+        </div>
 
-        <div className="relative flex-1 min-h-0 bg-base">
-          <WorksheetEditor
-            content={content}
-            onChange={setContent}
-            onRunQuery={handleRunQuery}
-          />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <header className="w-full p-3 border-b border-surface-0">
+            <Button
+              className="cursor-pointer"
+              disabled={isQueryRunning}
+              size="icon-sm"
+              onClick={handleRunQuery}
+            >
+              {isQueryRunning ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : (
+                <PlayIcon className="size-3" />
+              )}
+            </Button>
+          </header>
 
-          <ResultSheet
-            isOpen={Boolean(query)}
-            query={query}
-          >
-            {isQueryRunning && (
-              <div className="w-full h-full flex justify-center items-center">
-                <div className="w-full max-w-sm flex flex-col gap-2">
-                  <h2 className="text-lg font-medium">Running query</h2>
+          <div className="relative flex-1 min-h-0 bg-base">
+            <WorksheetEditor
+              content={content}
+              onChange={setContent}
+              onRunQuery={handleRunQuery}
+            />
 
-                  <Separator />
+            <ResultSheet
+              isOpen={Boolean(query)}
+              query={query}
+            >
+              {isQueryRunning && (
+                <div className="w-full h-full flex justify-center items-center">
+                  <div className="w-full max-w-sm flex flex-col gap-2">
+                    <h2 className="text-lg font-medium">Running query</h2>
 
-                  <div className="text-subtext-0 text-sm">
-                    <div className="flex items-center justify-between">
-                      <div>Start time</div>
-                      <div className="text-right">
-                        {query?.queriedAt &&
-                          dayjs(query.queriedAt).format('YYYY-MM-DD HH:mm:ss')}
+                    <Separator />
+
+                    <div className="text-subtext-0 text-sm">
+                      <div className="flex items-center justify-between">
+                        <div>Start time</div>
+                        <div className="text-right">
+                          {query?.queriedAt &&
+                            dayjs(query.queriedAt).format(
+                              'YYYY-MM-DD HH:mm:ss'
+                            )}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {query?.result && <QueryResultTable result={query.result} />}
+              {query?.result && <QueryResultTable result={query.result} />}
 
-            {query?.error && (
-              <div className="w-full h-full flex justify-center items-center">
-                {query.error}
-              </div>
-            )}
-          </ResultSheet>
+              {query?.error && (
+                <div className="w-full h-full flex justify-center items-center">
+                  {query.error}
+                </div>
+              )}
+            </ResultSheet>
+          </div>
         </div>
       </div>
     </main>
