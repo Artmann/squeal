@@ -13,7 +13,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem
-} from '@/components/ui/sidebar'
+} from '@/app/components/ui/sidebar'
 
 export function AppSidebar(): ReactElement {
   return (

@@ -12,7 +12,8 @@
       "Bash(yarn test:*)",
       "Bash(tree:*)",
       "WebFetch(domain:catppuccin.com)",
-      "Bash(yarn install)"
+      "Bash(yarn install)",
+      "Bash(yarn typecheck:*)"
     ],
     "deny": [],
     "ask": []
