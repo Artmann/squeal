@@ -1,17 +1,21 @@
 import { autocompletion, completeFromList } from '@codemirror/autocomplete'
 import { sql } from '@codemirror/lang-sql'
-import { EditorView } from '@codemirror/view'
+import { Prec } from '@codemirror/state'
+import { EditorView, keymap } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
+
 import { ReactElement, useMemo } from 'react'
 
 interface WorksheetEditorProps {
   content: string
   onChange?: (value: string) => void
+  onRunQuery?: () => void
 }
 
 export function WorksheetEditor({
   content,
-  onChange
+  onChange,
+  onRunQuery
 }: WorksheetEditorProps): ReactElement {
   const extensions = useMemo(() => {
     return [
@@ -26,7 +30,21 @@ export function WorksheetEditor({
             { label: 'orders', type: 'table', apply: 'orders' }
           ])
         ]
-      })
+      }),
+      Prec.highest(
+        keymap.of([
+          {
+            key: 'Mod-Enter',
+            run: () => {
+              if (onRunQuery) {
+                onRunQuery()
+
+                return true
+              }
+            }
+          }
+        ])
+      )
     ]
   }, [])
 

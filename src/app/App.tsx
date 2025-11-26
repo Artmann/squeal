@@ -129,6 +129,7 @@ export function App(): ReactElement {
           <WorksheetEditor
             content={content}
             onChange={setContent}
+            onRunQuery={handleRunQuery}
           />
 
           <ResultSheet
