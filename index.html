@@ -4,10 +4,12 @@
     <meta charset="UTF-8" />
     <title>Squeal</title>
     <script>
-      (function () {
+      ;(function () {
         try {
           var stored = localStorage.getItem('theme')
-          var theme = stored ? JSON.parse(stored) : { mode: 'system', name: 'catppuccin' }
+          var theme = stored
+            ? JSON.parse(stored)
+            : { mode: 'system', name: 'catppuccin' }
           var mode =
             theme.mode === 'system'
               ? window.matchMedia('(prefers-color-scheme: dark)').matches
