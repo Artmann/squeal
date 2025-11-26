@@ -4,7 +4,10 @@ import { z } from 'zod'
 import { database } from '@/database'
 import { queriesTable } from '@/database/schema'
 
-import { PostgresAdapter } from './postgres-adapter'
+import {
+  PostgresAdapter,
+  PostgresConnectionInfo
+} from '../../databases/postgres-adapter'
 
 export const createQuerySchema = z.object({
   content: z.string(),
@@ -38,7 +41,17 @@ class QueryRunner {
 
   private async runQueryInBackground(query: any): Promise<void> {
     try {
-      const result = await new PostgresAdapter().runQuery(query.content)
+      const connectionInfo: PostgresConnectionInfo = {
+        database: 'squeal',
+        host: 'localhost',
+        username: 'postgres',
+        password: 'postgres'
+      }
+
+      const result = await new PostgresAdapter().runQuery(
+        connectionInfo,
+        query.content
+      )
 
       console.log('Query result:', result)
       await database

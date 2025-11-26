@@ -12,6 +12,20 @@ export const chatsTable = sqliteTable('chats', {
     .$defaultFn(() => new Date())
 })
 
+export const databasesTable = sqliteTable('databases', {
+  id: text()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  connectionInfo: text().notNull(),
+  createdAt: integer({ mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  deletedAt: integer({ mode: 'timestamp' }),
+  lastUsedAt: integer({ mode: 'timestamp' }),
+  name: text().notNull(),
+  type: text().notNull()
+})
+
 export const messagesTable = sqliteTable('messages', {
   id: text()
     .primaryKey()
