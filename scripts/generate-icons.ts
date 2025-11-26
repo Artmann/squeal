@@ -16,9 +16,7 @@ async function generatePngVariants() {
   for (const size of sizes) {
     const outputPath = join(iconsDirectory, `${size}x${size}.png`)
 
-    await sharp(sourceIcon)
-      .resize(size, size)
-      .toFile(outputPath)
+    await sharp(sourceIcon).resize(size, size).toFile(outputPath)
 
     console.log(`  Created ${size}x${size}.png`)
   }
@@ -27,7 +25,7 @@ async function generatePngVariants() {
 async function generateIco() {
   console.log('Generating Windows .ico...')
 
-  const pngPaths = [256, 128, 64, 32, 16].map(size =>
+  const pngPaths = [256, 128, 64, 32, 16].map((size) =>
     join(iconsDirectory, `${size}x${size}.png`)
   )
 
@@ -64,9 +62,7 @@ async function generateIcns() {
   ]
 
   for (const { size, name } of iconsetSizes) {
-    await sharp(sourceIcon)
-      .resize(size, size)
-      .toFile(join(iconsetPath, name))
+    await sharp(sourceIcon).resize(size, size).toFile(join(iconsetPath, name))
   }
 
   // Use iconutil (built into macOS) to create .icns.

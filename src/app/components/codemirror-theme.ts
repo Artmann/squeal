@@ -75,4 +75,6 @@ const catppuccinHighlightStyle = HighlightStyle.define([
   { tag: tags.labelName, color: 'var(--color-blue)' }
 ])
 
-export const catppuccinHighlighting = syntaxHighlighting(catppuccinHighlightStyle)
+export const catppuccinHighlighting = syntaxHighlighting(
+  catppuccinHighlightStyle
+)
