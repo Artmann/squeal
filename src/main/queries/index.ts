@@ -1,21 +1,22 @@
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import invariant from 'tiny-invariant'
-import z from 'zod'
 
 import { database } from '@/database'
 import { queriesTable } from '@/database/schema'
 import { ApiError, ValidationError } from '@/errors'
-import { queryRunner } from './query-runner'
+import { createQuerySchema, queryRunner } from './query-runner'
 
 export const queryRouter = new Hono()
 
 export interface QueryDto {
-  id: string
   content: string
   error: string | null
+  finishedAt?: number | null
+  id: string
   queriedAt: number
   result: any | null
+  worksheetId: string
 }
 
 export interface GetQueriesResponse {
@@ -60,10 +61,6 @@ export interface CreateQueryResponse {
   query: QueryDto
 }
 
-const createQuerySchema = z.object({
-  query: z.string()
-})
-
 queryRouter.post('/', async (context) => {
   const body = await context.req.json()
 
@@ -73,7 +70,7 @@ queryRouter.post('/', async (context) => {
     throw new ValidationError(result.error)
   }
 
-  const query = await queryRunner.createAndRunQuery(result.data.query)
+  const query = await queryRunner.createAndRunQuery(result.data)
 
   const response: CreateQueryResponse = {
     query: transformQuery(query)
@@ -86,8 +83,10 @@ function transformQuery(query: any): QueryDto {
   return {
     content: query.content,
     error: query.error ?? null,
+    finishedAt: query.finishedAt ?? null,
     id: query.id,
     queriedAt: query.queriedAt,
-    result: query.result ? JSON.parse(query.result) : null
+    result: query.result ? JSON.parse(query.result) : null,
+    worksheetId: query.worksheetId
   }
 }

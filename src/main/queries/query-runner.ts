@@ -1,17 +1,27 @@
 import { eq } from 'drizzle-orm'
-import { v7 } from 'uuid'
+import { z } from 'zod'
 
 import { database } from '@/database'
 import { queriesTable } from '@/database/schema'
 
 import { PostgresAdapter } from './postgres-adapter'
 
+export const createQuerySchema = z.object({
+  content: z.string(),
+  id: z.string(),
+  queriedAt: z.number(),
+  worksheetId: z.string()
+})
+
+export type CreateQueryInput = z.infer<typeof createQuerySchema>
+
 class QueryRunner {
-  async createAndRunQuery(query: string) {
+  async createAndRunQuery(input: CreateQueryInput) {
     const data: typeof queriesTable.$inferInsert = {
-      content: query,
-      id: v7(),
-      queriedAt: Date.now()
+      content: input.content,
+      id: input.id,
+      queriedAt: input.queriedAt,
+      worksheetId: input.worksheetId
     }
 
     console.log('Inserting query into database:', data)
@@ -34,6 +44,7 @@ class QueryRunner {
       await database
         .update(queriesTable)
         .set({
+          finishedAt: Date.now(),
           result: JSON.stringify(result)
         })
         .where(eq(queriesTable.id, query.id))
@@ -45,7 +56,7 @@ class QueryRunner {
 
       await database
         .update(queriesTable)
-        .set({ error: errorMessage })
+        .set({ error: errorMessage, finishedAt: Date.now() })
         .where(eq(queriesTable.id, query.id))
     }
   }

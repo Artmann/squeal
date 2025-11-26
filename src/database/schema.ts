@@ -6,6 +6,8 @@ export const queriesTable = sqliteTable('queries', {
     .$defaultFn(() => crypto.randomUUID()),
   content: text().notNull(),
   error: text(),
+  finishedAt: integer(),
   queriedAt: integer().notNull(),
-  result: text()
+  result: text(),
+  worksheetId: text().notNull()
 })

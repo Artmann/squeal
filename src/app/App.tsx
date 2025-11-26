@@ -1,86 +1,106 @@
-import { ReactElement, useState } from 'react'
+import dayjs from 'dayjs'
+import { ReactElement, useEffect, useMemo, useState } from 'react'
+import { v7 } from 'uuid'
 
-import { GetQueryResponse, QueryDto } from '@/main/queries'
+import { CreateQueryResponse, GetQueryResponse, QueryDto } from '@/main/queries'
 import { WorksheetEditor } from './components/WorksheetEditor'
 import { QueryResultTable } from './components/QueryResultTable'
 import { Button } from './components/ui/button'
 import { ResultSheet } from './components/ResultSheet'
 import { Separator } from './components/ui/separator'
-import dayjs from 'dayjs'
+import { useAppDispatch, useAppSelector } from './store'
+import { queryCreated, queryFetched } from './store/queriesSlice'
 
-const apiBaseUrl = `http://localhost:7847`
-const pollInterval = 500
-
-interface QueryResult {
-  id: string
-  content: string
-  error: string | null
-  queriedAt: number
-  result: string | null
-}
-
-async function pollForResult(queryId: string): Promise<QueryDto> {
-  while (true) {
-    const response = await fetch(`${apiBaseUrl}/queries/${queryId}`)
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch query: ${response.statusText}`)
-    }
-
-    const data = (await response.json()) as GetQueryResponse
-    const query = data.query
-
-    if (query.result !== null || query.error !== null) {
-      return query
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, pollInterval))
-  }
-}
+const worksheetId = '00d34098-2fb3-4d5e-901e-272eb783784b'
 
 export function App(): ReactElement {
   const [content, setContent] = useState('SELECT * FROM actor;')
-  const [isRunning, setIsRunning] = useState(false)
-  const [queryResult, setQueryResult] = useState<any>(null)
-  const [queryError, setQueryError] = useState<string | null>(null)
-  const [query, setQuery] = useState<QueryDto | null>(null)
+
+  const queries = useAppSelector((state) => state.queries.queries)
+  const [query] = useMemo(
+    () =>
+      queries
+        .filter((q) => q.worksheetId === worksheetId)
+        .sort((a, b) => b.queriedAt - a.queriedAt),
+    [queries, worksheetId]
+  )
+
+  const isQueryRunning = query && !query.finishedAt
+
+  console.log({ isQueryRunning, queries })
+
+  const dispatch = useAppDispatch()
+
+  useEffect(
+    function pollQueryResult() {
+      let handle: NodeJS.Timeout | undefined
+
+      if (!isQueryRunning) {
+        return
+      }
+
+      const check = () => {
+        console.log('Polling for query result...')
+
+        if (!query) {
+          return
+        }
+
+        fetchQuery(query.id)
+          .then((freshQuery) => {
+            dispatch(queryFetched(freshQuery))
+
+            handle = setTimeout(check, pollInterval)
+          })
+          .catch((error) => {
+            console.error('Error fetching query:', error)
+          })
+      }
+
+      check()
+
+      return () => {
+        if (handle) {
+          clearTimeout(handle)
+        }
+      }
+    },
+    [isQueryRunning, query?.id, dispatch]
+  )
 
   const handleRunQuery = async () => {
-    setIsRunning(true)
-    setQueryResult(null)
-    setQueryError(null)
-    setQuery(null)
+    const queryData: QueryDto = {
+      content,
+      error: null,
+      id: v7(),
+      queriedAt: Date.now(),
+      result: null,
+      worksheetId
+    }
+
+    dispatch(queryCreated(queryData))
 
     try {
       const response = await fetch(`${apiBaseUrl}/queries`, {
-        method: 'POST',
+        body: JSON.stringify({
+          content: queryData.content,
+          id: queryData.id,
+          queriedAt: queryData.queriedAt,
+          worksheetId: queryData.worksheetId
+        }),
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: content })
+        method: 'POST'
       })
 
       if (!response.ok) {
         throw new Error(`Query failed: ${response.statusText}`)
       }
 
-      const data = await response.json()
-      const createdQuery: QueryResult = data.query
+      const data = (await response.json()) as CreateQueryResponse
 
-      const finishedQuery = await pollForResult(createdQuery.id)
-
-      setQuery(finishedQuery)
-      if (finishedQuery.error) {
-        setQueryError(finishedQuery.error)
-      }
-
-      if (finishedQuery.result) {
-        setQueryResult({
-          result: finishedQuery.result
-        })
-      }
+      dispatch(queryFetched(data.query))
     } catch (error) {
       console.error('Error running query:', error)
-    } finally {
-      setIsRunning(false)
     }
   }
 
@@ -99,9 +119,9 @@ export function App(): ReactElement {
         <header className="w-full p-3 border-b border-border">
           <Button
             onClick={handleRunQuery}
-            disabled={isRunning}
+            disabled={isQueryRunning}
           >
-            {isRunning ? 'Running...' : 'Run'}
+            {isQueryRunning ? 'Running...' : 'Run'}
           </Button>
         </header>
 
@@ -115,7 +135,7 @@ export function App(): ReactElement {
             isOpen={true}
             query={query}
           >
-            {isRunning && (
+            {isQueryRunning && (
               <div className="w-full h-full flex justify-center items-center">
                 <div className="w-full max-w-sm flex flex-col gap-2">
                   <h2 className="text-lg font-medium">Running query</h2>
@@ -137,9 +157,9 @@ export function App(): ReactElement {
 
             {query?.result && <QueryResultTable result={query.result} />}
 
-            {queryError && (
+            {query?.error && (
               <div className="w-full h-full flex justify-center items-center">
-                {queryError}
+                {query.error}
               </div>
             )}
           </ResultSheet>
@@ -147,4 +167,20 @@ export function App(): ReactElement {
       </div>
     </main>
   )
+}
+
+const apiBaseUrl = `http://localhost:7847`
+const pollInterval = 10
+
+async function fetchQuery(queryId: string): Promise<QueryDto> {
+  const response = await fetch(`http://localhost:7847/queries/${queryId}`)
+  const data = (await response.json()) as
+    | GetQueryResponse
+    | { error: { message: string } }
+
+  if ('error' in data) {
+    throw new Error(data.error.message)
+  }
+
+  return data.query
 }
