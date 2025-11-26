@@ -11,6 +11,7 @@ import { ResultSheet } from './components/ResultSheet'
 import { Separator } from './components/ui/separator'
 import { useAppDispatch, useAppSelector } from './store'
 import { queryCreated, queryFetched } from './store/editorSlice'
+import { AppSidebar } from './components/AppSidebar'
 
 export function App(): ReactElement {
   const [content, setContent] = useState('SELECT * FROM actor;')
@@ -20,7 +21,6 @@ export function App(): ReactElement {
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
   )
-  const worksheet = worksheets.find((w) => w.id === openWorksheetId)
 
   const [query] = useMemo(
     () =>
@@ -112,12 +112,7 @@ export function App(): ReactElement {
   return (
     <main className="w-full h-screen flex bg-mantle overflow-hidden text-sm">
       <div className="h-full flex flex-col border-r border-surface-0">
-        <header className="flex pt-3">
-          <div className="px-3">Databases</div>
-          <div className="px-3">Worksheets</div>
-        </header>
-
-        <div className="flex-1 px-3">Sidebar</div>
+        <AppSidebar />
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">

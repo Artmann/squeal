@@ -3,7 +3,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { QueryDto } from '@/main/queries'
 import { WorksheetDto } from '@/glue/worksheets'
 
-interface EditorState {
+export interface EditorState {
   openWorksheetId?: string
   queries: QueryDto[]
   worksheets: WorksheetDto[]
@@ -34,11 +34,16 @@ export const editorSlice = createSlice({
       } else {
         state.queries.push(action.payload)
       }
+    },
+    workspaceSelected: (state, action: PayloadAction<string>) => {
+      console.log('Selecting worksheet', action.payload)
+
+      state.openWorksheetId = action.payload
     }
   }
 })
 
-export const { queriesFetched, queryCreated, queryFetched } =
+export const { queriesFetched, queryCreated, queryFetched, workspaceSelected } =
   editorSlice.actions
 
 export default editorSlice.reducer

@@ -1,7 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { useDispatch, useSelector } from 'react-redux'
 
-import editorReducer from './editorSlice'
+import editorReducer, { EditorState } from './editorSlice'
+
+export interface RootState {
+  editor: EditorState
+}
 
 export function createStore() {
   const worksheets = window.__BOOTSTRAP_DATA__.worksheets
@@ -21,7 +25,6 @@ export function createStore() {
   return store
 }
 
-export type RootState = ReturnType<ReturnType<typeof createStore>['getState']>
 export type AppDispatch = ReturnType<typeof createStore>['dispatch']
 
 export const useAppDispatch = useDispatch.withTypes<AppDispatch>()

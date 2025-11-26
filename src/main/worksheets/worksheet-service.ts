@@ -25,7 +25,7 @@ export class WorksheetService {
 
 function transformWorksheet(worksheet: any): WorksheetDto {
   return {
-    createdAt: worksheet.createdAt,
+    createdAt: worksheet.createdAt.getTime(),
     id: worksheet.id,
     name: worksheet.name
   }
