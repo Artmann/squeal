@@ -20,23 +20,20 @@ export function ResultSheet({
       style={{ height: isOpen ? '400px' : '0' }}
     >
       <div>
-        <div className="px-3 py-2">
-          Results ({query?.queriedAt && <TimeAgo timestamp={query.queriedAt} />}
-          )
-        </div>
-
-        {query?.result && (
-          <div className="flex items-center justify-between px-3 py-2">
-            <div></div>
-
+        <div className="flex items-center justify-between px-3 py-2">
+          <div>
+            Results (
+            {query?.queriedAt && <TimeAgo timestamp={query.queriedAt} />})
+          </div>
+          {query?.result && (
             <div className="flex items-center text-subtext-0">
               <div>
                 {Intl.NumberFormat().format(query.result.rowCount)}{' '}
                 {query.result.rowCount > 1 ? 'rows' : 'row'}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-auto">{children}</div>
     </div>
