@@ -125,6 +125,19 @@
     @apply bg-background text-foreground;
   }
 
+  .cm-gutters {
+    background: transparent !important;
+    border-right: none !important;
+  }
+
+  .cm-editor.cm-focused {
+    outline: none !important;
+  }
+
+  .cm-editor {
+    height: 100%;
+  }
+
   :root {
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);

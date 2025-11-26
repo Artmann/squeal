@@ -125,7 +125,7 @@ export function App(): ReactElement {
           </Button>
         </header>
 
-        <div className="relative flex-1 bg-background">
+        <div className="relative flex-1 min-h-0 bg-background">
           <WorksheetEditor
             content={content}
             onChange={setContent}
