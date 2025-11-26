@@ -9,7 +9,9 @@
       "Bash(npx drizzle-kit:*)",
       "Bash(npm run lint)",
       "Bash(yarn add:*)",
-      "Bash(yarn test:*)"
+      "Bash(yarn test:*)",
+      "Bash(tree:*)",
+      "WebFetch(domain:catppuccin.com)"
     ],
     "deny": [],
     "ask": []

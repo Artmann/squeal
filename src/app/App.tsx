@@ -105,8 +105,8 @@ export function App(): ReactElement {
   }
 
   return (
-    <main className="w-full h-screen flex bg-muted overflow-hidden">
-      <div className="h-full flex flex-col border-r border-border">
+    <main className="w-full h-screen flex bg-mantle overflow-hidden text-sm">
+      <div className="h-full flex flex-col border-r border-surface-0">
         <header className="flex pt-3">
           <div className="px-3">Databases</div>
           <div className="px-3">Worksheets</div>
@@ -116,7 +116,7 @@ export function App(): ReactElement {
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
-        <header className="w-full p-3 border-b border-border">
+        <header className="w-full p-3 border-b border-surface-0">
           <Button
             onClick={handleRunQuery}
             disabled={isQueryRunning}
@@ -125,7 +125,7 @@ export function App(): ReactElement {
           </Button>
         </header>
 
-        <div className="relative flex-1 min-h-0 bg-background">
+        <div className="relative flex-1 min-h-0 bg-base">
           <WorksheetEditor
             content={content}
             onChange={setContent}
@@ -143,7 +143,7 @@ export function App(): ReactElement {
 
                   <Separator />
 
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-subtext-0 text-sm">
                     <div className="flex items-center justify-between">
                       <div>Start time</div>
                       <div className="text-right">

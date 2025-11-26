@@ -16,7 +16,7 @@ export function ResultSheet({
 
   return (
     <div
-      className="absolute bottom-0 left-2 right-2 border border-border bg-background rounded-t-md overflow-hidden transition-all flex flex-col text-xs min-h-0"
+      className="absolute bottom-0 left-2 right-2 border border-surface-0 bg-base rounded-t-md overflow-hidden transition-all flex flex-col text-xs min-h-0"
       style={{ height: isOpen ? '400px' : '0' }}
     >
       <div>
@@ -29,7 +29,7 @@ export function ResultSheet({
           <div className="flex items-center justify-between px-3 py-2">
             <div></div>
 
-            <div className="flex items-center text-muted-foreground">
+            <div className="flex items-center text-subtext-0">
               <div>
                 {Intl.NumberFormat().format(query.result.rowCount)}{' '}
                 {query.result.rowCount > 1 ? 'rows' : 'row'}
