@@ -1,0 +1,6 @@
+- [ ] Add a Getting Started screen
+- [ ] Add Worksheets
+- [ ] Support for multiple queries in the editor
+- [ ] List Databases
+- [ ] Add Database
+- [ ] Edit database
