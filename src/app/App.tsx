@@ -4,6 +4,9 @@ import { GetQueryResponse, QueryDto } from '@/main/queries'
 import { WorksheetEditor } from './components/WorksheetEditor'
 import { QueryResultTable } from './components/QueryResultTable'
 import { Button } from './components/ui/button'
+import { ResultSheet } from './components/ResultSheet'
+import { Separator } from './components/ui/separator'
+import dayjs from 'dayjs'
 
 const apiBaseUrl = `http://localhost:7847`
 const pollInterval = 500
@@ -40,11 +43,13 @@ export function App(): ReactElement {
   const [isRunning, setIsRunning] = useState(false)
   const [queryResult, setQueryResult] = useState<any>(null)
   const [queryError, setQueryError] = useState<string | null>(null)
+  const [query, setQuery] = useState<QueryDto | null>(null)
 
   const handleRunQuery = async () => {
     setIsRunning(true)
     setQueryResult(null)
     setQueryError(null)
+    setQuery(null)
 
     try {
       const response = await fetch(`${apiBaseUrl}/queries`, {
@@ -62,6 +67,7 @@ export function App(): ReactElement {
 
       const finishedQuery = await pollForResult(createdQuery.id)
 
+      setQuery(finishedQuery)
       if (finishedQuery.error) {
         setQueryError(finishedQuery.error)
       }
@@ -89,7 +95,7 @@ export function App(): ReactElement {
         <div className="flex-1 px-3">Sidebar</div>
       </div>
 
-      <div className="flex-1">
+      <div className="flex-1 min-h-0 flex flex-col">
         <header className="w-full p-3 border-b border-border">
           <Button
             onClick={handleRunQuery}
@@ -99,19 +105,44 @@ export function App(): ReactElement {
           </Button>
         </header>
 
-        <div className="bg-background">
+        <div className="relative flex-1 bg-background">
           <WorksheetEditor
             content={content}
             onChange={setContent}
           />
-          <div>
-            {queryError && <div>{queryError}</div>}
-            {queryResult && (
-              <div className="p-2">
-                <QueryResultTable result={queryResult.result} />
+
+          <ResultSheet
+            isOpen={true}
+            query={query}
+          >
+            {isRunning && (
+              <div className="w-full h-full flex justify-center items-center">
+                <div className="w-full max-w-sm flex flex-col gap-2">
+                  <h2 className="text-lg font-medium">Running query</h2>
+
+                  <Separator />
+
+                  <div className="text-muted-foreground text-sm">
+                    <div className="flex items-center justify-between">
+                      <div>Start time</div>
+                      <div className="text-right">
+                        {query?.queriedAt &&
+                          dayjs(query.queriedAt).format('YYYY-MM-DD HH:mm:ss')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
+
+            {query?.result && <QueryResultTable result={query.result} />}
+
+            {queryError && (
+              <div className="w-full h-full flex justify-center items-center">
+                {queryError}
+              </div>
+            )}
+          </ResultSheet>
         </div>
       </div>
     </main>

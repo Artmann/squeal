@@ -8,7 +8,8 @@
       "Bash(npx drizzle-kit generate:*)",
       "Bash(npx drizzle-kit:*)",
       "Bash(npm run lint)",
-      "Bash(yarn add:*)"
+      "Bash(yarn add:*)",
+      "Bash(yarn test:*)"
     ],
     "deny": [],
     "ask": []

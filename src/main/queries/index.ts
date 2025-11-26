@@ -15,7 +15,7 @@ export interface QueryDto {
   content: string
   error: string | null
   queriedAt: number
-  result: string | null
+  result: any | null
 }
 
 export interface GetQueriesResponse {

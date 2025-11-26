@@ -41,10 +41,14 @@ export async function saveChat({ chatId, messages }: SaveChatParams) {
         chatId,
         role: msg.role,
         content: msg.content,
-        toolInvocations: msg.toolInvocations ? JSON.stringify(msg.toolInvocations) : null
+        toolInvocations: msg.toolInvocations
+          ? JSON.stringify(msg.toolInvocations)
+          : null
       }))
     )
   }
 
-  log.info(`Successfully saved ${messages.length} messages for chatId: ${chatId}`)
+  log.info(
+    `Successfully saved ${messages.length} messages for chatId: ${chatId}`
+  )
 }

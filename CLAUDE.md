@@ -28,4 +28,6 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
 
 - Native packages (`pg`, `@libsql`) are externalized in `vite.main.config.ts`
 - API base URL in frontend: `http://localhost:7847`
-- Query execution is async: POST creates query, poll GET `/queries/:id` for results
+- Query execution is async: POST creates query, poll GET `/queries/:id` for
+  results
+- Refer to @CODE_STYLE.md
