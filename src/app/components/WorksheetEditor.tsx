@@ -3,8 +3,9 @@ import { sql } from '@codemirror/lang-sql'
 import { Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
-
 import { ReactElement, useMemo } from 'react'
+
+import { catppuccinHighlighting, catppuccinTheme } from './codemirror-theme'
 
 interface WorksheetEditorProps {
   content: string
@@ -19,6 +20,8 @@ export function WorksheetEditor({
 }: WorksheetEditorProps): ReactElement {
   const extensions = useMemo(() => {
     return [
+      catppuccinTheme,
+      catppuccinHighlighting,
       sql(),
       EditorView.lineWrapping,
       autocompletion({
@@ -49,7 +52,7 @@ export function WorksheetEditor({
   }, [])
 
   return (
-    <div className="w-full h-full overflow-hidden">
+    <div className="w-full h-full overflow-hidden text-xs">
       <CodeMirror
         basicSetup={{
           bracketMatching: true,
@@ -59,6 +62,7 @@ export function WorksheetEditor({
         }}
         extensions={extensions}
         height="100%"
+        theme="none"
         value={content}
         onChange={(value) => {
           onChange?.(value)
