@@ -14,8 +14,8 @@ export let mainWindow: BrowserWindow
 const createWindow = () => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 900,
+    width: 1300,
+    height: 880,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js')
     }
