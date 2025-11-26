@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import { Loader2Icon, PlayIcon } from 'lucide-react'
 import { ReactElement, useEffect, useMemo, useState } from 'react'
 import { v7 } from 'uuid'
 
@@ -118,10 +119,16 @@ export function App(): ReactElement {
       <div className="flex-1 min-h-0 flex flex-col">
         <header className="w-full p-3 border-b border-surface-0">
           <Button
-            onClick={handleRunQuery}
+            className="cursor-pointer"
             disabled={isQueryRunning}
+            size="icon-sm"
+            onClick={handleRunQuery}
           >
-            {isQueryRunning ? 'Running...' : 'Run'}
+            {isQueryRunning ? (
+              <Loader2Icon className="size-3 animate-spin" />
+            ) : (
+              <PlayIcon className="size-3" />
+            )}
           </Button>
         </header>
 
@@ -133,7 +140,7 @@ export function App(): ReactElement {
           />
 
           <ResultSheet
-            isOpen={true}
+            isOpen={Boolean(query)}
             query={query}
           >
             {isQueryRunning && (
