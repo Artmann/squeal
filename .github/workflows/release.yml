@@ -27,7 +27,8 @@ jobs:
         run: yarn install
 
       - name: Set version from tag
-        run: npm pkg set version=${{ github.ref_name }}
+        shell: bash
+        run: npm pkg set version=${GITHUB_REF_NAME#v}.0
 
       - name: Publish
         env:
