@@ -8,17 +8,16 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses'
 import { FuseV1Options, FuseVersion } from '@electron/fuses'
 
 const config: ForgeConfig = {
-  packagerConfig: {
-    asar: true,
-    icon: './assets/icons/icon'
-  },
-  rebuildConfig: {},
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({})
   ],
+  packagerConfig: {
+    asar: true,
+    icon: './assets/icons/icon'
+  },
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
@@ -54,7 +53,20 @@ const config: ForgeConfig = {
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
       [FuseV1Options.OnlyLoadAppFromAsar]: true
     })
-  ]
+  ],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: process.env.GITHUB_REPOSITORY_OWNER || 'artmann',
+          name: process.env.GITHUB_REPOSITORY?.split('/')[1] || 'squeal'
+        },
+        prerelease: true
+      }
+    }
+  ],
+  rebuildConfig: {}
 }
 
 export default config

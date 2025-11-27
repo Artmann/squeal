@@ -14,7 +14,8 @@
       "WebFetch(domain:catppuccin.com)",
       "Bash(yarn install)",
       "Bash(yarn typecheck:*)",
-      "Bash(yarn lint:*)"
+      "Bash(yarn lint:*)",
+      "WebFetch(domain:www.electronforge.io)"
     ],
     "deny": [],
     "ask": []
