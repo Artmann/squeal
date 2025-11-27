@@ -30,7 +30,10 @@ jobs:
         shell: bash
         run: npm pkg set version=${GITHUB_REF_NAME#v}.0
 
-      - name: Publish
+      - name: Build artifacts
+        run: yarn make
+
+      - name: Upload to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: yarn publish-artifacts
+        run: gh release upload ${{ github.ref_name }} out/make/**/* --clobber

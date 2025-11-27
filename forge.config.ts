@@ -54,18 +54,6 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true
     })
   ],
-  publishers: [
-    {
-      name: '@electron-forge/publisher-github',
-      config: {
-        repository: {
-          owner: process.env.GITHUB_REPOSITORY_OWNER || 'artmann',
-          name: process.env.GITHUB_REPOSITORY?.split('/')[1] || 'squeal'
-        },
-        prerelease: true
-      }
-    }
-  ],
   rebuildConfig: {}
 }
 
