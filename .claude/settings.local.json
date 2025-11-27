@@ -16,7 +16,9 @@
       "Bash(yarn typecheck:*)",
       "Bash(yarn lint:*)",
       "WebFetch(domain:www.electronforge.io)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "mcp__github__pull_request_read",
+      "Bash(bun run:*)"
     ],
     "deny": [],
     "ask": []
