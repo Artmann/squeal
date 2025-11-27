@@ -10,7 +10,7 @@
     "lint": "eslint --ext .ts,.tsx .",
     "make": "electron-forge make",
     "package": "electron-forge package",
-    "publish": "electron-forge publish",
+    "publish-artifacts": "electron-forge publish",
     "seed": "tsx scripts/seed.ts",
     "start": "electron-forge start",
     "test": "vitest",
