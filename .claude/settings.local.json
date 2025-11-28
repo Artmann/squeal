@@ -18,7 +18,15 @@
       "WebFetch(domain:www.electronforge.io)",
       "Bash(git config:*)",
       "mcp__github__pull_request_read",
-      "Bash(bun run:*)"
+      "Bash(bun run:*)",
+      "Bash(yarn make:*)",
+      "Bash(npx asar:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(timeout 15 yarn start:*)"
     ],
     "deny": [],
     "ask": []

@@ -3,9 +3,49 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel'
 import { MakerZIP } from '@electron-forge/maker-zip'
 import { MakerDeb } from '@electron-forge/maker-deb'
 import { MakerRpm } from '@electron-forge/maker-rpm'
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives'
 import { VitePlugin } from '@electron-forge/plugin-vite'
 import { FusesPlugin } from '@electron-forge/plugin-fuses'
 import { FuseV1Options, FuseVersion } from '@electron/fuses'
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'fs'
+import { join, resolve } from 'path'
+
+// Root external packages (Vite externals that need runtime resolution).
+const rootExternalPackages = ['@libsql/client', 'pg']
+
+// Recursively find all dependencies of a package.
+function getPackageDependencies(
+  nodeModulesPath: string,
+  packageName: string,
+  visited = new Set<string>()
+): string[] {
+  if (visited.has(packageName)) {
+    return []
+  }
+  visited.add(packageName)
+
+  const packagePath = join(nodeModulesPath, ...packageName.split('/'))
+  const packageJsonPath = join(packagePath, 'package.json')
+
+  if (!existsSync(packageJsonPath)) {
+    return []
+  }
+
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
+  const deps = [
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.optionalDependencies ?? {})
+  ]
+
+  const allDeps: string[] = []
+
+  for (const dep of deps) {
+    allDeps.push(dep)
+    allDeps.push(...getPackageDependencies(nodeModulesPath, dep, visited))
+  }
+
+  return allDeps
+}
 
 const config: ForgeConfig = {
   makers: [
@@ -15,10 +55,13 @@ const config: ForgeConfig = {
     new MakerDeb({})
   ],
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '**/node_modules/{@libsql,pg}/**/*'
+    },
     icon: './assets/icons/icon'
   },
   plugins: [
+    new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
       // If you are familiar with Vite configuration, it will look really familiar.
@@ -54,6 +97,37 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true
     })
   ],
+  hooks: {
+    packageAfterCopy: async (_forgeConfig, buildPath) => {
+      const sourceNodeModules = resolve(import.meta.dirname, 'node_modules')
+      const destNodeModules = join(buildPath, 'node_modules')
+
+      // Collect all packages and their transitive dependencies.
+      const allPackages = new Set<string>()
+
+      for (const rootPackage of rootExternalPackages) {
+        allPackages.add(rootPackage)
+
+        for (const dep of getPackageDependencies(
+          sourceNodeModules,
+          rootPackage
+        )) {
+          allPackages.add(dep)
+        }
+      }
+
+      // Copy each package to the build directory.
+      for (const packageName of allPackages) {
+        const sourcePath = join(sourceNodeModules, ...packageName.split('/'))
+        const destPath = join(destNodeModules, ...packageName.split('/'))
+
+        if (existsSync(sourcePath)) {
+          mkdirSync(join(destPath, '..'), { recursive: true })
+          cpSync(sourcePath, destPath, { recursive: true })
+        }
+      }
+    }
+  },
   rebuildConfig: {}
 }
 

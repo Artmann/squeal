@@ -3,6 +3,7 @@ import path from 'node:path'
 import started from 'electron-squirrel-startup'
 
 import { apiPort, startServer } from './api'
+import { initializeDatabase } from './database'
 import { bootstrap, BootstrapData } from './main/bootstrap'
 
 let bootstrapData: BootstrapData | null = null
@@ -39,7 +40,9 @@ const createWindow = async () => {
   mainWindow.webContents.openDevTools()
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
+  await initializeDatabase()
+
   startServer(apiPort)
 
   createWindow()
