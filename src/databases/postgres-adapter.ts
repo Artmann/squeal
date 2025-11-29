@@ -1,19 +1,18 @@
 import { Client, QueryResult } from 'pg'
 
-export interface PostgresConnectionInfo {
-  database: string
-  host: string
-  password: string
-  port?: number
-  username: string
-}
+import { PostgresConnectionInfo } from './schemas'
+
+export { PostgresConnectionInfo } from './schemas'
 
 export class PostgresAdapter {
-  async runQuery(
-    info: PostgresConnectionInfo,
-    query: string
-  ): Promise<QueryResult<any>> {
-    const connectionString = createConnectionString(info)
+  protected readonly connectionInfo: PostgresConnectionInfo
+
+  constructor(connectionInfo: PostgresConnectionInfo) {
+    this.connectionInfo = connectionInfo
+  }
+
+  async runQuery(query: string): Promise<QueryResult<any>> {
+    const connectionString = createConnectionString(this.connectionInfo)
 
     const client = new Client({ connectionString })
 
@@ -29,6 +28,20 @@ export class PostgresAdapter {
       console.log(`  ✓ Query executed successfully\n`)
 
       return result
+    } finally {
+      await client.end()
+    }
+  }
+
+  async testConnection(): Promise<void> {
+    const connectionString = createConnectionString(this.connectionInfo)
+
+    const client = new Client({ connectionString, statement_timeout: 5000 })
+
+    try {
+      await client.connect()
+
+      console.log('Connected to database successfully')
     } finally {
       await client.end()
     }

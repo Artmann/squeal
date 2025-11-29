@@ -28,7 +28,9 @@
       "Bash(find:*)",
       "Bash(timeout 15 yarn start:*)",
       "Bash(printf:*)",
-      "Bash(yes:*)"
+      "Bash(yes:*)",
+      "Bash(where:*)",
+      "Bash(ollama --version:*)"
     ],
     "deny": [],
     "ask": []

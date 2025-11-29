@@ -1,10 +1,11 @@
+import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
 import { requestId } from 'hono/request-id'
-import { serve } from '@hono/node-server'
 
+import { connectionTestRouter, databaseRouter } from './databases'
 import { chatRouter } from './main/chat/routes'
 import { errorHandler } from './main/middleware/error-handler'
 import { queryRouter } from './main/queries'
@@ -22,6 +23,8 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok' })
 })
 
+app.route('/connection-tests', connectionTestRouter)
+app.route('/databases', databaseRouter)
 app.route('/chat', chatRouter)
 app.route('/queries', queryRouter)
 

@@ -3,7 +3,7 @@ import { ReactElement, useCallback } from 'react'
 import { useAppDispatch, useAppSelector } from '../store'
 import { Separator } from './ui/separator'
 import { cn } from '../lib/utils'
-import { workspaceSelected } from '../store/editorSlice'
+import { workspaceSelected } from '../store/editor-slice'
 
 export function AppSidebar(): ReactElement {
   const dispatch = useAppDispatch()

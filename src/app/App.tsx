@@ -12,7 +12,8 @@ import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 import { WorksheetEditor } from './components/WorksheetEditor'
 import { useAppDispatch, useAppSelector } from './store'
-import { queryCreated, queryFetched } from './store/editorSlice'
+import { queryCreated, queryFetched } from './store/editor-slice'
+import { GettingStartedScreen } from './components/GettingStartedScreen'
 
 export function App(): ReactElement {
   const [content, setContent] = useState('SELECT * FROM actor;')
@@ -22,6 +23,7 @@ export function App(): ReactElement {
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
   )
+  const uiState = useAppSelector((state) => state.ui)
 
   const [query] = useMemo(
     () =>
@@ -112,6 +114,8 @@ export function App(): ReactElement {
 
   return (
     <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
+      {uiState.showGettingStartedScreen && <GettingStartedScreen />}
+
       <TitleBar />
 
       <div className="flex-1 min-h-0 flex">

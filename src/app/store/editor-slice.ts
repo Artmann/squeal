@@ -1,15 +1,18 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
+import { DatabaseDto } from '@/glue/databases'
 import { QueryDto } from '@/main/queries'
 import { WorksheetDto } from '@/glue/worksheets'
 
 export interface EditorState {
+  databases: DatabaseDto[]
   openWorksheetId?: string
   queries: QueryDto[]
   worksheets: WorksheetDto[]
 }
 
 const initialState: EditorState = {
+  databases: [],
   queries: [],
   worksheets: []
 }

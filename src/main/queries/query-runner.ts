@@ -45,11 +45,11 @@ class QueryRunner {
         database: 'squeal',
         host: 'localhost',
         username: 'postgres',
+        port: 5432,
         password: 'postgres'
       }
 
-      const result = await new PostgresAdapter().runQuery(
-        connectionInfo,
+      const result = await new PostgresAdapter(connectionInfo).runQuery(
         query.content
       )
 
