@@ -1,3 +1,4 @@
+import { Database } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
 import { useAppDispatch, useAppSelector } from '../store'
@@ -7,6 +8,7 @@ import { workspaceSelected } from '../store/editor-slice'
 
 export function AppSidebar(): ReactElement {
   const dispatch = useAppDispatch()
+  const databases = useAppSelector((state) => state.editor.databases)
   const worksheets = useAppSelector((state) => state.editor.worksheets)
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
@@ -46,6 +48,18 @@ export function AppSidebar(): ReactElement {
 
       <div className="p-3">
         <Heading text="Database Explorer" />
+
+        <div className="">
+          {databases.map((database) => (
+            <div
+              key={database.id}
+              className="flex items-center gap-2 py-0.5"
+            >
+              <Database className="h-3 w-3 text-mauve" />
+              <span>{database.name}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
