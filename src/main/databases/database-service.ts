@@ -2,6 +2,7 @@ import { database } from '@/database'
 import { databasesTable } from '@/database/schema'
 import { PostgresConnectionInfo } from '@/databases/schemas'
 import { DatabaseDto } from '@/glue/databases'
+import { isNull } from 'drizzle-orm'
 
 export class DatabaseService {
   async createDatabase(
@@ -22,7 +23,10 @@ export class DatabaseService {
   }
 
   async listDatabases(): Promise<DatabaseDto[]> {
-    const records = await database.select().from(databasesTable)
+    const records = await database
+      .select()
+      .from(databasesTable)
+      .where(isNull(databasesTable.deletedAt))
 
     return records.map(transformDatabase)
   }
