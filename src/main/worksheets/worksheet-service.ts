@@ -1,7 +1,7 @@
 import { database } from '@/database'
 import { worksheetsTable } from '@/database/schema'
 import { WorksheetDto } from '@/glue/worksheets'
-import { eq } from 'drizzle-orm'
+import { isNull } from 'drizzle-orm'
 
 export class WorksheetService {
   async createWorksheet(name: string): Promise<WorksheetDto> {
@@ -17,7 +17,7 @@ export class WorksheetService {
     const worksheets = await database
       .select()
       .from(worksheetsTable)
-      .where(eq(worksheetsTable.deletedAt, null))
+      .where(isNull(worksheetsTable.deletedAt))
 
     return worksheets.map(transformWorksheet)
   }
