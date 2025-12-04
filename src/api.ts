@@ -9,6 +9,7 @@ import { connectionTestRouter, databaseRouter } from './databases'
 import { chatRouter } from './main/chat/routes'
 import { errorHandler } from './main/middleware/error-handler'
 import { queryRouter } from './main/queries'
+import { worksheetRouter } from './main/worksheets'
 
 export const apiPort = 7847
 
@@ -27,6 +28,7 @@ app.route('/connection-tests', connectionTestRouter)
 app.route('/databases', databaseRouter)
 app.route('/chat', chatRouter)
 app.route('/queries', queryRouter)
+app.route('/worksheets', worksheetRouter)
 
 app.onError(errorHandler)
 

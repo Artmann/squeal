@@ -11,6 +11,7 @@ export const queryRouter = new Hono()
 
 export interface QueryDto {
   content: string
+  databaseId: string
   error: string | null
   finishedAt?: number | null
   id: string
@@ -82,6 +83,7 @@ queryRouter.post('/', async (context) => {
 function transformQuery(query: any): QueryDto {
   return {
     content: query.content,
+    databaseId: query.databaseId,
     error: query.error ?? null,
     finishedAt: query.finishedAt ?? null,
     id: query.id,

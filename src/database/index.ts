@@ -1,22 +1,9 @@
 import 'dotenv/config'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/libsql'
-import { app } from 'electron'
-import { existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
-import invariant from 'tiny-invariant'
-import { pathToFileURL } from 'url'
 
-const userDataPath = app.isPackaged ? app.getPath('userData') : process.cwd()
-
-if (!existsSync(userDataPath)) {
-  mkdirSync(userDataPath, { recursive: true })
-}
-
-const absolutePath = join(userDataPath, 'squeal.sqlite3')
-export const databaseFilePath = pathToFileURL(absolutePath).toString()
-
-invariant(databaseFilePath, 'Database file name must be provided.')
+export { databaseFilePath } from './path'
+import { databaseFilePath } from './path'
 
 export const database = drizzle(databaseFilePath)
 
@@ -45,6 +32,7 @@ export async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS queries (
       id TEXT PRIMARY KEY NOT NULL,
       content TEXT NOT NULL,
+      databaseId TEXT NOT NULL,
       error TEXT,
       finishedAt INTEGER,
       queriedAt INTEGER NOT NULL,
@@ -57,6 +45,7 @@ export async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS worksheets (
       id TEXT PRIMARY KEY NOT NULL,
       createdAt INTEGER NOT NULL,
+      databaseId TEXT,
       deletedAt INTEGER,
       name TEXT NOT NULL DEFAULT 'Untitled Worksheet'
     )

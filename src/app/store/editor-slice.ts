@@ -21,6 +21,9 @@ export const editorSlice = createSlice({
   name: 'editor',
   initialState,
   reducers: {
+    databaseAdded: (state, action: PayloadAction<DatabaseDto>) => {
+      state.databases.push(action.payload)
+    },
     queriesFetched: (state, action: PayloadAction<QueryDto[]>) => {
       state.queries = action.payload
     },
@@ -38,6 +41,15 @@ export const editorSlice = createSlice({
         state.queries.push(action.payload)
       }
     },
+    worksheetUpdated: (state, action: PayloadAction<WorksheetDto>) => {
+      const index = state.worksheets.findIndex(
+        (worksheet) => worksheet.id === action.payload.id
+      )
+
+      if (index >= 0) {
+        state.worksheets[index] = action.payload
+      }
+    },
     workspaceSelected: (state, action: PayloadAction<string>) => {
       console.log('Selecting worksheet', action.payload)
 
@@ -46,7 +58,13 @@ export const editorSlice = createSlice({
   }
 })
 
-export const { queriesFetched, queryCreated, queryFetched, workspaceSelected } =
-  editorSlice.actions
+export const {
+  databaseAdded,
+  queriesFetched,
+  queryCreated,
+  queryFetched,
+  worksheetUpdated,
+  workspaceSelected
+} = editorSlice.actions
 
 export default editorSlice.reducer

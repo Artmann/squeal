@@ -6,7 +6,17 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { CreateConnectionTestResponse } from '@/databases'
+import {
+  createDatabaseSchema,
+  CreateDatabaseRequest,
+  PostgresConnectionInfo
+} from '@/databases/schemas'
 import { ApiError } from '@/errors'
+import { DatabaseDto } from '@/glue/databases'
+import { WorksheetDto } from '@/glue/worksheets'
+import { useAppDispatch } from '../store'
+import { databaseAdded, worksheetUpdated } from '../store/editor-slice'
+import { uiActions } from '../store/ui-slice'
 import { Button } from './ui/button'
 import {
   Form,
@@ -17,16 +27,7 @@ import {
   FormMessage
 } from './ui/form'
 import { Input } from './ui/input'
-import {
-  createDatabaseSchema,
-  CreateDatabaseRequest,
-  PostgresConnectionInfo
-} from '@/databases/schemas'
-import { DatabaseDto } from '@/glue/databases'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
-
-import { useAppDispatch } from '../store'
-import { uiActions } from '../store/ui-slice'
 
 async function testConnection(
   info: PostgresConnectionInfo
@@ -54,9 +55,14 @@ async function testConnection(
   return data as CreateConnectionTestResponse
 }
 
+interface CreateDatabaseResponse {
+  database: DatabaseDto
+  updatedWorksheet?: WorksheetDto
+}
+
 async function saveDatabase(
   request: CreateDatabaseRequest
-): Promise<DatabaseDto> {
+): Promise<CreateDatabaseResponse> {
   const response = await fetch('http://localhost:7847/databases', {
     body: JSON.stringify(request),
     headers: {
@@ -75,7 +81,7 @@ async function saveDatabase(
     )
   }
 
-  return data as DatabaseDto
+  return data as CreateDatabaseResponse
 }
 
 type FormData = z.infer<typeof createDatabaseSchema>
@@ -110,10 +116,16 @@ export function GettingStartedScreen(): ReactElement {
     setIsSaving(true)
 
     saveDatabase(values)
-      .then((database) => {
+      .then(({ database, updatedWorksheet }) => {
         toast.success('Database saved!', {
           description: `${database.name} has been added.`
         })
+
+        dispatch(databaseAdded(database))
+
+        if (updatedWorksheet) {
+          dispatch(worksheetUpdated(updatedWorksheet))
+        }
 
         dispatch(uiActions.gettingStartedCompleted())
       })

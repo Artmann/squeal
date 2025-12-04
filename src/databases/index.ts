@@ -54,11 +54,11 @@ databaseRouter.post('/', async (context) => {
   }
 
   const service = new DatabaseService()
-  const record = await service.createDatabase(
+  const { database, updatedWorksheet } = await service.createDatabase(
     result.data.name,
     result.data.connectionInfo,
     'postgres'
   )
 
-  return context.json(record, 201)
+  return context.json({ database, updatedWorksheet }, 201)
 })
