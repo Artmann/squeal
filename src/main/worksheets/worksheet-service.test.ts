@@ -23,8 +23,9 @@ vi.mock('@/database', () => ({
               return [
                 {
                   id: 'test-worksheet-id',
-                  createdAt: new Date('2024-01-01'),
-                  deletedAt: null,
+                  createdAt: 1704067200000,
+                  databaseId: null as string | null,
+                  deletedAt: null as number | null,
                   name: 'Test Worksheet'
                 }
               ]
@@ -41,7 +42,7 @@ vi.mock('@/database', () => ({
           mockFrom()
 
           return {
-            where: (condition: unknown) => {
+            where: (condition: unknown): unknown[] => {
               mockWhere(condition)
 
               return []
@@ -81,7 +82,8 @@ describe('WorksheetService', () => {
       const result = await service.createWorksheet('My Worksheet')
 
       expect(result).toEqual({
-        createdAt: new Date('2024-01-01').getTime(),
+        createdAt: 1704067200000,
+        databaseId: null,
         id: 'test-worksheet-id',
         name: 'Test Worksheet'
       })

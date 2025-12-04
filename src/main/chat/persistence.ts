@@ -27,7 +27,7 @@ export async function saveChat({ chatId, messages }: SaveChatParams) {
   // Update chat's updatedAt timestamp
   await database
     .update(chatsTable)
-    .set({ updatedAt: new Date() })
+    .set({ updatedAt: Date.now() })
     .where(eq(chatsTable.id, chatId))
 
   // Delete existing messages for this chat

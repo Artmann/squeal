@@ -125,11 +125,13 @@ describe('GettingStartedScreen', () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       json: () =>
         Promise.resolve({
-          id: '123',
-          name: 'My Database',
-          type: 'postgres',
-          createdAt: Date.now(),
-          connectionInfo: {}
+          database: {
+            id: '123',
+            name: 'My Database',
+            type: 'postgres',
+            createdAt: Date.now(),
+            connectionInfo: {}
+          }
         })
     } as Response)
 

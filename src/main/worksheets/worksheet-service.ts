@@ -36,9 +36,11 @@ export class WorksheetService {
   }
 }
 
-function transformWorksheet(worksheet: any): WorksheetDto {
+function transformWorksheet(
+  worksheet: typeof worksheetsTable.$inferSelect
+): WorksheetDto {
   return {
-    createdAt: worksheet.createdAt.getTime(),
+    createdAt: worksheet.createdAt,
     databaseId: worksheet.databaseId ?? null,
     id: worksheet.id,
     name: worksheet.name

@@ -4,7 +4,7 @@ import { pathToFileURL } from 'url'
 
 function getUserDataPath(): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { app } = require('electron')
 
     return app.isPackaged ? app.getPath('userData') : process.cwd()

@@ -4,12 +4,12 @@ export const chatsTable = sqliteTable('chats', {
   id: text()
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  createdAt: integer({ mode: 'timestamp' })
+  createdAt: integer()
     .notNull()
-    .$defaultFn(() => new Date()),
-  updatedAt: integer({ mode: 'timestamp' })
+    .$defaultFn(() => Date.now()),
+  updatedAt: integer()
     .notNull()
-    .$defaultFn(() => new Date())
+    .$defaultFn(() => Date.now())
 })
 
 export const databasesTable = sqliteTable('databases', {
@@ -17,11 +17,11 @@ export const databasesTable = sqliteTable('databases', {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   connectionInfo: text().notNull(),
-  createdAt: integer({ mode: 'timestamp' })
+  createdAt: integer()
     .notNull()
-    .$defaultFn(() => new Date()),
-  deletedAt: integer({ mode: 'timestamp' }),
-  lastUsedAt: integer({ mode: 'timestamp' }),
+    .$defaultFn(() => Date.now()),
+  deletedAt: integer(),
+  lastUsedAt: integer(),
   name: text().notNull(),
   type: text().notNull()
 })
@@ -55,10 +55,10 @@ export const worksheetsTable = sqliteTable('worksheets', {
   id: text()
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  createdAt: integer({ mode: 'timestamp' })
+  createdAt: integer()
     .notNull()
-    .$defaultFn(() => new Date()),
+    .$defaultFn(() => Date.now()),
   databaseId: text(),
-  deletedAt: integer({ mode: 'timestamp' }),
+  deletedAt: integer(),
   name: text().notNull().default('Untitled Worksheet')
 })

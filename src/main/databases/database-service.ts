@@ -54,7 +54,7 @@ export class DatabaseService {
           .returning()
 
         updatedWorksheet = {
-          createdAt: updated.createdAt.getTime(),
+          createdAt: updated.createdAt,
           databaseId: updated.databaseId ?? null,
           id: updated.id,
           name: updated.name
@@ -80,7 +80,7 @@ function transformDatabase(
 ): DatabaseDto {
   return {
     connectionInfo: JSON.parse(record.connectionInfo),
-    createdAt: record.createdAt.getTime(),
+    createdAt: record.createdAt,
     id: record.id,
     name: record.name,
     type: record.type

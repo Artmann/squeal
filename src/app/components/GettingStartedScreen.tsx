@@ -84,19 +84,20 @@ async function saveDatabase(
   return data as CreateDatabaseResponse
 }
 
-type FormData = z.infer<typeof createDatabaseSchema>
+type FormInput = z.input<typeof createDatabaseSchema>
+type FormOutput = z.output<typeof createDatabaseSchema>
 
 export function GettingStartedScreen(): ReactElement {
   const dispatch = useAppDispatch()
 
-  const form = useForm<FormData>({
+  const form = useForm<FormInput, unknown, FormOutput>({
     defaultValues: {
       name: '',
       connectionInfo: {
         database: '',
         host: '',
         password: '',
-        port: undefined,
+        port: '',
         username: ''
       }
     },
@@ -159,7 +160,10 @@ export function GettingStartedScreen(): ReactElement {
     setIsTestingConnection(true)
     setConnectTestResult(undefined)
 
-    testConnection(connectionInfo)
+    testConnection({
+      ...connectionInfo,
+      port: Number(connectionInfo.port) || 5432
+    })
       .then((result) => {
         if (result.success) {
           console.log('Connection successful!')
@@ -256,6 +260,7 @@ export function GettingStartedScreen(): ReactElement {
                           placeholder="5439"
                           type="number"
                           {...field}
+                          value={String(field.value ?? '')}
                         />
                       </FormControl>
                       <FormMessage />
