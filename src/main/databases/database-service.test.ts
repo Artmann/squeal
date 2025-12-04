@@ -30,9 +30,9 @@ vi.mock('@/database', () => ({
                     port: 5432,
                     username: 'user'
                   }),
-                  createdAt: new Date('2024-01-01'),
-                  deletedAt: null,
-                  lastUsedAt: null,
+                  createdAt: 1704067200000,
+                  deletedAt: null as number | null,
+                  lastUsedAt: null as number | null,
                   name: 'Test Database',
                   type: 'postgres'
                 }
@@ -50,7 +50,7 @@ vi.mock('@/database', () => ({
           mockFrom()
 
           return {
-            where: (condition: unknown) => {
+            where: (condition: unknown): unknown[] => {
               mockWhere(condition)
 
               return []
@@ -112,17 +112,20 @@ describe('DatabaseService', () => {
       )
 
       expect(result).toEqual({
-        connectionInfo: {
-          database: 'testdb',
-          host: 'localhost',
-          password: 'secret',
-          port: 5432,
-          username: 'user'
+        database: {
+          connectionInfo: {
+            database: 'testdb',
+            host: 'localhost',
+            password: 'secret',
+            port: 5432,
+            username: 'user'
+          },
+          createdAt: 1704067200000,
+          id: 'test-id',
+          name: 'Test Database',
+          type: 'postgres'
         },
-        createdAt: new Date('2024-01-01').getTime(),
-        id: 'test-id',
-        name: 'Test Database',
-        type: 'postgres'
+        updatedWorksheet: undefined
       })
     })
   })
