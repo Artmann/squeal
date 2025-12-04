@@ -1,7 +1,7 @@
 import { database } from '@/database'
 import { worksheetsTable } from '@/database/schema'
 import { WorksheetDto } from '@/glue/worksheets'
-import { isNull } from 'drizzle-orm'
+import { eq, isNull } from 'drizzle-orm'
 
 export class WorksheetService {
   async createWorksheet(name: string): Promise<WorksheetDto> {
@@ -21,11 +21,25 @@ export class WorksheetService {
 
     return worksheets.map(transformWorksheet)
   }
+
+  async updateWorksheet(
+    id: string,
+    updates: { databaseId?: string | null; name?: string }
+  ): Promise<WorksheetDto> {
+    const [worksheet] = await database
+      .update(worksheetsTable)
+      .set(updates)
+      .where(eq(worksheetsTable.id, id))
+      .returning()
+
+    return transformWorksheet(worksheet)
+  }
 }
 
 function transformWorksheet(worksheet: any): WorksheetDto {
   return {
     createdAt: worksheet.createdAt.getTime(),
+    databaseId: worksheet.databaseId ?? null,
     id: worksheet.id,
     name: worksheet.name
   }

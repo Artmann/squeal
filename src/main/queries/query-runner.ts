@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { database } from '@/database'
-import { queriesTable } from '@/database/schema'
+import { databasesTable, queriesTable } from '@/database/schema'
 
 import {
   PostgresAdapter,
@@ -11,6 +11,7 @@ import {
 
 export const createQuerySchema = z.object({
   content: z.string(),
+  databaseId: z.string(),
   id: z.string(),
   queriedAt: z.number(),
   worksheetId: z.string()
@@ -22,6 +23,7 @@ class QueryRunner {
   async createAndRunQuery(input: CreateQueryInput) {
     const data: typeof queriesTable.$inferInsert = {
       content: input.content,
+      databaseId: input.databaseId,
       id: input.id,
       queriedAt: input.queriedAt,
       worksheetId: input.worksheetId
@@ -41,13 +43,24 @@ class QueryRunner {
 
   private async runQueryInBackground(query: any): Promise<void> {
     try {
-      const connectionInfo: PostgresConnectionInfo = {
-        database: 'squeal',
-        host: 'localhost',
-        username: 'postgres',
-        port: 5432,
-        password: 'postgres'
+      const [databaseRecord] = await database
+        .select()
+        .from(databasesTable)
+        .where(
+          and(
+            eq(databasesTable.id, query.databaseId),
+            isNull(databasesTable.deletedAt)
+          )
+        )
+        .limit(1)
+
+      if (!databaseRecord) {
+        throw new Error(`Database not found: ${query.databaseId}`)
       }
+
+      const connectionInfo: PostgresConnectionInfo = JSON.parse(
+        databaseRecord.connectionInfo
+      )
 
       const result = await new PostgresAdapter(connectionInfo).runQuery(
         query.content
@@ -64,8 +77,7 @@ class QueryRunner {
     } catch (error) {
       console.error('Query failed:', error)
 
-      const errorMessage =
-        error instanceof Error ? error.message : String(error)
+      const errorMessage = extractErrorMessage(error)
 
       await database
         .update(queriesTable)
@@ -73,6 +85,22 @@ class QueryRunner {
         .where(eq(queriesTable.id, query.id))
     }
   }
+}
+
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof AggregateError) {
+    const messages = error.errors.map((e) =>
+      e instanceof Error ? e.message : String(e)
+    )
+
+    return messages.join('; ') || error.message || 'Connection failed'
+  }
+
+  if (error instanceof Error) {
+    return error.message || error.name || 'Unknown error'
+  }
+
+  return String(error)
 }
 
 export const queryRunner = new QueryRunner()

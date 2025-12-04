@@ -43,6 +43,7 @@ export const queriesTable = sqliteTable('queries', {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   content: text().notNull(),
+  databaseId: text().notNull(),
   error: text(),
   finishedAt: integer(),
   queriedAt: integer().notNull(),
@@ -57,6 +58,7 @@ export const worksheetsTable = sqliteTable('worksheets', {
   createdAt: integer({ mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
+  databaseId: text(),
   deletedAt: integer({ mode: 'timestamp' }),
   name: text().notNull().default('Untitled Worksheet')
 })

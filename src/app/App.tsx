@@ -5,6 +5,7 @@ import { v7 } from 'uuid'
 
 import { CreateQueryResponse, GetQueryResponse, QueryDto } from '@/main/queries'
 import { AppSidebar } from './components/AppSidebar'
+import { DatabaseSelector } from './components/DatabaseSelector'
 import { QueryResultTable } from './components/QueryResultTable'
 import { ResultSheet } from './components/ResultSheet'
 import { TitleBar } from './components/TitleBar'
@@ -25,6 +26,11 @@ export function App(): ReactElement {
   )
   const uiState = useAppSelector((state) => state.ui)
 
+  const currentWorksheet = useMemo(
+    () => worksheets.find((worksheet) => worksheet.id === openWorksheetId),
+    [worksheets, openWorksheetId]
+  )
+
   const [query] = useMemo(
     () =>
       queries
@@ -36,6 +42,10 @@ export function App(): ReactElement {
   const isQueryRunning = query && !query.finishedAt
 
   console.log({ isQueryRunning, openWorksheetId, queries, worksheets })
+
+  const appState = useAppSelector((state) => state)
+
+  console.log(appState)
 
   const dispatch = useAppDispatch()
 
@@ -77,8 +87,15 @@ export function App(): ReactElement {
   )
 
   const handleRunQuery = async () => {
+    if (!currentWorksheet?.databaseId) {
+      console.error('No database selected')
+
+      return
+    }
+
     const queryData: QueryDto = {
       content,
+      databaseId: currentWorksheet.databaseId,
       error: null,
       id: v7(),
       queriedAt: Date.now(),
@@ -92,6 +109,7 @@ export function App(): ReactElement {
       const response = await fetch(`${apiBaseUrl}/queries`, {
         body: JSON.stringify({
           content: queryData.content,
+          databaseId: queryData.databaseId,
           id: queryData.id,
           queriedAt: queryData.queriedAt,
           worksheetId: queryData.worksheetId
@@ -124,10 +142,10 @@ export function App(): ReactElement {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col">
-          <header className="w-full p-3 border-b border-surface-0">
+          <header className="w-full p-3 border-b border-surface-0 flex items-center gap-3">
             <Button
               className="cursor-pointer"
-              disabled={isQueryRunning}
+              disabled={isQueryRunning || !currentWorksheet?.databaseId}
               size="icon-sm"
               onClick={handleRunQuery}
             >
@@ -137,6 +155,8 @@ export function App(): ReactElement {
                 <PlayIcon className="size-3" />
               )}
             </Button>
+
+            <DatabaseSelector />
           </header>
 
           <div className="relative flex-1 min-h-0 bg-base">
