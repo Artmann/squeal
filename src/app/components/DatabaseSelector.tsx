@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue
 } from './ui/select'
+import invariant from 'tiny-invariant'
 
 const apiBaseUrl = 'http://localhost:7847'
 
@@ -36,6 +37,15 @@ export function DatabaseSelector(): ReactElement {
       if (!openWorksheetId) {
         return
       }
+
+      invariant(currentWorksheet, 'No current worksheet found.')
+
+      dispatch(
+        worksheetUpdated({
+          ...currentWorksheet,
+          databaseId
+        })
+      )
 
       try {
         const response = await fetch(
@@ -72,14 +82,17 @@ export function DatabaseSelector(): ReactElement {
       value={currentWorksheet?.databaseId ?? undefined}
       onValueChange={handleDatabaseChange}
     >
-      <SelectTrigger className="w-48 h-8 text-xs">
+      <SelectTrigger className="text-xs w-fit">
         <DatabaseIcon className="size-3 text-mauve mr-1" />
         <SelectValue placeholder="Select a database" />
       </SelectTrigger>
 
       <SelectContent>
         {databases.map((database) => (
-          <SelectItem key={database.id} value={database.id}>
+          <SelectItem
+            key={database.id}
+            value={database.id}
+          >
             {database.name}
           </SelectItem>
         ))}
