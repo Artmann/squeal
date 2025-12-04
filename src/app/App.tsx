@@ -142,7 +142,7 @@ export function App(): ReactElement {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col">
-          <header className="w-full p-3 border-b border-surface-0 flex items-center gap-3">
+          <header className="w-full p-3 border-b border-surface-0 flex items-center gap-3 justify-between">
             <Button
               className="cursor-pointer"
               disabled={isQueryRunning || !currentWorksheet?.databaseId}
