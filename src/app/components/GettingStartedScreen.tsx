@@ -6,17 +6,13 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { CreateConnectionTestResponse } from '@/databases'
-import {
-  createDatabaseSchema,
-  CreateDatabaseRequest,
-  PostgresConnectionInfo
-} from '@/databases/schemas'
+import { createDatabaseSchema } from '@/databases/schemas'
 import { ApiError } from '@/errors'
-import { DatabaseDto } from '@/glue/databases'
-import { WorksheetDto } from '@/glue/worksheets'
+import { apiClient } from '../api-client'
 import { useAppDispatch } from '../store'
 import { databaseAdded, worksheetUpdated } from '../store/editor-slice'
 import { uiActions } from '../store/ui-slice'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import {
   Form,
@@ -27,62 +23,6 @@ import {
   FormMessage
 } from './ui/form'
 import { Input } from './ui/input'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
-
-async function testConnection(
-  info: PostgresConnectionInfo
-): Promise<{ message?: string; success: boolean }> {
-  const response = await fetch(`http://localhost:7847/connection-tests`, {
-    body: JSON.stringify({
-      connectionInfo: info
-    }),
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    method: 'POST'
-  })
-
-  const data = await response.json()
-
-  if ('error' in data) {
-    throw new ApiError(
-      data.error.message,
-      data.error.status,
-      data.error.details
-    )
-  }
-
-  return data as CreateConnectionTestResponse
-}
-
-interface CreateDatabaseResponse {
-  database: DatabaseDto
-  updatedWorksheet?: WorksheetDto
-}
-
-async function saveDatabase(
-  request: CreateDatabaseRequest
-): Promise<CreateDatabaseResponse> {
-  const response = await fetch('http://localhost:7847/databases', {
-    body: JSON.stringify(request),
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    method: 'POST'
-  })
-
-  const data = await response.json()
-
-  if ('error' in data) {
-    throw new ApiError(
-      data.error.message,
-      data.error.status,
-      data.error.details
-    )
-  }
-
-  return data as CreateDatabaseResponse
-}
 
 type FormInput = z.input<typeof createDatabaseSchema>
 type FormOutput = z.output<typeof createDatabaseSchema>
@@ -112,11 +52,12 @@ export function GettingStartedScreen(): ReactElement {
 
   const connectionInfo = form.watch('connectionInfo')
 
-  const handleSubmit = useCallback((values: CreateDatabaseRequest) => {
+  const handleSubmit = useCallback((values: FormOutput) => {
     form.clearErrors()
     setIsSaving(true)
 
-    saveDatabase(values)
+    apiClient
+      .createDatabase(values)
       .then(({ database, updatedWorksheet }) => {
         toast.success('Database saved!', {
           description: `${database.name} has been added.`
@@ -160,10 +101,11 @@ export function GettingStartedScreen(): ReactElement {
     setIsTestingConnection(true)
     setConnectTestResult(undefined)
 
-    testConnection({
-      ...connectionInfo,
-      port: Number(connectionInfo.port) || 5432
-    })
+    apiClient
+      .testConnection({
+        ...connectionInfo,
+        port: Number(connectionInfo.port) || 5432
+      })
       .then((result) => {
         if (result.success) {
           console.log('Connection successful!')

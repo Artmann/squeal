@@ -1,7 +1,8 @@
 import { DatabaseIcon } from 'lucide-react'
+import invariant from 'tiny-invariant'
 import { ReactElement, useCallback, useMemo } from 'react'
 
-import { WorksheetDto } from '@/glue/worksheets'
+import { apiClient } from '../api-client'
 import { useAppDispatch, useAppSelector } from '../store'
 import { worksheetUpdated } from '../store/editor-slice'
 import {
@@ -11,13 +12,6 @@ import {
   SelectTrigger,
   SelectValue
 } from './ui/select'
-import invariant from 'tiny-invariant'
-
-const apiBaseUrl = 'http://localhost:7847'
-
-interface UpdateWorksheetResponse {
-  worksheet: WorksheetDto
-}
 
 export function DatabaseSelector(): ReactElement {
   const dispatch = useAppDispatch()
@@ -48,22 +42,11 @@ export function DatabaseSelector(): ReactElement {
       )
 
       try {
-        const response = await fetch(
-          `${apiBaseUrl}/worksheets/${openWorksheetId}`,
-          {
-            body: JSON.stringify({ databaseId }),
-            headers: { 'Content-Type': 'application/json' },
-            method: 'PATCH'
-          }
-        )
+        const worksheet = await apiClient.updateWorksheet(openWorksheetId, {
+          databaseId
+        })
 
-        if (!response.ok) {
-          throw new Error(`Failed to update worksheet: ${response.statusText}`)
-        }
-
-        const data = (await response.json()) as UpdateWorksheetResponse
-
-        dispatch(worksheetUpdated(data.worksheet))
+        dispatch(worksheetUpdated(worksheet))
       } catch (error) {
         console.error('Error updating worksheet database:', error)
       }

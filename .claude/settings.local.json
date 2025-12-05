@@ -30,7 +30,9 @@
       "Bash(printf:*)",
       "Bash(yes:*)",
       "Bash(where:*)",
-      "Bash(ollama --version:*)"
+      "Bash(ollama --version:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)"
     ],
     "deny": [],
     "ask": []

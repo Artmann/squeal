@@ -83,7 +83,8 @@ describe('GettingStartedScreen', () => {
     const user = userEvent.setup()
 
     vi.mocked(fetch).mockResolvedValueOnce({
-      json: () => Promise.resolve({ success: true })
+      json: () => Promise.resolve({ success: true }),
+      ok: true
     } as Response)
 
     renderGettingStartedScreen()
@@ -103,7 +104,8 @@ describe('GettingStartedScreen', () => {
 
     vi.mocked(fetch).mockResolvedValueOnce({
       json: () =>
-        Promise.resolve({ success: false, message: 'Connection refused' })
+        Promise.resolve({ message: 'Connection refused', success: false }),
+      ok: true
     } as Response)
 
     renderGettingStartedScreen()
@@ -126,13 +128,14 @@ describe('GettingStartedScreen', () => {
       json: () =>
         Promise.resolve({
           database: {
+            connectionInfo: {},
+            createdAt: Date.now(),
             id: '123',
             name: 'My Database',
-            type: 'postgres',
-            createdAt: Date.now(),
-            connectionInfo: {}
+            type: 'postgres'
           }
-        })
+        }),
+      ok: true
     } as Response)
 
     renderGettingStartedScreen()
@@ -155,7 +158,8 @@ describe('GettingStartedScreen', () => {
             message: 'Database already exists',
             status: 400
           }
-        })
+        }),
+      ok: true
     } as Response)
 
     renderGettingStartedScreen()
@@ -175,16 +179,17 @@ describe('GettingStartedScreen', () => {
       json: () =>
         Promise.resolve({
           error: {
-            message: 'Validation failed',
-            status: 400,
             details: {
-              name: 'Name is already taken',
               connectionInfo: {
                 host: 'Invalid host format'
-              }
-            }
+              },
+              name: 'Name is already taken'
+            },
+            message: 'Validation failed',
+            status: 400
           }
-        })
+        }),
+      ok: true
     } as Response)
 
     renderGettingStartedScreen()

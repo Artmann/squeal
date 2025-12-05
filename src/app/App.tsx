@@ -3,7 +3,8 @@ import { Loader2Icon, PlayIcon } from 'lucide-react'
 import { ReactElement, useEffect, useMemo, useState } from 'react'
 import { v7 } from 'uuid'
 
-import { CreateQueryResponse, GetQueryResponse, QueryDto } from '@/main/queries'
+import { QueryDto } from '@/main/queries'
+import { apiClient } from './api-client'
 import { AppSidebar } from './components/AppSidebar'
 import { DatabaseSelector } from './components/DatabaseSelector'
 import { QueryResultTable } from './components/QueryResultTable'
@@ -64,7 +65,8 @@ export function App(): ReactElement {
           return
         }
 
-        fetchQuery(query.id)
+        apiClient
+          .getQuery(query.id)
           .then((freshQuery) => {
             dispatch(queryFetched(freshQuery))
 
@@ -106,23 +108,13 @@ export function App(): ReactElement {
     dispatch(queryCreated(queryData))
 
     try {
-      const response = await fetch(`${apiBaseUrl}/queries`, {
-        body: JSON.stringify({
-          content: queryData.content,
-          databaseId: queryData.databaseId,
-          id: queryData.id,
-          queriedAt: queryData.queriedAt,
-          worksheetId: queryData.worksheetId
-        }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST'
+      const data = await apiClient.createQuery({
+        content: queryData.content,
+        databaseId: queryData.databaseId,
+        id: queryData.id,
+        queriedAt: queryData.queriedAt,
+        worksheetId: queryData.worksheetId
       })
-
-      if (!response.ok) {
-        throw new Error(`Query failed: ${response.statusText}`)
-      }
-
-      const data = (await response.json()) as CreateQueryResponse
 
       dispatch(queryFetched(data.query))
     } catch (error) {
@@ -207,18 +199,4 @@ export function App(): ReactElement {
   )
 }
 
-const apiBaseUrl = `http://localhost:7847`
 const pollInterval = 10
-
-async function fetchQuery(queryId: string): Promise<QueryDto> {
-  const response = await fetch(`http://localhost:7847/queries/${queryId}`)
-  const data = (await response.json()) as
-    | GetQueryResponse
-    | { error: { message: string } }
-
-  if ('error' in data) {
-    throw new Error(data.error.message)
-  }
-
-  return data.query
-}
