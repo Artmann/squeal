@@ -16,6 +16,10 @@ interface CreateDatabaseResponse {
   updatedWorksheet?: WorksheetDto
 }
 
+interface UpdateDatabaseResponse {
+  database: DatabaseDto
+}
+
 interface ApiErrorResponse {
   error: {
     details?: Record<string, string>
@@ -97,6 +101,19 @@ export const apiClient = {
     })
 
     return handleResponse<CreateConnectionTestResponse>(response)
+  },
+
+  async updateDatabase(
+    databaseId: string,
+    request: CreateDatabaseRequest
+  ): Promise<UpdateDatabaseResponse> {
+    const response = await fetch(`${baseUrl}/databases/${databaseId}`, {
+      body: JSON.stringify(request),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH'
+    })
+
+    return handleResponse<UpdateDatabaseResponse>(response)
   },
 
   async updateWorksheet(

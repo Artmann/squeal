@@ -7,6 +7,8 @@ import { QueryDto } from '@/main/queries'
 import { apiClient } from './api-client'
 import { AppSidebar } from './components/AppSidebar'
 import { DatabaseSelector } from './components/DatabaseSelector'
+import { EditorScreen } from './components/EditorScreen'
+import { GettingStartedScreen } from './components/GettingStartedScreen'
 import { QueryResultTable } from './components/QueryResultTable'
 import { ResultSheet } from './components/ResultSheet'
 import { TitleBar } from './components/TitleBar'
@@ -15,7 +17,6 @@ import { Separator } from './components/ui/separator'
 import { WorksheetEditor } from './components/WorksheetEditor'
 import { useAppDispatch, useAppSelector } from './store'
 import { queryCreated, queryFetched } from './store/editor-slice'
-import { GettingStartedScreen } from './components/GettingStartedScreen'
 
 export function App(): ReactElement {
   const [content, setContent] = useState('SELECT * FROM actor;')
@@ -125,6 +126,10 @@ export function App(): ReactElement {
   return (
     <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
       {uiState.showGettingStartedScreen && <GettingStartedScreen />}
+
+      {uiState.editorScreen?.type === 'edit-database' && (
+        <EditorScreen databaseId={uiState.editorScreen.databaseId} />
+      )}
 
       <TitleBar />
 

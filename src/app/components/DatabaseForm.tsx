@@ -32,24 +32,30 @@ export interface DatabaseFormResult {
 }
 
 export interface DatabaseFormProps {
+  databaseId?: string
+  defaultValues?: Partial<FormInput>
   onCancel?: () => void
   onSuccess?: (result: DatabaseFormResult) => void
 }
 
 export function DatabaseForm({
+  databaseId,
+  defaultValues,
   onCancel,
   onSuccess
 }: DatabaseFormProps): ReactElement {
+  const isEditMode = Boolean(databaseId)
+
   const form = useForm<FormInput, unknown, FormOutput>({
     defaultValues: {
       connectionInfo: {
-        database: '',
-        host: '',
-        password: '',
-        port: '',
-        username: ''
+        database: defaultValues?.connectionInfo?.database ?? '',
+        host: defaultValues?.connectionInfo?.host ?? '',
+        password: defaultValues?.connectionInfo?.password ?? '',
+        port: defaultValues?.connectionInfo?.port ?? '',
+        username: defaultValues?.connectionInfo?.username ?? ''
       },
-      name: ''
+      name: defaultValues?.name ?? ''
     },
     resolver: zodResolver(createDatabaseSchema)
   })
@@ -67,11 +73,17 @@ export function DatabaseForm({
       form.clearErrors()
       setIsSaving(true)
 
-      apiClient
-        .createDatabase(values)
+      const apiCall =
+        isEditMode && databaseId
+          ? apiClient.updateDatabase(databaseId, values)
+          : apiClient.createDatabase(values)
+
+      apiCall
         .then((result) => {
-          toast.success('Database saved!', {
-            description: `${result.database.name} has been added.`
+          toast.success(isEditMode ? 'Database updated!' : 'Database saved!', {
+            description: isEditMode
+              ? `${result.database.name} has been updated.`
+              : `${result.database.name} has been added.`
           })
 
           onSuccess?.(result)
@@ -98,7 +110,7 @@ export function DatabaseForm({
           setIsSaving(false)
         })
     },
-    [form, onSuccess]
+    [databaseId, form, isEditMode, onSuccess]
   )
 
   const handleTestConnection = useCallback(

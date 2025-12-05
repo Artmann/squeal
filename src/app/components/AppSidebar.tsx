@@ -1,10 +1,17 @@
 import { Database } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
-import { useAppDispatch, useAppSelector } from '../store'
-import { Separator } from './ui/separator'
 import { cn } from '../lib/utils'
+import { useAppDispatch, useAppSelector } from '../store'
 import { workspaceSelected } from '../store/editor-slice'
+import { uiActions } from '../store/ui-slice'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from './ui/context-menu'
+import { Separator } from './ui/separator'
 
 export function AppSidebar(): ReactElement {
   const dispatch = useAppDispatch()
@@ -12,6 +19,13 @@ export function AppSidebar(): ReactElement {
   const worksheets = useAppSelector((state) => state.editor.worksheets)
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
+  )
+
+  const handleEditDatabase = useCallback(
+    (databaseId: string) => {
+      dispatch(uiActions.openEditDatabase(databaseId))
+    },
+    [dispatch]
   )
 
   const handleSelectWorksheet = useCallback(
@@ -51,13 +65,20 @@ export function AppSidebar(): ReactElement {
 
         <div className="">
           {databases.map((database) => (
-            <div
-              key={database.id}
-              className="flex items-center gap-2 py-0.5"
-            >
-              <Database className="h-3 w-3 text-mauve" />
-              <span>{database.name}</span>
-            </div>
+            <ContextMenu key={database.id}>
+              <ContextMenuTrigger>
+                <div className="flex items-center gap-2 py-0.5 cursor-default">
+                  <Database className="h-3 w-3 text-mauve" />
+                  <span>{database.name}</span>
+                </div>
+              </ContextMenuTrigger>
+
+              <ContextMenuContent>
+                <ContextMenuItem onClick={() => handleEditDatabase(database.id)}>
+                  Edit
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
         </div>
       </div>

@@ -73,6 +73,23 @@ export class DatabaseService {
 
     return records.map(transformDatabase)
   }
+
+  async updateDatabase(
+    id: string,
+    name: string,
+    connectionInfo: PostgresConnectionInfo
+  ): Promise<DatabaseDto> {
+    const [record] = await database
+      .update(databasesTable)
+      .set({
+        connectionInfo: JSON.stringify(connectionInfo),
+        name
+      })
+      .where(eq(databasesTable.id, id))
+      .returning()
+
+    return transformDatabase(record)
+  }
 }
 
 function transformDatabase(

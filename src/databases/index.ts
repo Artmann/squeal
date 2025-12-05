@@ -62,3 +62,22 @@ databaseRouter.post('/', async (context) => {
 
   return context.json({ database, updatedWorksheet }, 201)
 })
+
+databaseRouter.patch('/:id', async (context) => {
+  const { id } = context.req.param()
+  const body = await context.req.json()
+  const result = await createDatabaseSchema.safeParseAsync(body)
+
+  if (!result.success) {
+    throw new ValidationError(result.error)
+  }
+
+  const service = new DatabaseService()
+  const database = await service.updateDatabase(
+    id,
+    result.data.name,
+    result.data.connectionInfo
+  )
+
+  return context.json({ database })
+})

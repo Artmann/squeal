@@ -24,6 +24,16 @@ export const editorSlice = createSlice({
     databaseAdded: (state, action: PayloadAction<DatabaseDto>) => {
       state.databases.push(action.payload)
     },
+
+    databaseUpdated: (state, action: PayloadAction<DatabaseDto>) => {
+      const index = state.databases.findIndex(
+        (database) => database.id === action.payload.id
+      )
+
+      if (index >= 0) {
+        state.databases[index] = action.payload
+      }
+    },
     queriesFetched: (state, action: PayloadAction<QueryDto[]>) => {
       state.queries = action.payload
     },
@@ -60,6 +70,7 @@ export const editorSlice = createSlice({
 
 export const {
   databaseAdded,
+  databaseUpdated,
   queriesFetched,
   queryCreated,
   queryFetched,
