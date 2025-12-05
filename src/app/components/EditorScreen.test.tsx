@@ -24,7 +24,9 @@ const testDatabase = {
   type: 'postgres'
 }
 
-function createTestStore(initialState?: { databases?: typeof testDatabase[] }) {
+function createTestStore(initialState?: {
+  databases?: (typeof testDatabase)[]
+}) {
   return configureStore({
     preloadedState: {
       editor: {
@@ -181,6 +183,8 @@ describe('EditorScreen', () => {
       expect(store.getState().ui.editorScreen).toBeUndefined()
     })
 
-    expect(store.getState().editor.databases[0].name).toEqual('Updated Database')
+    expect(store.getState().editor.databases[0].name).toEqual(
+      'Updated Database'
+    )
   })
 })

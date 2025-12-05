@@ -8,7 +8,10 @@ vi.stubGlobal('fetch', mockFetch)
 
 import { apiClient } from './api-client'
 
-function createMockResponse(data: unknown, options: { ok?: boolean; status?: number; statusText?: string } = {}) {
+function createMockResponse(
+  data: unknown,
+  options: { ok?: boolean; status?: number; statusText?: string } = {}
+) {
   return {
     json: () => Promise.resolve(data),
     ok: options.ok ?? true,
@@ -53,11 +56,14 @@ describe('apiClient', () => {
 
       await apiClient.createDatabase(request)
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:7847/databases', {
-        body: JSON.stringify(request),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST'
-      })
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:7847/databases',
+        {
+          body: JSON.stringify(request),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST'
+        }
+      )
     })
 
     it('should return the response data on success', async () => {
@@ -102,7 +108,9 @@ describe('apiClient', () => {
         expect(error).toBeInstanceOf(ApiError)
         expect((error as ApiError).statusCode).toEqual(400)
         expect((error as ApiError).message).toEqual('Validation error')
-        expect((error as ApiError).details).toEqual({ name: 'Name is required.' })
+        expect((error as ApiError).details).toEqual({
+          name: 'Name is required.'
+        })
       }
     })
   })
@@ -183,7 +191,9 @@ describe('apiClient', () => {
 
       await apiClient.getQuery(queryId)
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:7847/queries/query-123')
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:7847/queries/query-123'
+      )
     })
 
     it('should return the query from the response', async () => {
@@ -236,11 +246,14 @@ describe('apiClient', () => {
 
       await apiClient.testConnection(connectionInfo)
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:7847/connection-tests', {
-        body: JSON.stringify({ connectionInfo }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST'
-      })
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:7847/connection-tests',
+        {
+          body: JSON.stringify({ connectionInfo }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST'
+        }
+      )
     })
 
     it('should return success response', async () => {
@@ -288,11 +301,14 @@ describe('apiClient', () => {
 
       await apiClient.updateWorksheet(worksheetId, updates)
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:7847/worksheets/ws-123', {
-        body: JSON.stringify(updates),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'PATCH'
-      })
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:7847/worksheets/ws-123',
+        {
+          body: JSON.stringify(updates),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'PATCH'
+        }
+      )
     })
 
     it('should return the updated worksheet', async () => {
@@ -323,21 +339,26 @@ describe('apiClient', () => {
 
       const result = await apiClient.updateWorksheet(worksheetId, nameUpdate)
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:7847/worksheets/ws-123', {
-        body: JSON.stringify(nameUpdate),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'PATCH'
-      })
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:7847/worksheets/ws-123',
+        {
+          body: JSON.stringify(nameUpdate),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'PATCH'
+        }
+      )
       expect(result).toEqual(worksheet)
     })
   })
 
   describe('error handling', () => {
     it('should throw ApiError with status from non-OK response without error body', async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(
-        {},
-        { ok: false, status: 500, statusText: 'Internal Server Error' }
-      ))
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(
+          {},
+          { ok: false, status: 500, statusText: 'Internal Server Error' }
+        )
+      )
 
       try {
         await apiClient.getQuery('query-123')
@@ -356,10 +377,13 @@ describe('apiClient', () => {
         }
       }
 
-      mockFetch.mockResolvedValueOnce(createMockResponse(
-        errorResponse,
-        { ok: false, status: 500, statusText: 'Internal Server Error' }
-      ))
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(errorResponse, {
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error'
+        })
+      )
 
       try {
         await apiClient.getQuery('query-123')

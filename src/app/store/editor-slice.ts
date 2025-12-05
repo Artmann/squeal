@@ -6,6 +6,7 @@ import { WorksheetDto } from '@/glue/worksheets'
 
 export interface EditorState {
   databases: DatabaseDto[]
+  databaseSearchQuery: string
   openWorksheetId?: string
   queries: QueryDto[]
   worksheets: WorksheetDto[]
@@ -13,6 +14,7 @@ export interface EditorState {
 
 const initialState: EditorState = {
   databases: [],
+  databaseSearchQuery: '',
   queries: [],
   worksheets: []
 }
@@ -24,7 +26,9 @@ export const editorSlice = createSlice({
     databaseAdded: (state, action: PayloadAction<DatabaseDto>) => {
       state.databases.push(action.payload)
     },
-
+    databaseSearchQueryUpdated: (state, action: PayloadAction<string>) => {
+      state.databaseSearchQuery = action.payload
+    },
     databaseUpdated: (state, action: PayloadAction<DatabaseDto>) => {
       const index = state.databases.findIndex(
         (database) => database.id === action.payload.id
@@ -70,6 +74,7 @@ export const editorSlice = createSlice({
 
 export const {
   databaseAdded,
+  databaseSearchQueryUpdated,
   databaseUpdated,
   queriesFetched,
   queryCreated,

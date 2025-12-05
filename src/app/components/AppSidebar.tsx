@@ -1,9 +1,9 @@
-import { Database } from 'lucide-react'
+import { Database, SearchIcon } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
-import { workspaceSelected } from '../store/editor-slice'
+import { editorSlice, workspaceSelected } from '../store/editor-slice'
 import { uiActions } from '../store/ui-slice'
 import {
   ContextMenu,
@@ -12,6 +12,7 @@ import {
   ContextMenuTrigger
 } from './ui/context-menu'
 import { Separator } from './ui/separator'
+import { InputGroup, InputGroupAddon, InputGroupInput } from './ui/input-group'
 
 export function AppSidebar(): ReactElement {
   const dispatch = useAppDispatch()
@@ -19,6 +20,13 @@ export function AppSidebar(): ReactElement {
   const worksheets = useAppSelector((state) => state.editor.worksheets)
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
+  )
+  const databaseSearchQuery = useAppSelector(
+    (state) => state.editor.databaseSearchQuery ?? ''
+  )
+
+  const filteredDatabases = databases.filter((database) =>
+    database.name.toLowerCase().includes(databaseSearchQuery.toLowerCase())
   )
 
   const handleEditDatabase = useCallback(
@@ -31,6 +39,15 @@ export function AppSidebar(): ReactElement {
   const handleSelectWorksheet = useCallback(
     (worksheetId: string) => {
       dispatch(workspaceSelected(worksheetId))
+    },
+    [dispatch]
+  )
+
+  const handleSearchChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const query = event.target.value
+
+      dispatch(editorSlice.actions.databaseSearchQueryUpdated(query))
     },
     [dispatch]
   )
@@ -63,23 +80,45 @@ export function AppSidebar(): ReactElement {
       <div className="p-3">
         <Heading text="Database Explorer" />
 
+        <div className="mb-4">
+          <InputGroup className="h-6 focus-within:ring-0 focus-within:border-input [&:has([data-slot=input-group-control]:focus-visible)]:border-input [&:has([data-slot=input-group-control]:focus-visible)]:ring-0">
+            <InputGroupInput
+              className="text-[10px] py-0 focus-visible:ring-0"
+              placeholder="Search..."
+              value={databaseSearchQuery}
+              onChange={handleSearchChange}
+            />
+            <InputGroupAddon className="py-0">
+              <SearchIcon className="size-3 mt-0.5" />
+            </InputGroupAddon>
+          </InputGroup>
+        </div>
+
         <div className="">
-          {databases.map((database) => (
+          {filteredDatabases.map((database) => (
             <ContextMenu key={database.id}>
               <ContextMenuTrigger>
                 <div className="flex items-center gap-2 py-0.5 cursor-default">
-                  <Database className="h-3 w-3 text-mauve" />
+                  <Database className="h-3 w-3" />
                   <span>{database.name}</span>
                 </div>
               </ContextMenuTrigger>
 
               <ContextMenuContent>
-                <ContextMenuItem onClick={() => handleEditDatabase(database.id)}>
+                <ContextMenuItem
+                  onClick={() => handleEditDatabase(database.id)}
+                >
                   Edit
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
           ))}
+
+          {filteredDatabases.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              No databases found.
+            </p>
+          )}
         </div>
       </div>
     </div>
