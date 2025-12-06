@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
 import { Loader2Icon, PlayIcon } from 'lucide-react'
-import { ReactElement, useEffect, useMemo, useState } from 'react'
+import { ReactElement, useCallback, useEffect, useMemo } from 'react'
 import { v7 } from 'uuid'
 
 import { QueryDto } from '@/main/queries'
@@ -16,11 +16,10 @@ import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 import { WorksheetEditor } from './components/WorksheetEditor'
 import { useAppDispatch, useAppSelector } from './store'
-import { queryCreated, queryFetched } from './store/editor-slice'
+import { editorSlice, queryCreated, queryFetched } from './store/editor-slice'
+import invariant from 'tiny-invariant'
 
 export function App(): ReactElement {
-  const [content, setContent] = useState('SELECT * FROM actor;')
-
   const queries = useAppSelector((state) => state.editor.queries)
   const worksheets = useAppSelector((state) => state.editor.worksheets)
   const openWorksheetId = useAppSelector(
@@ -89,6 +88,22 @@ export function App(): ReactElement {
     [isQueryRunning, query?.id, dispatch]
   )
 
+  const handleUpdateContent = useCallback(
+    async (newContent: string) => {
+      invariant(openWorksheetId, 'No worksheet is open')
+
+      dispatch(
+        editorSlice.actions.worksheetContentUpdated({
+          id: openWorksheetId,
+          content: newContent
+        })
+      )
+
+      void apiClient.updateWorksheet(openWorksheetId, { content: newContent })
+    },
+    [dispatch, openWorksheetId]
+  )
+
   const handleRunQuery = async () => {
     if (!currentWorksheet?.databaseId) {
       console.error('No database selected')
@@ -97,7 +112,7 @@ export function App(): ReactElement {
     }
 
     const queryData: QueryDto = {
-      content,
+      content: currentWorksheet.content,
       databaseId: currentWorksheet.databaseId,
       error: null,
       id: v7(),
@@ -158,8 +173,8 @@ export function App(): ReactElement {
 
           <div className="relative flex-1 min-h-0 bg-base">
             <WorksheetEditor
-              content={content}
-              onChange={setContent}
+              content={currentWorksheet.content}
+              onChange={handleUpdateContent}
               onRunQuery={handleRunQuery}
             />
 

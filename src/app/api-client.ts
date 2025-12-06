@@ -118,7 +118,7 @@ export const apiClient = {
 
   async updateWorksheet(
     worksheetId: string,
-    updates: { databaseId?: string | null; name?: string }
+    updates: { databaseId?: string | null; content?: string; name?: string }
   ): Promise<WorksheetDto> {
     const response = await fetch(`${baseUrl}/worksheets/${worksheetId}`, {
       body: JSON.stringify(updates),

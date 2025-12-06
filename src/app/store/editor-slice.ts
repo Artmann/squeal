@@ -55,6 +55,18 @@ export const editorSlice = createSlice({
         state.queries.push(action.payload)
       }
     },
+    worksheetContentUpdated: (
+      state,
+      action: PayloadAction<{ id: string; content: string }>
+    ) => {
+      const index = state.worksheets.findIndex(
+        (worksheet) => worksheet.id === action.payload.id
+      )
+
+      if (index >= 0) {
+        state.worksheets[index].content = action.payload.content
+      }
+    },
     worksheetUpdated: (state, action: PayloadAction<WorksheetDto>) => {
       const index = state.worksheets.findIndex(
         (worksheet) => worksheet.id === action.payload.id

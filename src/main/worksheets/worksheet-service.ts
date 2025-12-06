@@ -40,6 +40,7 @@ function transformWorksheet(
   worksheet: typeof worksheetsTable.$inferSelect
 ): WorksheetDto {
   return {
+    content: worksheet.content,
     createdAt: worksheet.createdAt,
     databaseId: worksheet.databaseId ?? null,
     id: worksheet.id,

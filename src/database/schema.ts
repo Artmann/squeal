@@ -55,6 +55,7 @@ export const worksheetsTable = sqliteTable('worksheets', {
   id: text()
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
+  content: text().notNull().default(''),
   createdAt: integer()
     .notNull()
     .$defaultFn(() => Date.now()),

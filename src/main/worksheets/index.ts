@@ -15,6 +15,7 @@ export interface UpdateWorksheetResponse {
 }
 
 const updateWorksheetSchema = z.object({
+  content: z.string().optional(),
   databaseId: z.string().nullable().optional(),
   name: z.string().optional()
 })
