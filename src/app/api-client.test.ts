@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/errors'
+import { WorksheetDto } from '@/glue/worksheets'
+import { QueryDto } from '@/main/queries'
 
 const mockFetch = vi.fn()
 
@@ -125,18 +127,17 @@ describe('apiClient', () => {
     }
 
     it('should make a POST request to /queries', async () => {
-      const responseData = {
-        query: {
-          content: request.content,
-          databaseId: request.databaseId,
-          error: null,
-          finishedAt: null,
-          id: request.id,
-          queriedAt: request.queriedAt,
-          result: null,
-          worksheetId: request.worksheetId
-        }
+      const query: QueryDto = {
+        content: request.content,
+        databaseId: request.databaseId,
+        error: null,
+        finishedAt: null,
+        id: request.id,
+        queriedAt: request.queriedAt,
+        result: null,
+        worksheetId: request.worksheetId
       }
+      const responseData = { query }
 
       mockFetch.mockResolvedValueOnce(createMockResponse(responseData))
 
@@ -150,18 +151,17 @@ describe('apiClient', () => {
     })
 
     it('should return the response data on success', async () => {
-      const responseData = {
-        query: {
-          content: request.content,
-          databaseId: request.databaseId,
-          error: null,
-          finishedAt: 1704067201000,
-          id: request.id,
-          queriedAt: request.queriedAt,
-          result: { columns: ['id', 'name'], rows: [[1, 'Alice']] },
-          worksheetId: request.worksheetId
-        }
+      const query: QueryDto = {
+        content: request.content,
+        databaseId: request.databaseId,
+        error: null,
+        finishedAt: 1704067201000,
+        id: request.id,
+        queriedAt: request.queriedAt,
+        result: { columns: ['id', 'name'], rows: [[1, 'Alice']] },
+        worksheetId: request.worksheetId
       }
+      const responseData = { query }
 
       mockFetch.mockResolvedValueOnce(createMockResponse(responseData))
 
@@ -174,18 +174,17 @@ describe('apiClient', () => {
   describe('getQuery', () => {
     it('should make a GET request to /queries/:id', async () => {
       const queryId = 'query-123'
-      const responseData = {
-        query: {
-          content: 'SELECT 1',
-          databaseId: 'db-123',
-          error: null,
-          finishedAt: 1704067201000,
-          id: queryId,
-          queriedAt: 1704067200000,
-          result: { columns: ['?column?'], rows: [[1]] },
-          worksheetId: 'ws-123'
-        }
+      const query: QueryDto = {
+        content: 'SELECT 1',
+        databaseId: 'db-123',
+        error: null,
+        finishedAt: 1704067201000,
+        id: queryId,
+        queriedAt: 1704067200000,
+        result: { columns: ['?column?'], rows: [[1]] },
+        worksheetId: 'ws-123'
       }
+      const responseData = { query }
 
       mockFetch.mockResolvedValueOnce(createMockResponse(responseData))
 
@@ -198,7 +197,7 @@ describe('apiClient', () => {
 
     it('should return the query from the response', async () => {
       const queryId = 'query-123'
-      const query = {
+      const query: QueryDto = {
         content: 'SELECT 1',
         databaseId: 'db-123',
         error: null,
@@ -328,7 +327,8 @@ describe('apiClient', () => {
 
     it('should handle name updates', async () => {
       const nameUpdate = { name: 'New Name' }
-      const worksheet = {
+      const worksheet: WorksheetDto = {
+        content: '',
         createdAt: 1704067200000,
         databaseId: null,
         id: worksheetId,

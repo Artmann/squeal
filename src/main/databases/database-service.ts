@@ -54,6 +54,7 @@ export class DatabaseService {
           .returning()
 
         updatedWorksheet = {
+          content: updated.content,
           createdAt: updated.createdAt,
           databaseId: updated.databaseId ?? null,
           id: updated.id,

@@ -19,7 +19,8 @@ export function createStore() {
     preloadedState: {
       editor: {
         databases,
-        openWorksheetId: worksheets[0]?.id ?? undefined,
+        databaseSearchQuery: '',
+        openWorksheetId: worksheets[0]?.id,
         queries: [],
         worksheets
       },
