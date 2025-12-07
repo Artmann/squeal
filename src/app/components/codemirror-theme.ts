@@ -28,6 +28,9 @@ export const catppuccinTheme = EditorView.theme({
   '.cm-activeLineGutter': {
     backgroundColor: 'var(--color-surface-0)'
   },
+  '.cm-activeStatementGutter': {
+    backgroundColor: 'color-mix(in srgb, var(--color-mauve) 20%, transparent)'
+  },
   '.cm-lineNumbers .cm-gutterElement': {
     color: 'var(--color-overlay-0)'
   },
