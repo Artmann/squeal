@@ -29,6 +29,18 @@ export async function initializeDatabase() {
   `)
 
   await database.run(sql`
+    CREATE TABLE IF NOT EXISTS databases (
+      id TEXT PRIMARY KEY NOT NULL,
+      connectionInfo TEXT NOT NULL,
+      createdAt INTEGER NOT NULL,
+      deletedAt INTEGER,
+      lastUsedAt INTEGER,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL
+    )
+  `)
+
+  await database.run(sql`
     CREATE TABLE IF NOT EXISTS queries (
       id TEXT PRIMARY KEY NOT NULL,
       content TEXT NOT NULL,
@@ -44,10 +56,22 @@ export async function initializeDatabase() {
   await database.run(sql`
     CREATE TABLE IF NOT EXISTS worksheets (
       id TEXT PRIMARY KEY NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
       createdAt INTEGER NOT NULL,
       databaseId TEXT,
       deletedAt INTEGER,
       name TEXT NOT NULL DEFAULT 'Untitled Worksheet'
     )
   `)
+
+  // Add content column for existing databases that don't have it.
+  await database
+    .run(
+      sql`
+    ALTER TABLE worksheets ADD COLUMN content TEXT NOT NULL DEFAULT ''
+  `
+    )
+    .catch(() => {
+      // Column already exists, ignore error.
+    })
 }

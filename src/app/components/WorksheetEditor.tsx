@@ -3,9 +3,10 @@ import { sql } from '@codemirror/lang-sql'
 import { Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
-import { ReactElement, useMemo } from 'react'
+import { ReactElement, useMemo, useState } from 'react'
 
 import { catppuccinHighlighting, catppuccinTheme } from './codemirror-theme'
+import { createAstFromSql, type Statement } from '../sql-parser'
 
 interface WorksheetEditorProps {
   content: string
@@ -18,6 +19,15 @@ export function WorksheetEditor({
   onChange,
   onRunQuery
 }: WorksheetEditorProps): ReactElement {
+  const [statements, setStatements] = useState<Statement[]>(() => {
+    const script = createAstFromSql(content)
+
+    return script.statements
+  })
+  const [activeStatementIndex, setActiveStatementIndex] = useState<
+    number | null
+  >(null)
+
   const extensions = useMemo(() => {
     return [
       catppuccinTheme,
@@ -33,6 +43,19 @@ export function WorksheetEditor({
             { label: 'orders', type: 'table', apply: 'orders' }
           ])
         ]
+      }),
+      EditorView.updateListener.of((update) => {
+        if (update.selectionSet || update.docChanged) {
+          const content = update.state.doc.toString()
+          const position = update.state.selection.main.head
+
+          const script = createAstFromSql(content)
+
+          const index = findTheActiveStatementIndex(script.statements, position)
+
+          setStatements(script.statements)
+          setActiveStatementIndex(index)
+        }
       }),
       Prec.highest(
         keymap.of([
@@ -50,6 +73,8 @@ export function WorksheetEditor({
       )
     ]
   }, [])
+
+  console.log({ activeStatementIndex, statements })
 
   return (
     <div className="w-full h-full overflow-hidden text-xs">
@@ -70,4 +95,29 @@ export function WorksheetEditor({
       />
     </div>
   )
+}
+
+function findTheActiveStatementIndex(
+  statements: Statement[],
+  position: number
+): number | null {
+  for (let i = 0; i < statements.length; i++) {
+    const statement = statements[i]
+
+    if (position >= statement.start && position <= statement.end) {
+      return i
+    }
+  }
+
+  // If there's not an exact match, we'll try to fallback to the
+  // previous statement.
+  for (let i = statements.length - 1; i >= 0; i--) {
+    const statement = statements[i]
+
+    if (position > statement.end) {
+      return i
+    }
+  }
+
+  return null
 }
