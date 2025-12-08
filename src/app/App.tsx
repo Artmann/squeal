@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import { Loader2Icon, PlayIcon } from 'lucide-react'
-import { ReactElement, useCallback, useEffect, useMemo } from 'react'
+import { ReactElement, useCallback, useEffect, useMemo, useState } from 'react'
+import invariant from 'tiny-invariant'
 import { v7 } from 'uuid'
 
 import { QueryDto } from '@/main/queries'
@@ -17,7 +18,7 @@ import { Separator } from './components/ui/separator'
 import { WorksheetEditor } from './components/WorksheetEditor'
 import { useAppDispatch, useAppSelector } from './store'
 import { editorSlice, queryCreated, queryFetched } from './store/editor-slice'
-import invariant from 'tiny-invariant'
+import { createAstFromSql } from './sql-parser'
 
 export function App(): ReactElement {
   const queries = useAppSelector((state) => state.editor.queries)
@@ -27,10 +28,67 @@ export function App(): ReactElement {
   )
   const uiState = useAppSelector((state) => state.ui)
 
+  const [cursorPosition, setCursorPosition] = useState<number>(0)
+
   const currentWorksheet = useMemo(
     () => worksheets.find((worksheet) => worksheet.id === openWorksheetId),
     [worksheets, openWorksheetId]
   )
+
+  const statements = useMemo(() => {
+    if (!currentWorksheet?.content) {
+      return []
+    }
+
+    const parsed = createAstFromSql(currentWorksheet.content).statements
+    console.log(
+      'Parsed statements:',
+      parsed.map((s) => ({
+        start: s.start,
+        end: s.end,
+        text: s.text.substring(0, 30)
+      }))
+    )
+
+    return parsed
+  }, [currentWorksheet?.content])
+
+  const activeStatementIndex = useMemo(() => {
+    if (statements.length === 0) {
+      return null
+    }
+
+    for (let i = 0; i < statements.length; i++) {
+      const statement = statements[i]
+
+      if (
+        cursorPosition >= statement.start &&
+        cursorPosition <= statement.end
+      ) {
+        return i
+      }
+    }
+
+    // If the cursor is not within any statement, we'll fall back to the last statement
+    // that is before the cursor position.
+    for (let i = statements.length - 1; i >= 0; i--) {
+      const statement = statements[i]
+
+      if (cursorPosition >= statement.end) {
+        return i
+      }
+    }
+
+    return null
+  }, [statements, cursorPosition])
+
+  const activeStatement = useMemo(() => {
+    if (activeStatementIndex === null) {
+      return null
+    }
+
+    return statements[activeStatementIndex]
+  }, [statements, activeStatementIndex])
 
   const [query] = useMemo(
     () =>
@@ -42,11 +100,15 @@ export function App(): ReactElement {
 
   const isQueryRunning = query && !query.finishedAt
 
-  console.log({ isQueryRunning, openWorksheetId, queries, worksheets })
-
-  const appState = useAppSelector((state) => state)
-
-  console.log(appState)
+  console.log({
+    activeStatementIndex,
+    cursorPosition,
+    isQueryRunning,
+    openWorksheetId,
+    queries,
+    statements,
+    worksheets
+  })
 
   const dispatch = useAppDispatch()
 
@@ -59,8 +121,6 @@ export function App(): ReactElement {
       }
 
       const check = () => {
-        console.log('Polling for query result...')
-
         if (!query) {
           return
         }
@@ -111,8 +171,14 @@ export function App(): ReactElement {
       return
     }
 
+    if (!activeStatement) {
+      console.error('No active statement')
+
+      return
+    }
+
     const queryData: QueryDto = {
-      content: currentWorksheet.content,
+      content: activeStatement.text,
       databaseId: currentWorksheet.databaseId,
       error: null,
       id: v7(),
@@ -157,7 +223,11 @@ export function App(): ReactElement {
           <header className="w-full p-3 border-b border-surface-0 flex items-center gap-3 justify-between">
             <Button
               className="cursor-pointer"
-              disabled={isQueryRunning || !currentWorksheet?.databaseId}
+              disabled={
+                isQueryRunning ||
+                !currentWorksheet?.databaseId ||
+                !activeStatement
+              }
               size="icon-sm"
               onClick={handleRunQuery}
             >
@@ -173,8 +243,11 @@ export function App(): ReactElement {
 
           <div className="relative flex-1 min-h-0 bg-base">
             <WorksheetEditor
+              activeStatementIndex={activeStatementIndex}
               content={currentWorksheet.content}
+              statements={statements}
               onChange={handleUpdateContent}
+              onCursorPositionChange={setCursorPosition}
               onRunQuery={handleRunQuery}
             />
 
