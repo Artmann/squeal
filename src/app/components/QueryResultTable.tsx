@@ -21,12 +21,12 @@ export const QueryResultTable = memo(function QueryResultTable({
 
   return (
     <Table className="w-full text-xs">
-      <TableHeader className="sticky top-0 bg-base border-t border-surface-0">
+      <TableHeader className="sticky top-0 bg-base">
         <TableRow className="bg-base">
           <TableHead className="border-r border-surface-0"></TableHead>
           {fieldNames.map((name: string) => (
             <TableHead
-              className="border-r border-surface-0 font-normal last:border-r-0 font-medium"
+              className="border-r border-surface-0 last:border-r-0 font-medium"
               key={name}
             >
               {name}

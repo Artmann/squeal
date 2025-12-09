@@ -34,7 +34,7 @@ export function ResultSheet({
       style={{ height: isOpen ? '400px' : '0' }}
     >
       <div>
-        <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-surface-0">
           <div className={cn(isSuccessful ? 'text-mauve' : '')}>
             Results (
             {query?.queriedAt && <TimeAgo timestamp={query.queriedAt} />})
