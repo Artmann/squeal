@@ -36,8 +36,12 @@
 
 ## Getting Started
 
-Download the latest release for your platform from the [releases page](https://github.com/Artmann/squeal/releases).
+Download the latest release for your platform from the
+[releases page](https://github.com/Artmann/squeal/releases).
 
 ## License
 
-MIT
+The source code is licensed under the MIT License and is free to use and modify.
+
+The prebuilt binaries are free for personal use. Commercial use requires an
+additional license.
