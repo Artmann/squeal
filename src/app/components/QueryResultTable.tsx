@@ -26,7 +26,7 @@ export const QueryResultTable = memo(function QueryResultTable({
           <TableHead className="border-r border-surface-0"></TableHead>
           {fieldNames.map((name: string) => (
             <TableHead
-              className="border-r border-surface-0 font-normal last:border-r-0"
+              className="border-r border-surface-0 font-normal last:border-r-0 font-medium"
               key={name}
             >
               {name}
