@@ -41,14 +41,6 @@ export function App(): ReactElement {
     }
 
     const parsed = createAstFromSql(currentWorksheet.content).statements
-    console.log(
-      'Parsed statements:',
-      parsed.map((s) => ({
-        start: s.start,
-        end: s.end,
-        text: s.text.substring(0, 30)
-      }))
-    )
 
     return parsed
   }, [currentWorksheet?.content])
