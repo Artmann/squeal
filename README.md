@@ -36,10 +36,7 @@
 
 ## Getting Started
 
-```bash
-yarn install
-yarn start
-```
+Download the latest release for your platform from the [releases page](https://github.com/Artmann/squeal/releases).
 
 ## License
 
