@@ -33,7 +33,18 @@ export function WorksheetEditor({
 }: WorksheetEditorProps): ReactElement {
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const onRunQueryRef = useRef(onRunQuery)
+
   onRunQueryRef.current = onRunQuery
+
+  const handleClickOutsideTheEditor = useCallback(() => {
+    if (editorRef.current) {
+      const view = editorRef.current.view
+
+      if (view) {
+        view.focus()
+      }
+    }
+  }, [editorRef.current])
 
   const handleUpdate = useCallback(
     (update: ViewUpdate) => {
@@ -135,7 +146,7 @@ export function WorksheetEditor({
   }, [activeStatement])
 
   return (
-    <div className="w-full h-full overflow-hidden text-xs">
+    <div className="w-full h-full overflow-hidden text-xs flex flex-col">
       <CodeMirror
         ref={editorRef}
         basicSetup={{
@@ -152,6 +163,10 @@ export function WorksheetEditor({
           onChange?.(value)
         }}
         onUpdate={handleUpdate}
+      />
+      <div
+        className="w-full flex-1"
+        onClick={handleClickOutsideTheEditor}
       />
     </div>
   )
