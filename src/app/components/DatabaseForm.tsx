@@ -220,7 +220,7 @@ export function DatabaseForm({
                 <FormControl>
                   <Input
                     className="w-32"
-                    placeholder="5439"
+                    placeholder="5432"
                     type="number"
                     {...field}
                     value={String(field.value ?? '')}
