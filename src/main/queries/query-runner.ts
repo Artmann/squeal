@@ -11,7 +11,10 @@ import {
 
 export const createQuerySchema = z.object({
   content: z.string(),
-  databaseId: z.string(),
+  databaseId: z
+    .string()
+    .nullish()
+    .transform((value) => value || undefined),
   id: z.string(),
   queriedAt: z.number(),
   worksheetId: z.string()
@@ -21,9 +24,25 @@ export type CreateQueryInput = z.infer<typeof createQuerySchema>
 
 class QueryRunner {
   async createAndRunQuery(input: CreateQueryInput) {
+    let databaseId = input.databaseId
+
+    if (!databaseId) {
+      const [firstDatabase] = await database
+        .select()
+        .from(databasesTable)
+        .where(isNull(databasesTable.deletedAt))
+        .limit(1)
+
+      if (!firstDatabase) {
+        throw new Error('No database available')
+      }
+
+      databaseId = firstDatabase.id
+    }
+
     const data: typeof queriesTable.$inferInsert = {
       content: input.content,
-      databaseId: input.databaseId,
+      databaseId,
       id: input.id,
       queriedAt: input.queriedAt,
       worksheetId: input.worksheetId

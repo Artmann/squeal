@@ -70,7 +70,7 @@ export const apiClient = {
 
   async createQuery(request: {
     content: string
-    databaseId: string
+    databaseId?: string
     id: string
     queriedAt: number
     worksheetId: string
