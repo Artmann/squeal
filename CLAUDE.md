@@ -31,3 +31,4 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
 - Query execution is async: POST creates query, poll GET `/queries/:id` for
   results
 - Refer to @CODE_STYLE.md
+- Don't include the Claude footer in commits
