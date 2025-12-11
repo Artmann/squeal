@@ -11,5 +11,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  mysql:
+    image: mysql:8
+    container_name: squeal-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql
+      MYSQL_USER: mysql
+      MYSQL_PASSWORD: mysql
+      MYSQL_DATABASE: squeal
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+
 volumes:
   postgres_data:
+  mysql_data:
