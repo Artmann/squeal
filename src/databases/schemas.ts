@@ -4,7 +4,15 @@ export const postgresConnectionInfoSchema = z.object({
   database: z.string().min(1, 'Database name is required.'),
   host: z.string().min(1, 'Host is required.'),
   password: z.string().min(1, 'Password is required.'),
-  port: z.coerce.number().min(1, 'Port is required.').default(5432),
+  port: z
+    .union([z.number(), z.string(), z.null(), z.undefined()])
+    .transform((value) => {
+      if (value === undefined || value === null || value === '') {
+        return undefined
+      }
+
+      return typeof value === 'number' ? value : Number(value)
+    }),
   username: z.string().min(1, 'Username is required.')
 })
 

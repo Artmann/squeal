@@ -52,7 +52,7 @@ export function DatabaseForm({
         database: defaultValues?.connectionInfo?.database ?? '',
         host: defaultValues?.connectionInfo?.host ?? '',
         password: defaultValues?.connectionInfo?.password ?? '',
-        port: defaultValues?.connectionInfo?.port ?? '',
+        port: defaultValues?.connectionInfo?.port,
         username: defaultValues?.connectionInfo?.username ?? ''
       },
       name: defaultValues?.name ?? ''
@@ -125,10 +125,7 @@ export function DatabaseForm({
       setConnectTestResult(undefined)
 
       apiClient
-        .testConnection({
-          ...connectionInfo,
-          port: Number(connectionInfo.port) || 5432
-        })
+        .testConnection(connectionInfo)
         .then((result) => {
           if (result.success) {
             console.log('Connection successful!')
@@ -222,8 +219,15 @@ export function DatabaseForm({
                     className="w-32"
                     placeholder="5432"
                     type="number"
-                    {...field}
-                    value={String(field.value ?? '')}
+                    name={field.name}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    value={field.value ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value
+
+                      field.onChange(value === '' ? undefined : Number(value))
+                    }}
                   />
                 </FormControl>
                 <FormMessage />
