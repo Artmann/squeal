@@ -32,7 +32,11 @@
       "Bash(where:*)",
       "Bash(ollama --version:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Bash(docker compose:*)",
+      "Bash(yarn seed)",
+      "Bash(docker exec:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
