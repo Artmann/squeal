@@ -1,10 +1,10 @@
 import dayjs from 'dayjs'
 import { Loader2Icon, PlayIcon } from 'lucide-react'
 import { ReactElement, useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import invariant from 'tiny-invariant'
 import { v7 } from 'uuid'
 
-import { QueryDto } from '@/main/queries'
 import { apiClient } from './api-client'
 import { AppSidebar } from './components/AppSidebar'
 import { DatabaseSelector } from './components/DatabaseSelector'
@@ -157,42 +157,44 @@ export function App(): ReactElement {
   )
 
   const handleRunQuery = async () => {
-    if (!currentWorksheet?.databaseId) {
-      console.error('No database selected')
-
-      return
-    }
-
     if (!activeStatement) {
       console.error('No active statement')
 
       return
     }
 
-    const queryData: QueryDto = {
-      content: activeStatement.text,
-      databaseId: currentWorksheet.databaseId,
-      error: null,
-      id: v7(),
-      queriedAt: Date.now(),
-      result: null,
-      worksheetId: openWorksheetId ?? ''
-    }
+    const queryId = v7()
+    const queriedAt = Date.now()
 
-    dispatch(queryCreated(queryData))
+    dispatch(
+      queryCreated({
+        content: activeStatement.text,
+        databaseId: currentWorksheet?.databaseId ?? '',
+        error: null,
+        id: queryId,
+        queriedAt,
+        result: null,
+        worksheetId: openWorksheetId ?? ''
+      })
+    )
 
     try {
       const data = await apiClient.createQuery({
-        content: queryData.content,
-        databaseId: queryData.databaseId,
-        id: queryData.id,
-        queriedAt: queryData.queriedAt,
-        worksheetId: queryData.worksheetId
+        content: activeStatement.text,
+        databaseId: currentWorksheet?.databaseId,
+        id: queryId,
+        queriedAt,
+        worksheetId: openWorksheetId ?? ''
       })
 
       dispatch(queryFetched(data.query))
     } catch (error) {
       console.error('Error running query:', error)
+
+      const message =
+        error instanceof Error ? error.message : 'Failed to run query'
+
+      toast.error('Query failed', { description: message })
     }
   }
 
@@ -215,11 +217,7 @@ export function App(): ReactElement {
           <header className="w-full p-3 border-b border-surface-0 flex items-center gap-3 justify-between">
             <Button
               className="cursor-pointer"
-              disabled={
-                isQueryRunning ||
-                !currentWorksheet?.databaseId ||
-                !activeStatement
-              }
+              disabled={isQueryRunning || !activeStatement}
               size="icon-sm"
               onClick={handleRunQuery}
             >
