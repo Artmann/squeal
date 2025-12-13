@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { CheckCircle2Icon } from 'lucide-react'
-import { ReactElement, useCallback, useState } from 'react'
+import { ReactElement, ReactNode, useCallback, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue
 } from './ui/select'
+import { Separator } from './ui/separator'
 
 type FormInput = z.input<typeof createDatabaseSchema>
 type FormOutput = z.output<typeof createDatabaseSchema>
@@ -188,108 +189,115 @@ export function DatabaseForm({
   return (
     <Form {...form}>
       <form
-        className="flex flex-col gap-4"
+        className="flex flex-col gap-8"
         onSubmit={form.handleSubmit(handleSubmit)}
       >
-        <div className="flex items-start gap-4">
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormLabel>Name</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="Analytics Replica"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle text="Connection Details" />
 
-          <FormField
-            control={form.control}
-            name="type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Type</FormLabel>
-                <Select
-                  value={field.value}
-                  onValueChange={field.onChange}
-                >
+            <FormSectionHeaderActions>
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="w-32 h-8 text-xs">
+                          <SelectValue placeholder="Database type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="postgres">PostgreSQL</SelectItem>
+                        <SelectItem value="mysql">MySQL</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </FormSectionHeaderActions>
+          </FormSectionHeader>
+
+          <Separator />
+
+          <div className="flex items-start gap-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem className="flex-1">
+                  <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <SelectTrigger className="w-36">
-                      <SelectValue placeholder="Database type" />
-                    </SelectTrigger>
+                    <Input
+                      placeholder="Analytics Replica"
+                      {...field}
+                    />
                   </FormControl>
-                  <SelectContent>
-                    <SelectItem value="postgres">PostgreSQL</SelectItem>
-                    <SelectItem value="mysql">MySQL</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
 
-        <div className="flex items-start gap-4">
+          <div className="flex items-start gap-4">
+            <FormField
+              control={form.control}
+              name="connectionInfo.host"
+              render={({ field }) => (
+                <FormItem className="flex-1">
+                  <FormLabel>Host</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="us-east-1.db.planetscale.com"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="connectionInfo.port"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Port</FormLabel>
+                  <FormControl>
+                    <Input
+                      className="w-32"
+                      placeholder={databaseType === 'mysql' ? '3306' : '5432'}
+                      type="number"
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      value={field.value == null ? '' : field.value}
+                      onChange={(event) => {
+                        const value = event.target.value
+
+                        field.onChange(value === '' ? undefined : Number(value))
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
           <FormField
             control={form.control}
-            name="connectionInfo.host"
-            render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormLabel>Host</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="us-east-1.db.planetscale.com"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="connectionInfo.port"
+            name="connectionInfo.database"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Port</FormLabel>
+                <FormLabel>Database</FormLabel>
                 <FormControl>
                   <Input
-                    className="w-32"
-                    placeholder={databaseType === 'mysql' ? '3306' : '5432'}
-                    type="number"
-                    name={field.name}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                    value={field.value == null ? '' : field.value}
-                    onChange={(event) => {
-                      const value = event.target.value
-
-                      field.onChange(value === '' ? undefined : Number(value))
-                    }}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <div className="flex items-start gap-4">
-          <FormField
-            control={form.control}
-            name="connectionInfo.username"
-            render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormLabel>Username</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="postgres"
+                    placeholder="store"
                     type="text"
                     {...field}
                   />
@@ -298,42 +306,53 @@ export function DatabaseForm({
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="connectionInfo.password"
-            render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormLabel>Password</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="password"
-                    type="password"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        </FormSection>
 
-        <FormField
-          control={form.control}
-          name="connectionInfo.database"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Database</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="store"
-                  type="text"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle text="Authentication" />
+          </FormSectionHeader>
+
+          <Separator />
+
+          <div className="flex items-start gap-4">
+            <FormField
+              control={form.control}
+              name="connectionInfo.username"
+              render={({ field }) => (
+                <FormItem className="flex-1">
+                  <FormLabel>Username</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="postgres"
+                      type="text"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="connectionInfo.password"
+              render={({ field }) => (
+                <FormItem className="flex-1">
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="password"
+                      type="password"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </FormSection>
 
         {connectTestResult && connectTestResult.success === true && (
           <Alert>
@@ -388,6 +407,30 @@ export function DatabaseForm({
       </form>
     </Form>
   )
+}
+
+function FormSection({ children }: { children: ReactNode }): ReactElement {
+  return <div className="flex flex-col gap-4">{children}</div>
+}
+
+function FormSectionHeader({
+  children
+}: {
+  children: ReactNode
+}): ReactElement {
+  return <div className="flex items-center justify-between">{children}</div>
+}
+
+function FormSectionTitle({ text }: { text: string }): ReactElement {
+  return <h2 className="text-sm font-medium">{text}</h2>
+}
+
+function FormSectionHeaderActions({
+  children
+}: {
+  children: ReactNode
+}): ReactElement {
+  return <div className="flex items-center gap-2">{children}</div>
 }
 
 type FieldErrors = Record<string, { message: string }>
