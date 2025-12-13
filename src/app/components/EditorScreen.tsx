@@ -45,10 +45,11 @@ export function EditorScreen({ databaseId }: EditorScreenProps): ReactElement {
       database: database.connectionInfo.database,
       host: database.connectionInfo.host,
       password: database.connectionInfo.password,
-      port: String(database.connectionInfo.port),
+      port: database.connectionInfo.port,
       username: database.connectionInfo.username
     },
-    name: database.name
+    name: database.name,
+    type: database.type
   }
 
   return (

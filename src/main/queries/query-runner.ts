@@ -3,11 +3,10 @@ import { z } from 'zod'
 
 import { database } from '@/database'
 import { databasesTable, queriesTable } from '@/database/schema'
-
-import {
-  PostgresAdapter,
-  PostgresConnectionInfo
-} from '../../databases/postgres-adapter'
+import type { DatabaseAdapter } from '@/databases/adapter'
+import { MysqlAdapter } from '@/databases/mysql-adapter'
+import { PostgresAdapter } from '@/databases/postgres-adapter'
+import type { ConnectionInfo, DatabaseType } from '@/databases/schemas'
 
 export const createQuerySchema = z.object({
   content: z.string(),
@@ -77,13 +76,16 @@ class QueryRunner {
         throw new Error(`Database not found: ${query.databaseId}`)
       }
 
-      const connectionInfo: PostgresConnectionInfo = JSON.parse(
+      const connectionInfo: ConnectionInfo = JSON.parse(
         databaseRecord.connectionInfo
       )
 
-      const result = await new PostgresAdapter(connectionInfo).runQuery(
-        query.content
+      const adapter = createAdapter(
+        databaseRecord.type as DatabaseType,
+        connectionInfo
       )
+
+      const result = await adapter.runQuery(query.content)
 
       console.log('Query result:', result)
       await database
@@ -103,6 +105,20 @@ class QueryRunner {
         .set({ error: errorMessage, finishedAt: Date.now() })
         .where(eq(queriesTable.id, query.id))
     }
+  }
+}
+
+function createAdapter(
+  type: DatabaseType,
+  connectionInfo: ConnectionInfo
+): DatabaseAdapter {
+  switch (type) {
+    case 'mysql':
+      return new MysqlAdapter(connectionInfo)
+    case 'postgres':
+      return new PostgresAdapter(connectionInfo)
+    default:
+      throw new Error(`Unsupported database type: ${type}`)
   }
 }
 

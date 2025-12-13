@@ -1,9 +1,9 @@
-import { PostgresConnectionInfo } from '@/databases/schemas'
+import { ConnectionInfo, DatabaseType } from '@/databases/schemas'
 
 export interface DatabaseDto {
-  connectionInfo: PostgresConnectionInfo
+  connectionInfo: ConnectionInfo
   createdAt: number
   id: string
   name: string
-  type: string
+  type: DatabaseType
 }

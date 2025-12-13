@@ -1,7 +1,8 @@
 import { CreateConnectionTestResponse } from '@/databases'
 import {
+  ConnectionInfo,
   CreateDatabaseRequest,
-  PostgresConnectionInfo
+  DatabaseType
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
@@ -92,10 +93,11 @@ export const apiClient = {
   },
 
   async testConnection(
-    connectionInfo: PostgresConnectionInfo
+    connectionInfo: ConnectionInfo,
+    type: DatabaseType
   ): Promise<CreateConnectionTestResponse> {
     const response = await fetch(`${baseUrl}/connection-tests`, {
-      body: JSON.stringify({ connectionInfo }),
+      body: JSON.stringify({ connectionInfo, type }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST'
     })

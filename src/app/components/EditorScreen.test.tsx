@@ -6,11 +6,12 @@ import { Provider } from 'react-redux'
 import { Toaster } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { DatabaseDto } from '@/glue/databases'
 import editorReducer from '../store/editor-slice'
 import uiReducer from '../store/ui-slice'
 import { EditorScreen } from './EditorScreen'
 
-const testDatabase = {
+const testDatabase: DatabaseDto = {
   connectionInfo: {
     database: 'testdb',
     host: 'localhost',

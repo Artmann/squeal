@@ -1,6 +1,6 @@
 import { database } from '@/database'
 import { databasesTable, worksheetsTable } from '@/database/schema'
-import { PostgresConnectionInfo } from '@/databases/schemas'
+import type { ConnectionInfo, DatabaseType } from '@/databases/schemas'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -13,8 +13,8 @@ export interface CreateDatabaseResult {
 export class DatabaseService {
   async createDatabase(
     name: string,
-    connectionInfo: PostgresConnectionInfo,
-    type: string
+    connectionInfo: ConnectionInfo,
+    type: DatabaseType
   ): Promise<CreateDatabaseResult> {
     const [record] = await database
       .insert(databasesTable)
@@ -78,13 +78,15 @@ export class DatabaseService {
   async updateDatabase(
     id: string,
     name: string,
-    connectionInfo: PostgresConnectionInfo
+    connectionInfo: ConnectionInfo,
+    type: DatabaseType
   ): Promise<DatabaseDto> {
     const [record] = await database
       .update(databasesTable)
       .set({
         connectionInfo: JSON.stringify(connectionInfo),
-        name
+        name,
+        type
       })
       .where(eq(databasesTable.id, id))
       .returning()
@@ -101,6 +103,6 @@ function transformDatabase(
     createdAt: record.createdAt,
     id: record.id,
     name: record.name,
-    type: record.type
+    type: record.type as DatabaseType
   }
 }
