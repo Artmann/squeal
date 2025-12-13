@@ -36,7 +36,8 @@
       "Bash(docker compose:*)",
       "Bash(yarn seed)",
       "Bash(docker exec:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(docker volume rm:*)"
     ],
     "deny": [],
     "ask": []

@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { CreateConnectionTestResponse } from '@/databases'
-import { createDatabaseSchema } from '@/databases/schemas'
+import { createDatabaseSchema, DatabaseType } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
@@ -22,6 +22,13 @@ import {
   FormMessage
 } from './ui/form'
 import { Input } from './ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from './ui/select'
 
 type FormInput = z.input<typeof createDatabaseSchema>
 type FormOutput = z.output<typeof createDatabaseSchema>
@@ -55,7 +62,8 @@ export function DatabaseForm({
         port: defaultValues?.connectionInfo?.port,
         username: defaultValues?.connectionInfo?.username ?? ''
       },
-      name: defaultValues?.name ?? ''
+      name: defaultValues?.name ?? '',
+      type: (defaultValues?.type as DatabaseType) ?? 'postgres'
     },
     resolver: zodResolver(createDatabaseSchema)
   })
@@ -66,6 +74,7 @@ export function DatabaseForm({
   const [isSaving, setIsSaving] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
 
+  const databaseType = form.watch('type')
   const connectionInfo = form.watch('connectionInfo')
 
   const handleSubmit = useCallback(
@@ -124,8 +133,16 @@ export function DatabaseForm({
       setIsTestingConnection(true)
       setConnectTestResult(undefined)
 
+      const normalizedConnectionInfo = {
+        ...connectionInfo,
+        port:
+          typeof connectionInfo.port === 'string'
+            ? parseInt(connectionInfo.port, 10) || undefined
+            : connectionInfo.port
+      }
+
       apiClient
-        .testConnection(connectionInfo)
+        .testConnection(normalizedConnectionInfo, databaseType)
         .then((result) => {
           if (result.success) {
             console.log('Connection successful!')
@@ -163,7 +180,7 @@ export function DatabaseForm({
           setIsTestingConnection(false)
         })
     },
-    [connectionInfo, form]
+    [connectionInfo, databaseType, form]
   )
 
   const isLoading = isSaving || isTestingConnection
@@ -174,22 +191,49 @@ export function DatabaseForm({
         className="flex flex-col gap-4"
         onSubmit={form.handleSubmit(handleSubmit)}
       >
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Name</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="Analytics Replica"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="flex items-start gap-4">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem className="flex-1">
+                <FormLabel>Name</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="Analytics Replica"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Type</FormLabel>
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <FormControl>
+                    <SelectTrigger className="w-36">
+                      <SelectValue placeholder="Database type" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="postgres">PostgreSQL</SelectItem>
+                    <SelectItem value="mysql">MySQL</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <div className="flex items-start gap-4">
           <FormField
@@ -217,12 +261,12 @@ export function DatabaseForm({
                 <FormControl>
                   <Input
                     className="w-32"
-                    placeholder="5432"
+                    placeholder={databaseType === 'mysql' ? '3306' : '5432'}
                     type="number"
                     name={field.name}
                     onBlur={field.onBlur}
                     ref={field.ref}
-                    value={field.value ?? ''}
+                    value={field.value == null ? '' : field.value}
                     onChange={(event) => {
                       const value = event.target.value
 

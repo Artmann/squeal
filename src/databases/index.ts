@@ -1,23 +1,35 @@
 import { Hono } from 'hono'
-import { z } from 'zod'
 
+import { MysqlAdapter } from './mysql-adapter'
 import { PostgresAdapter } from './postgres-adapter'
-import { createDatabaseSchema, postgresConnectionInfoSchema } from './schemas'
+import {
+  connectionTestSchema,
+  createDatabaseSchema,
+  type ConnectionInfo,
+  type DatabaseType
+} from './schemas'
 import { ValidationError } from '@/errors'
 import { DatabaseService } from '@/main/databases/database-service'
 
-export const supportedDatabases = ['postgres'] as const
+export const supportedDatabases = ['mysql', 'postgres'] as const
 
 export const connectionTestRouter = new Hono()
 export const databaseRouter = new Hono()
 
-const connectionTestSchema = z.object({
-  connectionInfo: postgresConnectionInfoSchema
-})
-
 export interface CreateConnectionTestResponse {
   message?: string
   success: boolean
+}
+
+function createAdapter(type: DatabaseType, connectionInfo: ConnectionInfo) {
+  switch (type) {
+    case 'mysql':
+      return new MysqlAdapter(connectionInfo)
+    case 'postgres':
+      return new PostgresAdapter(connectionInfo)
+    default:
+      throw new Error(`Unsupported database type: ${type}`)
+  }
 }
 
 connectionTestRouter.post('/', async (context) => {
@@ -28,7 +40,7 @@ connectionTestRouter.post('/', async (context) => {
     throw new ValidationError(result.error)
   }
 
-  const adapter = new PostgresAdapter(result.data.connectionInfo)
+  const adapter = createAdapter(result.data.type, result.data.connectionInfo)
 
   try {
     await adapter.testConnection()
@@ -57,7 +69,7 @@ databaseRouter.post('/', async (context) => {
   const { database, updatedWorksheet } = await service.createDatabase(
     result.data.name,
     result.data.connectionInfo,
-    'postgres'
+    result.data.type
   )
 
   return context.json({ database, updatedWorksheet }, 201)
@@ -76,7 +88,8 @@ databaseRouter.patch('/:id', async (context) => {
   const database = await service.updateDatabase(
     id,
     result.data.name,
-    result.data.connectionInfo
+    result.data.connectionInfo,
+    result.data.type
   )
 
   return context.json({ database })

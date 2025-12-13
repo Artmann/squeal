@@ -40,7 +40,8 @@ describe('apiClient', () => {
         port: 5432,
         username: 'admin'
       },
-      name: 'Test Database'
+      name: 'Test Database',
+      type: 'postgres' as const
     }
 
     it('should make a POST request to /databases', async () => {
@@ -243,12 +244,12 @@ describe('apiClient', () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(responseData))
 
-      await apiClient.testConnection(connectionInfo)
+      await apiClient.testConnection(connectionInfo, 'postgres')
 
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:7847/connection-tests',
         {
-          body: JSON.stringify({ connectionInfo }),
+          body: JSON.stringify({ connectionInfo, type: 'postgres' }),
           headers: { 'Content-Type': 'application/json' },
           method: 'POST'
         }
@@ -260,7 +261,7 @@ describe('apiClient', () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(responseData))
 
-      const result = await apiClient.testConnection(connectionInfo)
+      const result = await apiClient.testConnection(connectionInfo, 'postgres')
 
       expect(result).toEqual({ success: true })
     })
@@ -273,7 +274,7 @@ describe('apiClient', () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(responseData))
 
-      const result = await apiClient.testConnection(connectionInfo)
+      const result = await apiClient.testConnection(connectionInfo, 'mysql')
 
       expect(result).toEqual({
         message: 'Connection refused',

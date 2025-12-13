@@ -3,12 +3,12 @@ import { readdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { Client } from 'pg'
 
-const POSTGRES_URL =
+const postgresUrl =
   process.env.POSTGRES_URL ??
   'postgresql://postgres:postgres@localhost:5432/squeal'
 
 async function seedPostgres() {
-  const client = new Client({ connectionString: POSTGRES_URL })
+  const client = new Client({ connectionString: postgresUrl })
 
   try {
     await client.connect()

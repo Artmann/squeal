@@ -1,17 +1,16 @@
-import { Client, QueryResult } from 'pg'
+import { Client } from 'pg'
 
-import { PostgresConnectionInfo } from './schemas'
+import type { DatabaseAdapter, QueryResult } from './adapter'
+import type { PostgresConnectionInfo } from './schemas'
 
-export { PostgresConnectionInfo } from './schemas'
-
-export class PostgresAdapter {
+export class PostgresAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: PostgresConnectionInfo
 
   constructor(connectionInfo: PostgresConnectionInfo) {
     this.connectionInfo = connectionInfo
   }
 
-  async runQuery(query: string): Promise<QueryResult<any>> {
+  async runQuery(query: string): Promise<QueryResult> {
     const connectionString = createConnectionString(this.connectionInfo)
 
     const client = new Client({ connectionString })
@@ -27,7 +26,11 @@ export class PostgresAdapter {
 
       console.log(`  ✓ Query executed successfully\n`)
 
-      return result
+      return {
+        fields: result.fields.map((f) => ({ name: f.name })),
+        rowCount: result.rowCount ?? 0,
+        rows: result.rows as Record<string, unknown>[]
+      }
     } finally {
       await client.end()
     }
