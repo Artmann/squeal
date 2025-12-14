@@ -16,7 +16,10 @@ export function AppLoader({ children }: { children: ReactNode }): ReactNode {
 
           dispatch(schemaFetched({ databaseId: database.id, schema }))
         } catch (error) {
-          console.error(`Failed to load schema for database ${database.id}:`, error)
+          console.error(
+            `Failed to load schema for database ${database.id}:`,
+            error
+          )
         }
       }
     }

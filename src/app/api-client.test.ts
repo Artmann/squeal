@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { SchemaInfo } from '@/databases/adapter'
 import { ApiError } from '@/errors'
 import { WorksheetDto } from '@/glue/worksheets'
 import { QueryDto } from '@/main/queries'
@@ -115,6 +116,69 @@ describe('apiClient', () => {
           name: 'Name is required.'
         })
       }
+    })
+  })
+
+  describe('getDatabaseSchema', () => {
+    const databaseId = 'db-123'
+
+    it('should make a GET request to /databases/:id/schema', async () => {
+      const schema: SchemaInfo = {
+        databaseName: 'testdb',
+        tables: []
+      }
+
+      mockFetch.mockResolvedValueOnce(createMockResponse({ schema }))
+
+      await apiClient.getDatabaseSchema(databaseId)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:7847/databases/db-123/schema'
+      )
+    })
+
+    it('should return the schema from the response', async () => {
+      const schema: SchemaInfo = {
+        databaseName: 'testdb',
+        tables: [
+          {
+            columns: [
+              {
+                columnName: 'id',
+                dataType: 'integer',
+                defaultValue: null,
+                isNullable: false,
+                isPrimaryKey: true,
+                ordinalPosition: 1
+              }
+            ],
+            foreignKeys: [],
+            tableName: 'users',
+            tableSchema: 'public'
+          }
+        ]
+      }
+
+      mockFetch.mockResolvedValueOnce(createMockResponse({ schema }))
+
+      const result = await apiClient.getDatabaseSchema(databaseId)
+
+      expect(result).toEqual(schema)
+    })
+
+    it('should throw ApiError when database is not found', async () => {
+      const errorResponse = {
+        error: {
+          message: 'Database not found',
+          status: 404
+        }
+      }
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(errorResponse))
+
+      await expect(apiClient.getDatabaseSchema('nonexistent')).rejects.toThrow(
+        ApiError
+      )
     })
   })
 
