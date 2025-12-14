@@ -39,6 +39,7 @@ const createWindow = async () => {
     frame: false,
     height: 880,
     titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 12, y: 8 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js')
     },

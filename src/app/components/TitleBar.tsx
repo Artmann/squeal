@@ -3,6 +3,8 @@ import { ReactElement } from 'react'
 
 import { cn } from '@/app/lib/utils'
 
+const isMac = navigator.platform.toLowerCase().includes('mac')
+
 export function TitleBar(): ReactElement {
   const handleMinimize = () => {
     window.electron.windowMinimize()
@@ -17,27 +19,27 @@ export function TitleBar(): ReactElement {
   }
 
   return (
-    <div className="title-bar h-9 flex items-center justify-between bg-mantle border-b border-surface-0 select-none">
-      <div className="flex-1 drag-region h-full flex items-center px-3">
-        <span className="text-subtext-0 text-xs font-medium">Squeal</span>
-      </div>
+    <div className="title-bar h-7 flex items-center justify-between bg-mantle border-b border-surface-0 select-none">
+      <div className="flex-1 drag-region h-full flex items-center px-3" />
 
-      <div className="flex h-full">
-        <WindowButton onClick={handleMinimize}>
-          <MinusIcon className="size-4" />
-        </WindowButton>
+      {!isMac && (
+        <div className="flex h-full">
+          <WindowButton onClick={handleMinimize}>
+            <MinusIcon className="size-4" />
+          </WindowButton>
 
-        <WindowButton onClick={handleMaximize}>
-          <SquareIcon className="size-3" />
-        </WindowButton>
+          <WindowButton onClick={handleMaximize}>
+            <SquareIcon className="size-3" />
+          </WindowButton>
 
-        <WindowButton
-          className="hover:bg-red hover:text-base"
-          onClick={handleClose}
-        >
-          <XIcon className="size-4" />
-        </WindowButton>
-      </div>
+          <WindowButton
+            className="hover:bg-red hover:text-base"
+            onClick={handleClose}
+          >
+            <XIcon className="size-4" />
+          </WindowButton>
+        </div>
+      )}
     </div>
   )
 }
