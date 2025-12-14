@@ -4,7 +4,37 @@ export interface QueryResult {
   rows: Record<string, unknown>[]
 }
 
+export interface ColumnInfo {
+  columnName: string
+  dataType: string
+  defaultValue: string | null
+  isNullable: boolean
+  isPrimaryKey: boolean
+  ordinalPosition: number
+}
+
+export interface ForeignKeyInfo {
+  columnName: string
+  constraintName: string
+  referencedColumnName: string
+  referencedTableName: string
+  referencedTableSchema: string
+}
+
+export interface TableInfo {
+  columns: ColumnInfo[]
+  foreignKeys: ForeignKeyInfo[]
+  tableName: string
+  tableSchema: string
+}
+
+export interface SchemaInfo {
+  databaseName: string
+  tables: TableInfo[]
+}
+
 export interface DatabaseAdapter {
+  getSchema(): Promise<SchemaInfo>
   runQuery(query: string): Promise<QueryResult>
   testConnection(): Promise<void>
 }

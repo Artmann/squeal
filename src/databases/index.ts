@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import invariant from 'tiny-invariant'
 
 import { MysqlAdapter } from './mysql-adapter'
 import { PostgresAdapter } from './postgres-adapter'
@@ -8,7 +9,7 @@ import {
   type ConnectionInfo,
   type DatabaseType
 } from './schemas'
-import { ValidationError } from '@/errors'
+import { ApiError, ValidationError } from '@/errors'
 import { DatabaseService } from '@/main/databases/database-service'
 
 export const supportedDatabases = ['mysql', 'postgres'] as const
@@ -73,6 +74,28 @@ databaseRouter.post('/', async (context) => {
   )
 
   return context.json({ database, updatedWorksheet }, 201)
+})
+
+databaseRouter.get('/:id/schema', async (context) => {
+  const { id } = context.req.param()
+
+  invariant(id, 'Database ID is required')
+
+  const service = new DatabaseService()
+  const databaseRecord = await service.getDatabase(id)
+
+  if (!databaseRecord) {
+    throw new ApiError(404, 'Database not found')
+  }
+
+  const adapter = createAdapter(
+    databaseRecord.type,
+    databaseRecord.connectionInfo
+  )
+
+  const schema = await adapter.getSchema()
+
+  return context.json({ schema })
 })
 
 databaseRouter.patch('/:id', async (context) => {

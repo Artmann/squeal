@@ -66,6 +66,20 @@ export class DatabaseService {
     return { database: databaseDto, updatedWorksheet }
   }
 
+  async getDatabase(id: string): Promise<DatabaseDto | null> {
+    const [record] = await database
+      .select()
+      .from(databasesTable)
+      .where(and(eq(databasesTable.id, id), isNull(databasesTable.deletedAt)))
+      .limit(1)
+
+    if (!record) {
+      return null
+    }
+
+    return transformDatabase(record)
+  }
+
   async listDatabases(): Promise<DatabaseDto[]> {
     const records = await database
       .select()

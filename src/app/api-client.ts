@@ -1,4 +1,5 @@
 import { CreateConnectionTestResponse } from '@/databases'
+import { SchemaInfo } from '@/databases/adapter'
 import {
   ConnectionInfo,
   CreateDatabaseRequest,
@@ -15,6 +16,10 @@ const baseUrl = 'http://localhost:7847'
 interface CreateDatabaseResponse {
   database: DatabaseDto
   updatedWorksheet?: WorksheetDto
+}
+
+interface GetSchemaResponse {
+  schema: SchemaInfo
 }
 
 interface UpdateDatabaseResponse {
@@ -67,6 +72,13 @@ export const apiClient = {
     })
 
     return handleResponse<CreateDatabaseResponse>(response)
+  },
+
+  async getDatabaseSchema(databaseId: string): Promise<SchemaInfo> {
+    const response = await fetch(`${baseUrl}/databases/${databaseId}/schema`)
+    const data = await handleResponse<GetSchemaResponse>(response)
+
+    return data.schema
   },
 
   async createQuery(request: {

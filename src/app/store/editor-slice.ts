@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
+import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
 import { QueryDto } from '@/main/queries'
 import { WorksheetDto } from '@/glue/worksheets'
@@ -9,6 +10,7 @@ export interface EditorState {
   databaseSearchQuery: string
   openWorksheetId?: string
   queries: QueryDto[]
+  schemas: Record<string, SchemaInfo>
   worksheets: WorksheetDto[]
 }
 
@@ -16,6 +18,7 @@ const initialState: EditorState = {
   databases: [],
   databaseSearchQuery: '',
   queries: [],
+  schemas: {},
   worksheets: []
 }
 
@@ -76,6 +79,12 @@ export const editorSlice = createSlice({
         state.worksheets[index] = action.payload
       }
     },
+    schemaFetched: (
+      state,
+      action: PayloadAction<{ databaseId: string; schema: SchemaInfo }>
+    ) => {
+      state.schemas[action.payload.databaseId] = action.payload.schema
+    },
     workspaceSelected: (state, action: PayloadAction<string>) => {
       console.log('Selecting worksheet', action.payload)
 
@@ -91,6 +100,7 @@ export const {
   queriesFetched,
   queryCreated,
   queryFetched,
+  schemaFetched,
   worksheetUpdated,
   workspaceSelected
 } = editorSlice.actions
