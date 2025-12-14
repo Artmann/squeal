@@ -120,7 +120,9 @@ describe('MysqlAdapter', () => {
 
       const adapter = new MysqlAdapter(connectionInfo)
 
-      await expect(adapter.runQuery('INVALID SQL')).rejects.toThrow('Query failed')
+      await expect(adapter.runQuery('INVALID SQL')).rejects.toThrow(
+        'Query failed'
+      )
       expect(mockEnd).toHaveBeenCalled()
     })
   })

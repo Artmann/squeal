@@ -68,6 +68,14 @@
   --color-teal: var(--teal);
   --color-yellow: var(--yellow);
 
+  /* Shadcn/ui compatibility */
+  --color-accent: var(--surface-0);
+  --color-accent-foreground: var(--text);
+  --color-border: var(--surface-0);
+  --color-muted-foreground: var(--subtext-0);
+  --color-popover: var(--base);
+  --color-popover-foreground: var(--text);
+
   /* Radius */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;

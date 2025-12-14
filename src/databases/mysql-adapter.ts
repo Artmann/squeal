@@ -23,7 +23,9 @@ export class MysqlAdapter implements DatabaseAdapter {
       console.log(`  ✓ Query executed successfully\n`)
 
       return {
-        fields: Array.isArray(fields) ? fields.map((f) => ({ name: f.name })) : [],
+        fields: Array.isArray(fields)
+          ? fields.map((f) => ({ name: f.name }))
+          : [],
         rowCount: Array.isArray(rows) ? rows.length : 0,
         rows: Array.isArray(rows) ? (rows as Record<string, unknown>[]) : []
       }
