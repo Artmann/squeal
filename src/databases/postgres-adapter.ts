@@ -1,6 +1,11 @@
 import { Client } from 'pg'
 
-import type { DatabaseAdapter, QueryResult } from './adapter'
+import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
+import {
+  postgresColumnsQuery,
+  postgresForeignKeysQuery,
+  transformToSchemaInfo
+} from './schema-provider'
 import type { PostgresConnectionInfo } from './schemas'
 
 export class PostgresAdapter implements DatabaseAdapter {
@@ -8,6 +13,26 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   constructor(connectionInfo: PostgresConnectionInfo) {
     this.connectionInfo = connectionInfo
+  }
+
+  async getSchema(): Promise<SchemaInfo> {
+    const connectionString = createConnectionString(this.connectionInfo)
+    const client = new Client({ connectionString })
+
+    try {
+      await client.connect()
+
+      const columnsResult = await client.query(postgresColumnsQuery)
+      const foreignKeysResult = await client.query(postgresForeignKeysQuery)
+
+      return transformToSchemaInfo(
+        this.connectionInfo.database,
+        columnsResult.rows,
+        foreignKeysResult.rows
+      )
+    } finally {
+      await client.end()
+    }
   }
 
   async runQuery(query: string): Promise<QueryResult> {

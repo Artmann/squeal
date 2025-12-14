@@ -1,6 +1,13 @@
 import mysql from 'mysql2/promise'
 
-import type { DatabaseAdapter, QueryResult } from './adapter'
+import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
+import {
+  type ColumnRow,
+  type ForeignKeyRow,
+  mysqlColumnsQuery,
+  mysqlForeignKeysQuery,
+  transformToSchemaInfo
+} from './schema-provider'
 import type { MysqlConnectionInfo } from './schemas'
 
 export class MysqlAdapter implements DatabaseAdapter {
@@ -8,6 +15,23 @@ export class MysqlAdapter implements DatabaseAdapter {
 
   constructor(connectionInfo: MysqlConnectionInfo) {
     this.connectionInfo = connectionInfo
+  }
+
+  async getSchema(): Promise<SchemaInfo> {
+    const connection = await mysql.createConnection(this.getConnectionConfig())
+
+    try {
+      const [columnRows] = await connection.query(mysqlColumnsQuery)
+      const [foreignKeyRows] = await connection.query(mysqlForeignKeysQuery)
+
+      return transformToSchemaInfo(
+        this.connectionInfo.database,
+        columnRows as ColumnRow[],
+        foreignKeyRows as ForeignKeyRow[]
+      )
+    } finally {
+      await connection.end()
+    }
   }
 
   async runQuery(query: string): Promise<QueryResult> {

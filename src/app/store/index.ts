@@ -22,6 +22,7 @@ export function createStore() {
         databaseSearchQuery: '',
         openWorksheetId: worksheets[0]?.id,
         queries: [],
+        schemas: {},
         worksheets
       },
       ui: {
