@@ -186,11 +186,9 @@ describe('transformToSchemaInfo', () => {
 
     const result = transformToSchemaInfo('testdb', columnRows, [])
 
-    expect(result.tables.map((t) => `${t.tableSchema}.${t.tableName}`)).toEqual([
-      'admin.banana',
-      'public.apple',
-      'public.zebra'
-    ])
+    expect(result.tables.map((t) => `${t.tableSchema}.${t.tableName}`)).toEqual(
+      ['admin.banana', 'public.apple', 'public.zebra']
+    )
   })
 
   it('ignores foreign keys for tables not in columns', () => {

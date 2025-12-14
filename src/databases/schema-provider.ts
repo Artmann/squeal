@@ -1,4 +1,9 @@
-import type { ColumnInfo, ForeignKeyInfo, SchemaInfo, TableInfo } from './adapter'
+import type {
+  ColumnInfo,
+  ForeignKeyInfo,
+  SchemaInfo,
+  TableInfo
+} from './adapter'
 
 export const postgresColumnsQuery = `
 SELECT
