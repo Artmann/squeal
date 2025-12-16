@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { sql } from 'drizzle-orm'
 import type { Hono } from 'hono'
 
-import {
-  getTestDatabase,
-  mockAdapterConfig,
-  resetTestDatabase,
-  setupApiMocks
-} from '@/test/api-test-helper'
+import { resetTestDatabase, setupApiMocks } from '@/test/api-test-helper'
 
 setupApiMocks()
 

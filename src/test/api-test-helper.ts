@@ -1,7 +1,6 @@
 import { drizzle, LibSQLDatabase } from 'drizzle-orm/libsql'
 import { sql } from 'drizzle-orm'
-import { beforeEach, vi } from 'vitest'
-import type { Hono } from 'hono'
+import { vi } from 'vitest'
 
 import type { QueryResult, SchemaInfo } from '@/databases/adapter'
 
@@ -22,7 +21,9 @@ export const mockAdapterConfig = {
       { id: 2, name: 'Bob' }
     ]
   }),
-  testConnection: async (): Promise<void> => {}
+  testConnection: async (): Promise<void> => {
+    // Default: connection succeeds.
+  }
 }
 
 /**
@@ -87,7 +88,9 @@ export async function resetTestDatabase(): Promise<void> {
       { id: 2, name: 'Bob' }
     ]
   })
-  mockAdapterConfig.testConnection = async () => {}
+  mockAdapterConfig.testConnection = async () => {
+    // Default: connection succeeds.
+  }
 }
 
 /**

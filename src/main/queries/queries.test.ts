@@ -4,7 +4,6 @@ import type { Hono } from 'hono'
 
 import {
   getTestDatabase,
-  mockAdapterConfig,
   resetTestDatabase,
   setupApiMocks
 } from '@/test/api-test-helper'
