@@ -1,25 +1,109 @@
 import { drizzle, LibSQLDatabase } from 'drizzle-orm/libsql'
 import { sql } from 'drizzle-orm'
+import { beforeEach, vi } from 'vitest'
+import type { Hono } from 'hono'
 
-export interface TestContext {
-  database: LibSQLDatabase
+import type { QueryResult, SchemaInfo } from '@/databases/adapter'
+
+// The test database instance that will be used by tests.
+let testDatabase: LibSQLDatabase
+
+// Mock adapter configuration that can be changed per test.
+export const mockAdapterConfig = {
+  getSchema: async (): Promise<SchemaInfo> => ({
+    databaseName: 'test_db',
+    tables: []
+  }),
+  runQuery: async (): Promise<QueryResult> => ({
+    fields: [{ name: 'id' }, { name: 'name' }],
+    rowCount: 2,
+    rows: [
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' }
+    ]
+  }),
+  testConnection: async (): Promise<void> => {}
+}
+
+/**
+ * Sets up the test environment with mocks.
+ * Call this at the top of your test file, before any imports that use the database.
+ */
+export function setupApiMocks() {
+  // Mock the database module to use our test database.
+  vi.mock('@/database', () => ({
+    get database() {
+      return testDatabase
+    }
+  }))
+
+  // Mock the database adapters.
+  vi.mock('@/databases/postgres-adapter', () => ({
+    PostgresAdapter: class {
+      async getSchema() {
+        return mockAdapterConfig.getSchema()
+      }
+      async runQuery() {
+        return mockAdapterConfig.runQuery()
+      }
+      async testConnection() {
+        return mockAdapterConfig.testConnection()
+      }
+    }
+  }))
+
+  vi.mock('@/databases/mysql-adapter', () => ({
+    MysqlAdapter: class {
+      async getSchema() {
+        return mockAdapterConfig.getSchema()
+      }
+      async runQuery() {
+        return mockAdapterConfig.runQuery()
+      }
+      async testConnection() {
+        return mockAdapterConfig.testConnection()
+      }
+    }
+  }))
+}
+
+/**
+ * Creates a fresh in-memory database and resets the mock adapter config.
+ * Call this in beforeEach to ensure test isolation.
+ */
+export async function resetTestDatabase(): Promise<void> {
+  testDatabase = await createTestDatabase()
+
+  // Reset mock adapter config to defaults.
+  mockAdapterConfig.getSchema = async () => ({
+    databaseName: 'test_db',
+    tables: []
+  })
+  mockAdapterConfig.runQuery = async () => ({
+    fields: [{ name: 'id' }, { name: 'name' }],
+    rowCount: 2,
+    rows: [
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' }
+    ]
+  })
+  mockAdapterConfig.testConnection = async () => {}
+}
+
+/**
+ * Returns the current test database instance.
+ * Use this to insert test data or verify database state.
+ */
+export function getTestDatabase(): LibSQLDatabase {
+  return testDatabase
 }
 
 /**
  * Creates a unique in-memory SQLite database for testing.
- * Each call returns a fresh database instance with initialized schema.
  */
-export async function createTestDatabase(): Promise<LibSQLDatabase> {
-  // Use :memory: for in-memory SQLite with libsql.
-  // Each call creates a new isolated in-memory database.
+async function createTestDatabase(): Promise<LibSQLDatabase> {
   const database = drizzle(':memory:')
 
-  await initializeTestSchema(database)
-
-  return database
-}
-
-async function initializeTestSchema(database: LibSQLDatabase): Promise<void> {
   await database.run(sql`
     CREATE TABLE IF NOT EXISTS chats (
       id TEXT PRIMARY KEY NOT NULL,
@@ -74,4 +158,6 @@ async function initializeTestSchema(database: LibSQLDatabase): Promise<void> {
       name TEXT NOT NULL DEFAULT 'Untitled Worksheet'
     )
   `)
+
+  return database
 }

@@ -13,26 +13,42 @@ import { worksheetRouter } from './main/worksheets'
 
 export const apiPort = 7847
 
-const app = new Hono()
+export interface CreateAppOptions {
+  enableLogging?: boolean
+}
 
-app.use('*', requestId())
-app.use('*', logger())
-app.use('*', prettyJSON())
-app.use('*', cors())
+export function createApp(options: CreateAppOptions = {}) {
+  const { enableLogging = true } = options
 
-app.get('/health', (c) => {
-  return c.json({ status: 'ok' })
-})
+  const app = new Hono()
 
-app.route('/connection-tests', connectionTestRouter)
-app.route('/databases', databaseRouter)
-app.route('/chat', chatRouter)
-app.route('/queries', queryRouter)
-app.route('/worksheets', worksheetRouter)
+  app.use('*', requestId())
 
-app.onError(errorHandler)
+  if (enableLogging) {
+    app.use('*', logger())
+  }
+
+  app.use('*', prettyJSON())
+  app.use('*', cors())
+
+  app.get('/health', (c) => {
+    return c.json({ status: 'ok' })
+  })
+
+  app.route('/connection-tests', connectionTestRouter)
+  app.route('/databases', databaseRouter)
+  app.route('/chat', chatRouter)
+  app.route('/queries', queryRouter)
+  app.route('/worksheets', worksheetRouter)
+
+  app.onError(errorHandler)
+
+  return app
+}
 
 export function startServer(port = 3000) {
+  const app = createApp()
+
   serve({
     fetch: app.fetch,
     port
