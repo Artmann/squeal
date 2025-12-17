@@ -98,7 +98,7 @@ export function DatabaseExplorer(): ReactElement {
                       )}
                     />
                     <Database className="size-3" />
-                    <span>{database.name}</span>
+                    <span className="text-xs">{database.name}</span>
                   </Button>
                 </ContextMenuTrigger>
 
