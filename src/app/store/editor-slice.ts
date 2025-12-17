@@ -72,6 +72,19 @@ export const editorSlice = createSlice({
         state.worksheets[index].content = action.payload.content
       }
     },
+    worksheetCreated: (state, action: PayloadAction<WorksheetDto>) => {
+      state.worksheets.push(action.payload)
+      state.openWorksheetId = action.payload.id
+    },
+    worksheetRemoved: (state, action: PayloadAction<string>) => {
+      state.worksheets = state.worksheets.filter(
+        (worksheet) => worksheet.id !== action.payload
+      )
+
+      if (state.openWorksheetId === action.payload) {
+        state.openWorksheetId = state.worksheets[0]?.id
+      }
+    },
     worksheetUpdated: (state, action: PayloadAction<WorksheetDto>) => {
       const index = state.worksheets.findIndex(
         (worksheet) => worksheet.id === action.payload.id
@@ -106,6 +119,8 @@ export const {
   queryCreated,
   queryFetched,
   schemaFetched,
+  worksheetCreated,
+  worksheetRemoved,
   worksheetSearchQueryUpdated,
   worksheetSelected,
   worksheetUpdated
