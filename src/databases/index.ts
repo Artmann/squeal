@@ -93,9 +93,19 @@ databaseRouter.get('/:id/schema', async (context) => {
     databaseRecord.connectionInfo
   )
 
-  const schema = await adapter.getSchema()
+  try {
+    const schema = await adapter.getSchema()
 
-  return context.json({ schema })
+    return context.json({ schema })
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : 'Failed to connect to database'
+
+    throw new ApiError(
+      503,
+      `Failed to load schema for "${databaseRecord.name}": ${reason}`
+    )
+  }
 })
 
 databaseRouter.patch('/:id', async (context) => {

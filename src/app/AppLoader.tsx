@@ -1,4 +1,5 @@
 import { ReactNode, useEffect } from 'react'
+import { toast } from 'sonner'
 
 import { apiClient } from './api-client'
 import { useAppDispatch, useAppSelector } from './store'
@@ -16,6 +17,10 @@ export function AppLoader({ children }: { children: ReactNode }): ReactNode {
 
           dispatch(schemaFetched({ databaseId: database.id, schema }))
         } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Unknown error'
+
+          toast.error('Database connection error', { description: message })
           console.error(
             `Failed to load schema for database ${database.id}:`,
             error
