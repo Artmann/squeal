@@ -22,6 +22,13 @@ export function WorksheetExplorer(): ReactElement {
     (state) => state.editor.worksheetSearchQuery ?? ''
   )
 
+  const filteredWorksheets = worksheets.filter((worksheet) =>
+    worksheet.name.toLowerCase().includes(worksheetSearchQuery.toLowerCase())
+  )
+  const sortedWorksheets = filteredWorksheets.sort((a, b) =>
+    a.createdAt > b.createdAt ? -1 : 1
+  )
+
   const handleSelectWorksheet = useCallback(
     (worksheetId: string) => {
       dispatch(editorSlice.actions.worksheetSelected(worksheetId))
@@ -79,7 +86,7 @@ export function WorksheetExplorer(): ReactElement {
       </div>
 
       <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
-        {worksheets.map((worksheet) => (
+        {sortedWorksheets.map((worksheet) => (
           <Button
             key={worksheet.id}
             className={cn(
