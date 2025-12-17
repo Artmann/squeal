@@ -3,17 +3,17 @@ import { ReactElement, useCallback } from 'react'
 
 import { editorSlice } from '../store/editor-slice'
 import { uiActions } from '../store/ui-slice'
+import { cn } from '../lib/utils'
+import { useAppDispatch, useAppSelector } from '../store'
+import { expandDatabase, expandTable } from '../store/database-explorer-slice'
+import { SearchInput } from './SearchInput'
+import { Button } from './ui/button'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
-import { useAppDispatch, useAppSelector } from '../store'
-import { Button } from './ui/button'
-import { expandDatabase, expandTable } from '../store/database-explorer-slice'
-import { cn } from '../lib/utils'
-import { SearchInput } from './SearchInput'
 
 export function DatabaseExplorer(): ReactElement {
   const dispatch = useAppDispatch()
