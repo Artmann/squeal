@@ -1,10 +1,4 @@
-import {
-  ChevronRight,
-  Database,
-  Pencil,
-  SearchIcon,
-  Table2Icon
-} from 'lucide-react'
+import { ChevronRight, Database, Pencil, Table2Icon } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
 import { editorSlice } from '../store/editor-slice'
@@ -15,11 +9,11 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
-import { Input } from './ui/input'
 import { useAppDispatch, useAppSelector } from '../store'
 import { Button } from './ui/button'
 import { expandDatabase, expandTable } from '../store/database-explorer-slice'
 import { cn } from '../lib/utils'
+import { SearchInput } from './SearchInput'
 
 export function DatabaseExplorer(): ReactElement {
   const dispatch = useAppDispatch()
@@ -47,33 +41,17 @@ export function DatabaseExplorer(): ReactElement {
     [dispatch]
   )
 
-  const handleSearchChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const query = event.target.value
-
-      dispatch(editorSlice.actions.databaseSearchQueryUpdated(query))
-    },
-    [dispatch]
-  )
-
-  console.log({ schemas })
-
   return (
     <div className="flex flex-col h-full p-3">
       <h2 className="text-xs font-medium mb-2">Database Explorer</h2>
 
       <div className="mb-2">
-        <div className="mb-2 relative">
-          <Input
-            className="pl-7 py-0"
-            placeholder="Search..."
-            value={databaseSearchQuery}
-            style={{ fontSize: '12px' }}
-            onChange={handleSearchChange}
-          />
-
-          <SearchIcon className="absolute size-3 left-3 top-1/2 -translate-y-1/2" />
-        </div>
+        <SearchInput
+          value={databaseSearchQuery}
+          onChange={(newValue) =>
+            dispatch(editorSlice.actions.databaseSearchQueryUpdated(newValue))
+          }
+        />
       </div>
 
       <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
