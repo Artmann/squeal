@@ -1,11 +1,16 @@
-import { FileBracesIcon } from 'lucide-react'
+import dayjs from 'dayjs'
+import { FileBracesIcon, PlusIcon } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
+import { toast } from 'sonner'
+import { v4 as uuid } from 'uuid'
 
+import { apiClient } from '../api-client'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import { editorSlice } from '../store/editor-slice'
-import { SearchInput } from './SearchInput'
 import { Button } from './ui/button'
+import { SearchInput } from './SearchInput'
+import { WorksheetDto } from '@/glue/worksheets'
 
 export function WorksheetExplorer(): ReactElement {
   const dispatch = useAppDispatch()
@@ -24,9 +29,45 @@ export function WorksheetExplorer(): ReactElement {
     [dispatch]
   )
 
+  const handleNewWorksheet = useCallback(async () => {
+    const optimisticId = uuid()
+    const name = `Worksheet ${dayjs().format('MM/DD/YYYY HH:mm:ss')}`
+
+    const optimisticWorksheet: WorksheetDto = {
+      content: '',
+      createdAt: Date.now(),
+      databaseId: null,
+      id: optimisticId,
+      name
+    }
+
+    dispatch(editorSlice.actions.worksheetCreated(optimisticWorksheet))
+
+    try {
+      await apiClient.createWorksheet(name)
+    } catch (error) {
+      dispatch(editorSlice.actions.worksheetRemoved(optimisticId))
+
+      const message = error instanceof Error ? error.message : 'Unknown error'
+
+      toast.error('Failed to create worksheet', { description: message })
+    }
+  }, [dispatch])
+
   return (
     <div className="flex flex-col h-full">
-      <h2 className="text-xs font-medium mb-2">Worksheets</h2>
+      <div className="mb-2 flex justify-between items-center">
+        <h2 className="text-xs font-medium">Worksheets</h2>
+        <div>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={handleNewWorksheet}
+          >
+            <PlusIcon className="size-3" />
+          </Button>
+        </div>
+      </div>
 
       <div className="mb-2">
         <SearchInput
