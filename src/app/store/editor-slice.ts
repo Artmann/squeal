@@ -12,6 +12,7 @@ export interface EditorState {
   queries: QueryDto[]
   schemas: Record<string, SchemaInfo>
   worksheets: WorksheetDto[]
+  worksheetSearchQuery: string
 }
 
 const initialState: EditorState = {
@@ -19,7 +20,8 @@ const initialState: EditorState = {
   databaseSearchQuery: '',
   queries: [],
   schemas: {},
-  worksheets: []
+  worksheets: [],
+  worksheetSearchQuery: ''
 }
 
 export const editorSlice = createSlice({
@@ -85,10 +87,13 @@ export const editorSlice = createSlice({
     ) => {
       state.schemas[action.payload.databaseId] = action.payload.schema
     },
-    workspaceSelected: (state, action: PayloadAction<string>) => {
+    worksheetSelected: (state, action: PayloadAction<string>) => {
       console.log('Selecting worksheet', action.payload)
 
       state.openWorksheetId = action.payload
+    },
+    worksheetSearchQueryUpdated: (state, action: PayloadAction<string>) => {
+      state.worksheetSearchQuery = action.payload
     }
   }
 })
@@ -101,8 +106,9 @@ export const {
   queryCreated,
   queryFetched,
   schemaFetched,
-  worksheetUpdated,
-  workspaceSelected
+  worksheetSearchQueryUpdated,
+  worksheetSelected,
+  worksheetUpdated
 } = editorSlice.actions
 
 export default editorSlice.reducer
