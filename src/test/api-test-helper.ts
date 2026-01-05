@@ -66,6 +66,20 @@ export function setupApiMocks() {
       }
     }
   }))
+
+  vi.mock('@/databases/sqlite-adapter', () => ({
+    SqliteAdapter: class {
+      async getSchema() {
+        return mockAdapterConfig.getSchema()
+      }
+      async runQuery() {
+        return mockAdapterConfig.runQuery()
+      }
+      async testConnection() {
+        return mockAdapterConfig.testConnection()
+      }
+    }
+  }))
 }
 
 /**
