@@ -8,7 +8,7 @@ import { Client } from 'pg'
 
 const postgresUrl =
   process.env.POSTGRES_URL ??
-  'postgresql://postgres:postgres@localhost:5432/squeal'
+  'postgresql://postgres:postgres@localhost:5433/squeal'
 
 async function seedPostgres() {
   const client = new Client({ connectionString: postgresUrl })
@@ -71,7 +71,8 @@ async function seedMysql() {
 }
 
 const sqlitePath =
-  process.env.SQLITE_PATH ?? join(__dirname, '..', 'seed-sqlite', 'pagila.sqlite')
+  process.env.SQLITE_PATH ??
+  join(__dirname, '..', 'seed-sqlite', 'pagila.sqlite')
 
 async function seedSqlite() {
   console.log('Seeding SQLite database...')
