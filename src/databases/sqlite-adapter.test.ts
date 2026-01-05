@@ -133,8 +133,22 @@ describe('SqliteAdapter', () => {
         .mockResolvedValueOnce({
           columns: ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'],
           rows: [
-            { cid: 0, name: 'id', type: 'INTEGER', notnull: 1, dflt_value: null, pk: 1 },
-            { cid: 1, name: 'name', type: 'TEXT', notnull: 0, dflt_value: null, pk: 0 }
+            {
+              cid: 0,
+              name: 'id',
+              type: 'INTEGER',
+              notnull: 1,
+              dflt_value: null,
+              pk: 1
+            },
+            {
+              cid: 1,
+              name: 'name',
+              type: 'TEXT',
+              notnull: 0,
+              dflt_value: null,
+              pk: 0
+            }
           ]
         })
         .mockResolvedValueOnce({
@@ -144,9 +158,30 @@ describe('SqliteAdapter', () => {
         .mockResolvedValueOnce({
           columns: ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk'],
           rows: [
-            { cid: 0, name: 'id', type: 'INTEGER', notnull: 1, dflt_value: null, pk: 1 },
-            { cid: 1, name: 'user_id', type: 'INTEGER', notnull: 0, dflt_value: null, pk: 0 },
-            { cid: 2, name: 'title', type: 'TEXT', notnull: 0, dflt_value: "'Untitled'", pk: 0 }
+            {
+              cid: 0,
+              name: 'id',
+              type: 'INTEGER',
+              notnull: 1,
+              dflt_value: null,
+              pk: 1
+            },
+            {
+              cid: 1,
+              name: 'user_id',
+              type: 'INTEGER',
+              notnull: 0,
+              dflt_value: null,
+              pk: 0
+            },
+            {
+              cid: 2,
+              name: 'title',
+              type: 'TEXT',
+              notnull: 0,
+              dflt_value: "'Untitled'",
+              pk: 0
+            }
           ]
         })
         .mockResolvedValueOnce({

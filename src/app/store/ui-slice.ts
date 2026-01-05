@@ -1,8 +1,8 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 export interface EditorScreen {
-  databaseId: string
-  type: 'edit-database'
+  databaseId?: string
+  type: 'edit-database' | 'create-database'
 }
 
 export interface UiState {
@@ -24,6 +24,12 @@ export const uiSlice = createSlice({
 
     gettingStartedCompleted: (state) => {
       state.showGettingStartedScreen = false
+    },
+
+    openCreateDatabase: (state) => {
+      state.editorScreen = {
+        type: 'create-database'
+      }
     },
 
     openEditDatabase: (state, action: PayloadAction<string>) => {

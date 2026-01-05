@@ -202,8 +202,13 @@ export function App(): ReactElement {
     <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
       {uiState.showGettingStartedScreen && <GettingStartedScreen />}
 
-      {uiState.editorScreen?.type === 'edit-database' && (
-        <EditorScreen databaseId={uiState.editorScreen.databaseId} />
+      {uiState.editorScreen && (
+        <EditorScreen
+          databaseId={uiState.editorScreen.databaseId}
+          mode={
+            uiState.editorScreen.type === 'create-database' ? 'create' : 'edit'
+          }
+        />
       )}
 
       <TitleBar />

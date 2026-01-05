@@ -191,7 +191,10 @@ export function DatabaseForm({
       }
 
       apiClient
-        .testConnection(normalizedConnectionInfo as ConnectionInfo, databaseType)
+        .testConnection(
+          normalizedConnectionInfo as ConnectionInfo,
+          databaseType
+        )
         .then((result) => {
           if (result.success) {
             console.log('Connection successful!')
@@ -352,7 +355,9 @@ export function DatabaseForm({
                       <FormControl>
                         <Input
                           className="w-32"
-                          placeholder={databaseType === 'mysql' ? '3306' : '5432'}
+                          placeholder={
+                            databaseType === 'mysql' ? '3306' : '5432'
+                          }
                           type="number"
                           name={field.name}
                           onBlur={field.onBlur}

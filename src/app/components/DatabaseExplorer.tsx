@@ -1,4 +1,4 @@
-import { ChevronRight, Database, Pencil, Table2Icon } from 'lucide-react'
+import { ChevronRight, Database, Pencil, Plus, Table2Icon } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
 import { editorSlice } from '../store/editor-slice'
@@ -41,9 +41,23 @@ export function DatabaseExplorer(): ReactElement {
     [dispatch]
   )
 
+  const handleCreateDatabase = useCallback(() => {
+    dispatch(uiActions.openCreateDatabase())
+  }, [dispatch])
+
   return (
     <div className="flex flex-col h-full p-3">
-      <h2 className="text-xs font-medium mb-2">Database Explorer</h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xs font-medium">Database Explorer</h2>
+
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          onClick={handleCreateDatabase}
+        >
+          <Plus className="size-3" />
+        </Button>
+      </div>
 
       <div className="mb-2">
         <SearchInput
@@ -82,10 +96,10 @@ export function DatabaseExplorer(): ReactElement {
 
                 <ContextMenuContent>
                   <ContextMenuItem
-                    className="flex items-center gap-3 min-w-32"
+                    className="flex items-center gap-2 min-w-32 text-xs"
                     onClick={() => handleEditDatabase(database.id)}
                   >
-                    <Pencil className="size-4" />
+                    <Pencil className="size-3" />
                     Edit
                   </ContextMenuItem>
                 </ContextMenuContent>
@@ -142,9 +156,17 @@ export function DatabaseExplorer(): ReactElement {
         })}
 
         {filteredDatabases.length === 0 && (
-          <p className="text-xs text-muted-foreground mt-2">
-            No databases found.
-          </p>
+          <div className="text-xs text-muted-foreground mt-2">
+            <p>No databases found.</p>
+
+            <Button
+              className="mt-2 h-auto p-0 text-xs"
+              variant="link"
+              onClick={handleCreateDatabase}
+            >
+              Add a database
+            </Button>
+          </div>
         )}
       </div>
     </div>
