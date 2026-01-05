@@ -1,7 +1,12 @@
 import { createClient } from '@libsql/client'
 import { pathToFileURL } from 'url'
 
-import type { ColumnInfo, DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
+import type {
+  ColumnInfo,
+  DatabaseAdapter,
+  QueryResult,
+  SchemaInfo
+} from './adapter'
 import type { SqliteConnectionInfo } from './schemas'
 
 export class SqliteAdapter implements DatabaseAdapter {
@@ -109,14 +114,18 @@ export class SqliteAdapter implements DatabaseAdapter {
   private async getTableForeignKeys(
     client: ReturnType<typeof createClient>,
     tableName: string
-  ): Promise<{
-    columnName: string
-    constraintName: string
-    referencedColumnName: string
-    referencedTableName: string
-    referencedTableSchema: string
-  }[]> {
-    const result = await client.execute(`PRAGMA foreign_key_list("${tableName}")`)
+  ): Promise<
+    {
+      columnName: string
+      constraintName: string
+      referencedColumnName: string
+      referencedTableName: string
+      referencedTableSchema: string
+    }[]
+  > {
+    const result = await client.execute(
+      `PRAGMA foreign_key_list("${tableName}")`
+    )
 
     return result.rows.map((row) => ({
       columnName: row.from as string,

@@ -2,21 +2,29 @@ import { XIcon } from 'lucide-react'
 import { ReactElement, useCallback, useMemo } from 'react'
 
 import { useAppDispatch, useAppSelector } from '../store'
-import { databaseUpdated } from '../store/editor-slice'
+import {
+  databaseAdded,
+  databaseUpdated,
+  worksheetUpdated
+} from '../store/editor-slice'
 import { uiActions } from '../store/ui-slice'
 import { DatabaseForm, DatabaseFormResult } from './DatabaseForm'
 import { Button } from './ui/button'
 
 export interface EditorScreenProps {
-  databaseId: string
+  databaseId?: string
+  mode: 'create' | 'edit'
 }
 
-export function EditorScreen({ databaseId }: EditorScreenProps): ReactElement {
+export function EditorScreen({
+  databaseId,
+  mode
+}: EditorScreenProps): ReactElement {
   const dispatch = useAppDispatch()
   const databases = useAppSelector((state) => state.editor.databases)
 
   const database = useMemo(
-    () => databases.find((d) => d.id === databaseId),
+    () => (databaseId ? databases.find((d) => d.id === databaseId) : undefined),
     [databases, databaseId]
   )
 
@@ -24,7 +32,20 @@ export function EditorScreen({ databaseId }: EditorScreenProps): ReactElement {
     dispatch(uiActions.closeEditorScreen())
   }, [dispatch])
 
-  const handleSuccess = useCallback(
+  const handleCreateSuccess = useCallback(
+    (result: DatabaseFormResult) => {
+      dispatch(databaseAdded(result.database))
+
+      if (result.updatedWorksheet) {
+        dispatch(worksheetUpdated(result.updatedWorksheet))
+      }
+
+      dispatch(uiActions.closeEditorScreen())
+    },
+    [dispatch]
+  )
+
+  const handleEditSuccess = useCallback(
     (result: DatabaseFormResult) => {
       dispatch(databaseUpdated(result.database))
       dispatch(uiActions.closeEditorScreen())
@@ -32,7 +53,7 @@ export function EditorScreen({ databaseId }: EditorScreenProps): ReactElement {
     [dispatch]
   )
 
-  if (!database) {
+  if (mode === 'edit' && !database) {
     return (
       <div className="fixed inset-0 z-100 bg-mantle flex justify-center items-center">
         <div className="text-subtext-0">Database not found.</div>
@@ -40,17 +61,22 @@ export function EditorScreen({ databaseId }: EditorScreenProps): ReactElement {
     )
   }
 
-  const defaultValues = {
-    connectionInfo: database.connectionInfo,
-    name: database.name,
-    type: database.type
-  }
+  const isCreateMode = mode === 'create'
+  const title = isCreateMode ? 'Add database' : 'Edit database'
+
+  const defaultValues = database
+    ? {
+        connectionInfo: database.connectionInfo,
+        name: database.name,
+        type: database.type
+      }
+    : undefined
 
   return (
     <div className="fixed inset-0 z-100 bg-mantle flex justify-center items-center">
       <div className="w-full max-w-md flex flex-col gap-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Edit database</h1>
+          <h1 className="text-2xl font-semibold">{title}</h1>
 
           <Button
             size="icon-sm"
@@ -65,7 +91,7 @@ export function EditorScreen({ databaseId }: EditorScreenProps): ReactElement {
           databaseId={databaseId}
           defaultValues={defaultValues}
           onCancel={handleClose}
-          onSuccess={handleSuccess}
+          onSuccess={isCreateMode ? handleCreateSuccess : handleEditSuccess}
         />
       </div>
     </div>

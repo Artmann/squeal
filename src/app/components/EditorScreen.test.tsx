@@ -76,7 +76,10 @@ describe('EditorScreen', () => {
 
     render(
       <TestEnvironment store={store}>
-        <EditorScreen databaseId="db-123" />
+        <EditorScreen
+          databaseId="db-123"
+          mode="edit"
+        />
       </TestEnvironment>
     )
 
@@ -88,7 +91,10 @@ describe('EditorScreen', () => {
 
     render(
       <TestEnvironment store={store}>
-        <EditorScreen databaseId="db-123" />
+        <EditorScreen
+          databaseId="db-123"
+          mode="edit"
+        />
       </TestEnvironment>
     )
 
@@ -100,7 +106,10 @@ describe('EditorScreen', () => {
 
     render(
       <TestEnvironment store={store}>
-        <EditorScreen databaseId="db-123" />
+        <EditorScreen
+          databaseId="db-123"
+          mode="edit"
+        />
       </TestEnvironment>
     )
 
@@ -117,7 +126,10 @@ describe('EditorScreen', () => {
 
     render(
       <TestEnvironment store={store}>
-        <EditorScreen databaseId="nonexistent" />
+        <EditorScreen
+          databaseId="nonexistent"
+          mode="edit"
+        />
       </TestEnvironment>
     )
 
@@ -130,7 +142,10 @@ describe('EditorScreen', () => {
 
     render(
       <TestEnvironment store={store}>
-        <EditorScreen databaseId="db-123" />
+        <EditorScreen
+          databaseId="db-123"
+          mode="edit"
+        />
       </TestEnvironment>
     )
 
@@ -145,7 +160,10 @@ describe('EditorScreen', () => {
 
     render(
       <TestEnvironment store={store}>
-        <EditorScreen databaseId="db-123" />
+        <EditorScreen
+          databaseId="db-123"
+          mode="edit"
+        />
       </TestEnvironment>
     )
 
@@ -170,7 +188,10 @@ describe('EditorScreen', () => {
 
     render(
       <TestEnvironment store={store}>
-        <EditorScreen databaseId="db-123" />
+        <EditorScreen
+          databaseId="db-123"
+          mode="edit"
+        />
       </TestEnvironment>
     )
 
@@ -187,5 +208,142 @@ describe('EditorScreen', () => {
     expect(store.getState().editor.databases[0].name).toEqual(
       'Updated Database'
     )
+  })
+
+  describe('create mode', () => {
+    function createCreateModeStore() {
+      return configureStore({
+        preloadedState: {
+          editor: {
+            databases: [],
+            queries: [],
+            worksheets: []
+          },
+          ui: {
+            editorScreen: { type: 'create-database' as const },
+            showGettingStartedScreen: false
+          }
+        },
+        reducer: {
+          editor: editorReducer,
+          ui: uiReducer
+        }
+      })
+    }
+
+    it('renders "Add database" header in create mode', () => {
+      const store = createCreateModeStore()
+
+      render(
+        <TestEnvironment store={store}>
+          <EditorScreen mode="create" />
+        </TestEnvironment>
+      )
+
+      expect(screen.getByText('Add database')).toBeInTheDocument()
+    })
+
+    it('starts with empty form in create mode', () => {
+      const store = createCreateModeStore()
+
+      render(
+        <TestEnvironment store={store}>
+          <EditorScreen mode="create" />
+        </TestEnvironment>
+      )
+
+      expect(screen.getByLabelText('Name')).toHaveValue('')
+      expect(screen.getByLabelText('Host')).toHaveValue('')
+      expect(screen.getByLabelText('Username')).toHaveValue('')
+      expect(screen.getByLabelText('Password')).toHaveValue('')
+      expect(screen.getByLabelText('Database')).toHaveValue('')
+    })
+
+    it('adds database to store on successful save in create mode', async () => {
+      const user = userEvent.setup()
+      const store = createCreateModeStore()
+
+      const newDatabase: DatabaseDto = {
+        connectionInfo: {
+          database: 'newdb',
+          host: 'newhost',
+          password: 'newpass',
+          port: 5432,
+          username: 'newuser'
+        },
+        createdAt: Date.now(),
+        id: 'new-db-id',
+        name: 'New Database',
+        type: 'postgres'
+      }
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: () => Promise.resolve({ database: newDatabase }),
+        ok: true
+      } as Response)
+
+      render(
+        <TestEnvironment store={store}>
+          <EditorScreen mode="create" />
+        </TestEnvironment>
+      )
+
+      await user.type(screen.getByLabelText('Name'), 'New Database')
+      await user.type(screen.getByLabelText('Host'), 'newhost')
+      await user.type(screen.getByLabelText('Username'), 'newuser')
+      await user.type(screen.getByLabelText('Password'), 'newpass')
+      await user.type(screen.getByLabelText('Database'), 'newdb')
+
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => {
+        expect(store.getState().ui.editorScreen).toBeUndefined()
+      })
+
+      expect(store.getState().editor.databases).toHaveLength(1)
+      expect(store.getState().editor.databases[0].name).toEqual('New Database')
+    })
+
+    it('closes editor screen after successful create', async () => {
+      const user = userEvent.setup()
+      const store = createCreateModeStore()
+
+      const newDatabase: DatabaseDto = {
+        connectionInfo: {
+          database: 'testdb',
+          host: 'localhost',
+          password: 'pass',
+          port: 5432,
+          username: 'user'
+        },
+        createdAt: Date.now(),
+        id: 'new-id',
+        name: 'Test',
+        type: 'postgres'
+      }
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: () => Promise.resolve({ database: newDatabase }),
+        ok: true
+      } as Response)
+
+      render(
+        <TestEnvironment store={store}>
+          <EditorScreen mode="create" />
+        </TestEnvironment>
+      )
+
+      await user.type(screen.getByLabelText('Name'), 'Test')
+      await user.type(screen.getByLabelText('Host'), 'localhost')
+      await user.type(screen.getByLabelText('Username'), 'user')
+      await user.type(screen.getByLabelText('Password'), 'pass')
+      await user.type(screen.getByLabelText('Database'), 'testdb')
+
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => {
+        expect(store.getState().ui.editorScreen).toBeUndefined()
+      })
+    })
   })
 })

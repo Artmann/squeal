@@ -90,7 +90,7 @@ export function WorksheetExplorer(): ReactElement {
           <Button
             key={worksheet.id}
             className={cn(
-              'w-full px-3 py-0.5 text-left flex justify-start items-center gap-2 text-xs',
+              'w-full px-3 py-0.5 text-left flex justify-start items-center gap-2 text-xs font-normal',
               worksheet.id === openWorksheetId ? 'bg-surface-0' : ''
             )}
             size="sm"

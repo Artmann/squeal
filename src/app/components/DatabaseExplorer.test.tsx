@@ -312,4 +312,74 @@ describe('DatabaseExplorer', () => {
 
     expect(screen.queryByText('id (integer)')).not.toBeInTheDocument()
   })
+
+  it('renders the add database button', () => {
+    const store = createTestStore()
+
+    render(
+      <TestEnvironment store={store}>
+        <DatabaseExplorer />
+      </TestEnvironment>
+    )
+
+    const buttons = screen.getAllByRole('button')
+    const addButton = buttons.find((button) =>
+      button.querySelector('svg.lucide-plus')
+    )
+
+    expect(addButton).toBeInTheDocument()
+  })
+
+  it('opens create database screen when add button is clicked', async () => {
+    const user = userEvent.setup()
+    const store = createTestStore()
+
+    render(
+      <TestEnvironment store={store}>
+        <DatabaseExplorer />
+      </TestEnvironment>
+    )
+
+    const buttons = screen.getAllByRole('button')
+    const addButton = buttons.find((button) =>
+      button.querySelector('svg.lucide-plus')
+    )
+
+    expect(addButton).toBeDefined()
+
+    await user.click(addButton as HTMLElement)
+
+    expect(store.getState().ui.editorScreen).toEqual({
+      type: 'create-database'
+    })
+  })
+
+  it('shows "Add a database" link in empty state', () => {
+    const store = createTestStore({ databases: [] })
+
+    render(
+      <TestEnvironment store={store}>
+        <DatabaseExplorer />
+      </TestEnvironment>
+    )
+
+    expect(screen.getByText('Add a database')).toBeInTheDocument()
+  })
+
+  it('opens create database screen when "Add a database" link is clicked', async () => {
+    const user = userEvent.setup()
+    const store = createTestStore({ databases: [] })
+
+    render(
+      <TestEnvironment store={store}>
+        <DatabaseExplorer />
+      </TestEnvironment>
+    )
+
+    await user.click(screen.getByText('Add a database'))
+
+    expect(store.getState().ui.editorScreen).toEqual({
+      type: 'create-database'
+    })
+  })
 })

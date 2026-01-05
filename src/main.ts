@@ -30,7 +30,9 @@ ipcMain.handle('window-close', () => {
 
 ipcMain.handle('open-file-dialog', async () => {
   const result = await dialog.showOpenDialog({
-    filters: [{ extensions: ['db', 'sqlite', 'sqlite3'], name: 'SQLite Database' }],
+    filters: [
+      { extensions: ['db', 'sqlite', 'sqlite3'], name: 'SQLite Database' }
+    ],
     properties: ['openFile'],
     title: 'Select SQLite Database'
   })
