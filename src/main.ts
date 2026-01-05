@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import path from 'node:path'
 import started from 'electron-squirrel-startup'
 
@@ -26,6 +26,20 @@ ipcMain.handle('window-maximize', () => {
 
 ipcMain.handle('window-close', () => {
   mainWindow?.close()
+})
+
+ipcMain.handle('open-file-dialog', async () => {
+  const result = await dialog.showOpenDialog({
+    filters: [{ extensions: ['db', 'sqlite', 'sqlite3'], name: 'SQLite Database' }],
+    properties: ['openFile'],
+    title: 'Select SQLite Database'
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null
+  }
+
+  return result.filePaths[0]
 })
 
 if (started) {

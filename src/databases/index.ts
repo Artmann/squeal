@@ -3,16 +3,20 @@ import invariant from 'tiny-invariant'
 
 import { MysqlAdapter } from './mysql-adapter'
 import { PostgresAdapter } from './postgres-adapter'
+import { SqliteAdapter } from './sqlite-adapter'
 import {
   connectionTestSchema,
   createDatabaseSchema,
   type ConnectionInfo,
-  type DatabaseType
+  type DatabaseType,
+  type MysqlConnectionInfo,
+  type PostgresConnectionInfo,
+  type SqliteConnectionInfo
 } from './schemas'
 import { ApiError, ValidationError } from '@/errors'
 import { DatabaseService } from '@/main/databases/database-service'
 
-export const supportedDatabases = ['mysql', 'postgres'] as const
+export const supportedDatabases = ['mysql', 'postgres', 'sqlite'] as const
 
 export const connectionTestRouter = new Hono()
 export const databaseRouter = new Hono()
@@ -25,9 +29,11 @@ export interface CreateConnectionTestResponse {
 function createAdapter(type: DatabaseType, connectionInfo: ConnectionInfo) {
   switch (type) {
     case 'mysql':
-      return new MysqlAdapter(connectionInfo)
+      return new MysqlAdapter(connectionInfo as MysqlConnectionInfo)
     case 'postgres':
-      return new PostgresAdapter(connectionInfo)
+      return new PostgresAdapter(connectionInfo as PostgresConnectionInfo)
+    case 'sqlite':
+      return new SqliteAdapter(connectionInfo as SqliteConnectionInfo)
     default:
       throw new Error(`Unsupported database type: ${type}`)
   }

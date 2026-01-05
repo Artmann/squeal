@@ -41,13 +41,7 @@ export function EditorScreen({ databaseId }: EditorScreenProps): ReactElement {
   }
 
   const defaultValues = {
-    connectionInfo: {
-      database: database.connectionInfo.database,
-      host: database.connectionInfo.host,
-      password: database.connectionInfo.password,
-      port: database.connectionInfo.port,
-      username: database.connectionInfo.username
-    },
+    connectionInfo: database.connectionInfo,
     name: database.name,
     type: database.type
   }

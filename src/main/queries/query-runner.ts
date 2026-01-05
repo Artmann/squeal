@@ -6,7 +6,14 @@ import { databasesTable, queriesTable } from '@/database/schema'
 import type { DatabaseAdapter } from '@/databases/adapter'
 import { MysqlAdapter } from '@/databases/mysql-adapter'
 import { PostgresAdapter } from '@/databases/postgres-adapter'
-import type { ConnectionInfo, DatabaseType } from '@/databases/schemas'
+import { SqliteAdapter } from '@/databases/sqlite-adapter'
+import type {
+  ConnectionInfo,
+  DatabaseType,
+  MysqlConnectionInfo,
+  PostgresConnectionInfo,
+  SqliteConnectionInfo
+} from '@/databases/schemas'
 
 export const createQuerySchema = z.object({
   content: z.string(),
@@ -114,9 +121,11 @@ function createAdapter(
 ): DatabaseAdapter {
   switch (type) {
     case 'mysql':
-      return new MysqlAdapter(connectionInfo)
+      return new MysqlAdapter(connectionInfo as MysqlConnectionInfo)
     case 'postgres':
-      return new PostgresAdapter(connectionInfo)
+      return new PostgresAdapter(connectionInfo as PostgresConnectionInfo)
+    case 'sqlite':
+      return new SqliteAdapter(connectionInfo as SqliteConnectionInfo)
     default:
       throw new Error(`Unsupported database type: ${type}`)
   }
