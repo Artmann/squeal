@@ -29,7 +29,8 @@ export function createStore() {
         openWorksheetId: worksheets[0]?.id,
         queries: [],
         schemas: {},
-        worksheets
+        worksheets,
+        worksheetSearchQuery: ''
       },
       ui: {
         showGettingStartedScreen: databases.length === 0
