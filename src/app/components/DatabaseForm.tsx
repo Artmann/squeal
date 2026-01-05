@@ -1,12 +1,17 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CheckCircle2Icon } from 'lucide-react'
+import { CheckCircle2Icon, FolderOpenIcon } from 'lucide-react'
 import { ReactElement, ReactNode, useCallback, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { CreateConnectionTestResponse } from '@/databases'
-import { createDatabaseSchema, DatabaseType } from '@/databases/schemas'
+import {
+  ConnectionInfo,
+  createDatabaseSchema,
+  DatabaseType,
+  databaseTypeSchema
+} from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
@@ -46,6 +51,25 @@ export interface DatabaseFormProps {
   onSuccess?: (result: DatabaseFormResult) => void
 }
 
+function getDefaultConnectionInfo(
+  type: DatabaseType,
+  connectionInfo?: Record<string, unknown>
+) {
+  if (type === 'sqlite') {
+    return {
+      path: (connectionInfo?.path as string) ?? ''
+    }
+  }
+
+  return {
+    database: (connectionInfo?.database as string) ?? '',
+    host: (connectionInfo?.host as string) ?? '',
+    password: (connectionInfo?.password as string) ?? '',
+    port: connectionInfo?.port as number | undefined,
+    username: (connectionInfo?.username as string) ?? ''
+  }
+}
+
 export function DatabaseForm({
   databaseId,
   defaultValues,
@@ -53,18 +77,16 @@ export function DatabaseForm({
   onSuccess
 }: DatabaseFormProps): ReactElement {
   const isEditMode = Boolean(databaseId)
+  const defaultType = (defaultValues?.type as DatabaseType) ?? 'postgres'
 
   const form = useForm<FormInput, unknown, FormOutput>({
     defaultValues: {
-      connectionInfo: {
-        database: defaultValues?.connectionInfo?.database ?? '',
-        host: defaultValues?.connectionInfo?.host ?? '',
-        password: defaultValues?.connectionInfo?.password ?? '',
-        port: defaultValues?.connectionInfo?.port,
-        username: defaultValues?.connectionInfo?.username ?? ''
-      },
+      connectionInfo: getDefaultConnectionInfo(
+        defaultType,
+        defaultValues?.connectionInfo as Record<string, unknown>
+      ),
       name: defaultValues?.name ?? '',
-      type: (defaultValues?.type as DatabaseType) ?? 'postgres'
+      type: defaultType
     },
     resolver: zodResolver(createDatabaseSchema)
   })
@@ -77,6 +99,28 @@ export function DatabaseForm({
 
   const databaseType = form.watch('type')
   const connectionInfo = form.watch('connectionInfo')
+
+  const handleTypeChange = useCallback(
+    (newType: string) => {
+      const validatedType = databaseTypeSchema.parse(newType)
+
+      form.setValue('type', validatedType)
+      form.setValue(
+        'connectionInfo',
+        getDefaultConnectionInfo(validatedType, undefined)
+      )
+      setConnectTestResult(undefined)
+    },
+    [form]
+  )
+
+  const handleBrowseFile = useCallback(async () => {
+    const filePath = await window.electron.openFileDialog()
+
+    if (filePath) {
+      form.setValue('connectionInfo.path', filePath)
+    }
+  }, [form])
 
   const handleSubmit = useCallback(
     (values: FormOutput) => {
@@ -134,16 +178,20 @@ export function DatabaseForm({
       setIsTestingConnection(true)
       setConnectTestResult(undefined)
 
-      const normalizedConnectionInfo = {
-        ...connectionInfo,
-        port:
-          typeof connectionInfo.port === 'string'
-            ? parseInt(connectionInfo.port, 10) || undefined
-            : connectionInfo.port
+      let normalizedConnectionInfo = connectionInfo
+
+      if (databaseType !== 'sqlite' && 'port' in connectionInfo) {
+        normalizedConnectionInfo = {
+          ...connectionInfo,
+          port:
+            typeof connectionInfo.port === 'string'
+              ? parseInt(connectionInfo.port, 10) || undefined
+              : connectionInfo.port
+        }
       }
 
       apiClient
-        .testConnection(normalizedConnectionInfo, databaseType)
+        .testConnection(normalizedConnectionInfo as ConnectionInfo, databaseType)
         .then((result) => {
           if (result.success) {
             console.log('Connection successful!')
@@ -204,7 +252,7 @@ export function DatabaseForm({
                   <FormItem>
                     <Select
                       value={field.value}
-                      onValueChange={field.onChange}
+                      onValueChange={handleTypeChange}
                     >
                       <FormControl>
                         <SelectTrigger className="w-32 h-8 text-xs">
@@ -212,8 +260,9 @@ export function DatabaseForm({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="postgres">PostgreSQL</SelectItem>
                         <SelectItem value="mysql">MySQL</SelectItem>
+                        <SelectItem value="postgres">PostgreSQL</SelectItem>
+                        <SelectItem value="sqlite">SQLite</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -244,115 +293,157 @@ export function DatabaseForm({
             />
           </div>
 
-          <div className="flex items-start gap-4">
+          {databaseType === 'sqlite' ? (
             <FormField
               control={form.control}
-              name="connectionInfo.host"
-              render={({ field }) => (
-                <FormItem className="flex-1">
-                  <FormLabel>Host</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="us-east-1.db.planetscale.com"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="connectionInfo.port"
+              name="connectionInfo.path"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Port</FormLabel>
-                  <FormControl>
-                    <Input
-                      className="w-32"
-                      placeholder={databaseType === 'mysql' ? '3306' : '5432'}
-                      type="number"
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                      value={field.value == null ? '' : field.value}
-                      onChange={(event) => {
-                        const value = event.target.value
-
-                        field.onChange(value === '' ? undefined : Number(value))
-                      }}
-                    />
-                  </FormControl>
+                  <FormLabel>File Path</FormLabel>
+                  <div className="flex gap-2">
+                    <FormControl>
+                      <Input
+                        className="flex-1"
+                        placeholder="/path/to/database.sqlite"
+                        type="text"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <Button
+                      size="icon"
+                      type="button"
+                      variant="outline"
+                      onClick={handleBrowseFile}
+                    >
+                      <FolderOpenIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
             />
-          </div>
+          ) : (
+            <>
+              <div className="flex items-start gap-4">
+                <FormField
+                  control={form.control}
+                  name="connectionInfo.host"
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormLabel>Host</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="us-east-1.db.planetscale.com"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="connectionInfo.port"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Port</FormLabel>
+                      <FormControl>
+                        <Input
+                          className="w-32"
+                          placeholder={databaseType === 'mysql' ? '3306' : '5432'}
+                          type="number"
+                          name={field.name}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          value={field.value == null ? '' : field.value}
+                          onChange={(event) => {
+                            const value = event.target.value
 
-          <FormField
-            control={form.control}
-            name="connectionInfo.database"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Database</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="store"
-                    type="text"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                            field.onChange(
+                              value === '' ? undefined : Number(value)
+                            )
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="connectionInfo.database"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Database</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="store"
+                        type="text"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
         </FormSection>
 
-        <FormSection>
-          <FormSectionHeader>
-            <FormSectionTitle text="Authentication" />
-          </FormSectionHeader>
+        {databaseType !== 'sqlite' && (
+          <FormSection>
+            <FormSectionHeader>
+              <FormSectionTitle text="Authentication" />
+            </FormSectionHeader>
 
-          <Separator />
+            <Separator />
 
-          <div className="flex items-start gap-4">
-            <FormField
-              control={form.control}
-              name="connectionInfo.username"
-              render={({ field }) => (
-                <FormItem className="flex-1">
-                  <FormLabel>Username</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="postgres"
-                      type="text"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="flex items-start gap-4">
+              <FormField
+                control={form.control}
+                name="connectionInfo.username"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel>Username</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="postgres"
+                        type="text"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="connectionInfo.password"
-              render={({ field }) => (
-                <FormItem className="flex-1">
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="password"
-                      type="password"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </FormSection>
+              <FormField
+                control={form.control}
+                name="connectionInfo.password"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="password"
+                        type="password"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </FormSection>
+        )}
 
         {connectTestResult && connectTestResult.success === true && (
           <Alert>

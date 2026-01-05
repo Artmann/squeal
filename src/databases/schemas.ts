@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const databaseTypeSchema = z.enum(['mysql', 'postgres'])
+export const databaseTypeSchema = z.enum(['mysql', 'postgres', 'sqlite'])
 
 export type DatabaseType = z.infer<typeof databaseTypeSchema>
 
@@ -36,11 +36,21 @@ export const mysqlConnectionInfoSchema = z.object({
 
 export type MysqlConnectionInfo = z.infer<typeof mysqlConnectionInfoSchema>
 
-export type ConnectionInfo = MysqlConnectionInfo | PostgresConnectionInfo
+export const sqliteConnectionInfoSchema = z.object({
+  path: z.string().min(1, 'File path is required.')
+})
+
+export type SqliteConnectionInfo = z.infer<typeof sqliteConnectionInfoSchema>
+
+export type ConnectionInfo =
+  | MysqlConnectionInfo
+  | PostgresConnectionInfo
+  | SqliteConnectionInfo
 
 export const connectionInfoSchema = z.union([
   mysqlConnectionInfoSchema,
-  postgresConnectionInfoSchema
+  postgresConnectionInfoSchema,
+  sqliteConnectionInfoSchema
 ])
 
 export const createDatabaseSchema = z.object({
