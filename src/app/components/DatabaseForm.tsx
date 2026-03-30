@@ -1,6 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CheckCircle2Icon, FolderOpenIcon } from 'lucide-react'
-import { ReactElement, ReactNode, useCallback, useState } from 'react'
+import {
+  CheckCircle2Icon,
+  FolderOpenIcon,
+  LoaderCircleIcon,
+  XCircleIcon
+} from 'lucide-react'
+import { ReactElement, ReactNode, useCallback, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -16,7 +21,6 @@ import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 import { apiClient } from '../api-client'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import {
   Form,
@@ -190,12 +194,16 @@ export function DatabaseForm({
         }
       }
 
-      apiClient
-        .testConnection(
+      const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 100))
+
+      Promise.all([
+        apiClient.testConnection(
           normalizedConnectionInfo as ConnectionInfo,
           databaseType
-        )
-        .then((result) => {
+        ),
+        minDelay
+      ])
+        .then(([result]) => {
           if (result.success) {
             console.log('Connection successful!')
 
@@ -236,6 +244,32 @@ export function DatabaseForm({
   )
 
   const isLoading = isSaving || isTestingConnection
+
+  const connectionTestIcon = useMemo(() => {
+    if (isTestingConnection) {
+      return <LoaderCircleIcon className="animate-spin" />
+    }
+
+    if (connectTestResult?.success === true) {
+      return (
+        <CheckCircle2Icon
+          className="text-green-500"
+          data-testid="connection-success-icon"
+        />
+      )
+    }
+
+    if (connectTestResult?.success === false) {
+      return (
+        <XCircleIcon
+          className="text-destructive"
+          data-testid="connection-error-icon"
+        />
+      )
+    }
+
+    return null
+  }, [isTestingConnection, connectTestResult])
 
   return (
     <Form {...form}>
@@ -450,25 +484,6 @@ export function DatabaseForm({
           </FormSection>
         )}
 
-        {connectTestResult && connectTestResult.success === true && (
-          <Alert>
-            <CheckCircle2Icon />
-            <AlertTitle>
-              Success! We were able to connect to your database.
-            </AlertTitle>
-          </Alert>
-        )}
-
-        {connectTestResult && connectTestResult.success === false && (
-          <Alert variant="destructive">
-            <CheckCircle2Icon />
-            <AlertTitle>Unable to connect to your database.</AlertTitle>
-            <AlertDescription>
-              <p>{connectTestResult.message}</p>
-            </AlertDescription>
-          </Alert>
-        )}
-
         <div className="flex justify-end gap-3 py-4">
           {onCancel && (
             <Button
@@ -489,7 +504,8 @@ export function DatabaseForm({
             variant="outline"
             onClick={handleTestConnection}
           >
-            {isTestingConnection ? 'Testing...' : 'Test Connection'}
+            {connectionTestIcon}
+            Test Connection
           </Button>
 
           <Button

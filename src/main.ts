@@ -72,7 +72,6 @@ const createWindow = async () => {
     )
   }
 
-  mainWindow.webContents.openDevTools()
 }
 
 app.on('ready', async () => {

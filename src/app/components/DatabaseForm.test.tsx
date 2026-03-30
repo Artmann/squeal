@@ -76,7 +76,7 @@ describe('DatabaseForm', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
-  it('shows success alert when connection test succeeds', async () => {
+  it('shows success icon when connection test succeeds', async () => {
     const user = userEvent.setup()
 
     vi.mocked(fetch).mockResolvedValueOnce({
@@ -90,13 +90,11 @@ describe('DatabaseForm', () => {
     await user.click(screen.getByRole('button', { name: 'Test Connection' }))
 
     await waitFor(() => {
-      expect(
-        screen.getByText('Success! We were able to connect to your database.')
-      ).toBeInTheDocument()
+      expect(screen.getByTestId('connection-success-icon')).toBeInTheDocument()
     })
   })
 
-  it('shows error alert when connection test fails', async () => {
+  it('shows error icon when connection test fails', async () => {
     const user = userEvent.setup()
 
     vi.mocked(fetch).mockResolvedValueOnce({
@@ -111,10 +109,7 @@ describe('DatabaseForm', () => {
     await user.click(screen.getByRole('button', { name: 'Test Connection' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(
-        'Unable to connect to your database.'
-      )
-      expect(screen.getByRole('alert')).toHaveTextContent('Connection refused')
+      expect(screen.getByTestId('connection-error-icon')).toBeInTheDocument()
     })
   })
 
@@ -254,7 +249,7 @@ describe('DatabaseForm', () => {
     await fillForm(user)
     await user.click(screen.getByRole('button', { name: 'Test Connection' }))
 
-    expect(screen.getByRole('button', { name: 'Testing...' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Test Connection' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
   })
