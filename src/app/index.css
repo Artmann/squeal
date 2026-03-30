@@ -86,6 +86,7 @@
 @layer base {
   * {
     @apply box-border;
+    border-color: var(--color-border);
   }
 
   body {
