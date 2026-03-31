@@ -1,9 +1,30 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Toaster } from 'sonner'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi
+} from 'vitest'
 
 import { DatabaseForm } from './DatabaseForm'
+
+// Radix UI Select uses DOM APIs not available in jsdom
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false)
+  Element.prototype.setPointerCapture = vi.fn()
+  Element.prototype.releasePointerCapture = vi.fn()
+  Element.prototype.scrollIntoView = vi.fn()
+  window.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof window.ResizeObserver
+})
 
 async function fillForm(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Name'), 'My Database')
@@ -249,9 +270,94 @@ describe('DatabaseForm', () => {
     await fillForm(user)
     await user.click(screen.getByRole('button', { name: 'Test Connection' }))
 
-    expect(screen.getByRole('button', { name: 'Test Connection' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Test Connection' })
+    ).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  })
+
+  describe('SSL section', () => {
+    it('renders SSL mode dropdown for postgres', () => {
+      renderDatabaseForm()
+
+      expect(screen.getByText('SSL')).toBeInTheDocument()
+      expect(
+        screen.getByRole('combobox', { name: /ssl mode/i })
+      ).toBeInTheDocument()
+    })
+
+    it('does not render SSL Root Certificate field by default', () => {
+      renderDatabaseForm()
+
+      expect(
+        screen.queryByLabelText('SSL Root Certificate')
+      ).not.toBeInTheDocument()
+    })
+
+    it('shows SSL Root Certificate field when verify-full is selected', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
+      await user.click(screen.getByRole('option', { name: 'Verify Full' }))
+
+      expect(screen.getByLabelText('SSL Root Certificate')).toBeInTheDocument()
+    })
+
+    it('hides SSL Root Certificate field when switching away from verify-full', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
+      await user.click(screen.getByRole('option', { name: 'Verify Full' }))
+
+      expect(screen.getByLabelText('SSL Root Certificate')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
+      await user.click(screen.getByRole('option', { name: 'Require' }))
+
+      expect(
+        screen.queryByLabelText('SSL Root Certificate')
+      ).not.toBeInTheDocument()
+    })
+
+    it('includes ssl fields in the save payload', async () => {
+      const user = userEvent.setup()
+      const onSuccess = vi.fn()
+
+      const database = {
+        connectionInfo: {},
+        createdAt: Date.now(),
+        id: '123',
+        name: 'My Database',
+        type: 'postgres'
+      }
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: () => Promise.resolve({ database }),
+        ok: true
+      } as Response)
+
+      renderDatabaseForm({ onSuccess })
+
+      await fillForm(user)
+      await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
+      await user.click(screen.getByRole('option', { name: 'Verify Full' }))
+      await user.type(screen.getByLabelText('SSL Root Certificate'), 'system')
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => {
+        const body = JSON.parse(
+          (vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string
+        )
+
+        expect(body.connectionInfo.sslMode).toEqual('verify-full')
+        expect(body.connectionInfo.sslRootCert).toEqual('system')
+      })
+    })
   })
 
   it('disables buttons while saving', async () => {

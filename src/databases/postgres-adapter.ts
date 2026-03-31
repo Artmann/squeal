@@ -1,4 +1,6 @@
-import { Client } from 'pg'
+import fs from 'fs'
+
+import { Client, type ClientConfig } from 'pg'
 
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
@@ -16,8 +18,7 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async getSchema(): Promise<SchemaInfo> {
-    const connectionString = createConnectionString(this.connectionInfo)
-    const client = new Client({ connectionString })
+    const client = new Client(createClientConfig(this.connectionInfo))
 
     try {
       await client.connect()
@@ -36,9 +37,7 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async runQuery(query: string): Promise<QueryResult> {
-    const connectionString = createConnectionString(this.connectionInfo)
-
-    const client = new Client({ connectionString })
+    const client = new Client(createClientConfig(this.connectionInfo))
 
     try {
       await client.connect()
@@ -62,9 +61,10 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async testConnection(): Promise<void> {
-    const connectionString = createConnectionString(this.connectionInfo)
-
-    const client = new Client({ connectionString, statement_timeout: 5000 })
+    const client = new Client({
+      ...createClientConfig(this.connectionInfo),
+      statement_timeout: 5000
+    })
 
     try {
       await client.connect()
@@ -76,8 +76,37 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 }
 
-function createConnectionString(info: PostgresConnectionInfo): string {
-  const { username, password, host, port = 5432, database } = info
+function createClientConfig(info: PostgresConnectionInfo): ClientConfig {
+  const {
+    username,
+    password,
+    host,
+    port = 5432,
+    database,
+    sslMode,
+    sslRootCert
+  } = info
 
-  return `postgresql://${username}:${password}@${host}:${port}/${database}`
+  const connectionString = `postgresql://${username}:${password}@${host}:${port}/${database}`
+
+  if (!sslMode || sslMode === 'disable') {
+    return { connectionString }
+  }
+
+  if (sslMode === 'require') {
+    return { connectionString, ssl: { rejectUnauthorized: false } }
+  }
+
+  // verify-full
+  if (sslRootCert && sslRootCert !== 'system') {
+    return {
+      connectionString,
+      ssl: {
+        ca: fs.readFileSync(sslRootCert).toString(),
+        rejectUnauthorized: true
+      }
+    }
+  }
+
+  return { connectionString, ssl: { rejectUnauthorized: true } }
 }

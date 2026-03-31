@@ -31,7 +31,10 @@ export async function bootstrap(): Promise<BootstrapData> {
   let maxLastOpenedAt = 0
 
   for (const worksheet of worksheets) {
-    if (worksheet.lastOpenedAt !== null && worksheet.lastOpenedAt > maxLastOpenedAt) {
+    if (
+      worksheet.lastOpenedAt !== null &&
+      worksheet.lastOpenedAt > maxLastOpenedAt
+    ) {
       maxLastOpenedAt = worksheet.lastOpenedAt
       lastOpenWorksheetId = worksheet.id
     }

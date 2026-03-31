@@ -34,7 +34,13 @@ beforeAll(() => {
 import { apiClient } from '../api-client'
 
 const testDatabase: DatabaseDto = {
-  connectionInfo: { host: 'localhost', port: 5432, database: 'testdb', username: 'admin', password: 'secret' },
+  connectionInfo: {
+    host: 'localhost',
+    port: 5432,
+    database: 'testdb',
+    username: 'admin',
+    password: 'secret'
+  },
   createdAt: 1704067200000,
   id: 'db-1',
   name: 'Production DB',
@@ -42,7 +48,13 @@ const testDatabase: DatabaseDto = {
 }
 
 const testDatabase2: DatabaseDto = {
-  connectionInfo: { host: 'localhost', port: 5432, database: 'testdb2', username: 'admin', password: 'secret' },
+  connectionInfo: {
+    host: 'localhost',
+    port: 5432,
+    database: 'testdb2',
+    username: 'admin',
+    password: 'secret'
+  },
   createdAt: 1704067200000,
   id: 'db-2',
   name: 'Staging DB',

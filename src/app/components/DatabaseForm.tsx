@@ -15,7 +15,8 @@ import {
   ConnectionInfo,
   createDatabaseSchema,
   DatabaseType,
-  databaseTypeSchema
+  databaseTypeSchema,
+  SslMode
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
@@ -70,6 +71,8 @@ function getDefaultConnectionInfo(
     host: (connectionInfo?.host as string) ?? '',
     password: (connectionInfo?.password as string) ?? '',
     port: connectionInfo?.port as number | undefined,
+    sslMode: (connectionInfo?.sslMode as SslMode) ?? undefined,
+    sslRootCert: (connectionInfo?.sslRootCert as string) ?? '',
     username: (connectionInfo?.username as string) ?? ''
   }
 }
@@ -481,6 +484,71 @@ export function DatabaseForm({
                 )}
               />
             </div>
+          </FormSection>
+        )}
+
+        {databaseType !== 'sqlite' && (
+          <FormSection>
+            <FormSectionHeader>
+              <FormSectionTitle text="SSL" />
+            </FormSectionHeader>
+
+            <Separator />
+
+            <div className="flex items-start gap-4">
+              <FormField
+                control={form.control}
+                name="connectionInfo.sslMode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>SSL Mode</FormLabel>
+                    <Select
+                      value={field.value ?? ''}
+                      onValueChange={(value) => {
+                        field.onChange(value === '' ? undefined : value)
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Disabled" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="disable">Disabled</SelectItem>
+                        <SelectItem value="require">Require</SelectItem>
+                        <SelectItem value="verify-full">Verify Full</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {form.watch('connectionInfo.sslMode') === 'verify-full' && (
+              <FormField
+                control={form.control}
+                name="connectionInfo.sslRootCert"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>SSL Root Certificate</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="system"
+                        type="text"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Path to a CA certificate file, or <code>system</code> to
+                      use the OS trust store.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </FormSection>
         )}
 

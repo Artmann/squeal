@@ -1,3 +1,5 @@
+import fs from 'fs'
+
 import mysql from 'mysql2/promise'
 
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
@@ -74,12 +76,36 @@ export class MysqlAdapter implements DatabaseAdapter {
   }
 
   private getConnectionConfig() {
-    return {
-      database: this.connectionInfo.database,
-      host: this.connectionInfo.host,
-      password: this.connectionInfo.password,
-      port: this.connectionInfo.port ?? 3306,
-      user: this.connectionInfo.username
+    const { database, host, password, port, sslMode, sslRootCert, username } =
+      this.connectionInfo
+
+    const base = {
+      database,
+      host,
+      password,
+      port: port ?? 3306,
+      user: username
     }
+
+    if (!sslMode || sslMode === 'disable') {
+      return base
+    }
+
+    if (sslMode === 'require') {
+      return { ...base, ssl: { rejectUnauthorized: false } }
+    }
+
+    // verify-full
+    if (sslRootCert && sslRootCert !== 'system') {
+      return {
+        ...base,
+        ssl: {
+          ca: fs.readFileSync(sslRootCert).toString(),
+          rejectUnauthorized: true
+        }
+      }
+    }
+
+    return { ...base, ssl: { rejectUnauthorized: true } }
   }
 }

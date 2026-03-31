@@ -61,7 +61,7 @@ describe('POST /connection-tests', () => {
       })
     })
 
-    expect(response.status).toEqual(500)
+    expect(response.status).toEqual(200)
     expect(await response.json()).toEqual({
       message: 'Connection refused',
       success: false

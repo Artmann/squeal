@@ -39,7 +39,8 @@
       "Bash(git add:*)",
       "Bash(docker volume rm:*)",
       "Bash(xargs ls:*)",
-      "Bash(ls -la /Users/artmann/code/squeal/*.config.* /Users/artmann/code/squeal/tailwind*)"
+      "Bash(ls -la /Users/artmann/code/squeal/*.config.* /Users/artmann/code/squeal/tailwind*)",
+      "Bash(yarn vitest:*)"
     ],
     "deny": [],
     "ask": []

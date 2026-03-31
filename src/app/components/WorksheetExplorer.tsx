@@ -47,11 +47,13 @@ export function WorksheetExplorer(): ReactElement {
     (worksheetId: string) => {
       dispatch(editorSlice.actions.worksheetSelected(worksheetId))
 
-      apiClient.updateWorksheet(worksheetId, {
-        lastOpenedAt: Date.now()
-      }).catch(() => {
-        // Fire-and-forget: selection persistence is best-effort
-      })
+      apiClient
+        .updateWorksheet(worksheetId, {
+          lastOpenedAt: Date.now()
+        })
+        .catch(() => {
+          // Fire-and-forget: selection persistence is best-effort
+        })
     },
     [dispatch]
   )
@@ -79,9 +81,11 @@ export function WorksheetExplorer(): ReactElement {
       dispatch(editorSlice.actions.worksheetCreated(worksheet))
 
       // Persist the selection
-      apiClient.updateWorksheet(worksheet.id, {
-        lastOpenedAt: Date.now()
-      }).catch(() => {})
+      apiClient
+        .updateWorksheet(worksheet.id, {
+          lastOpenedAt: Date.now()
+        })
+        .catch(() => {})
     } catch (error) {
       dispatch(editorSlice.actions.worksheetRemoved(optimisticId))
 

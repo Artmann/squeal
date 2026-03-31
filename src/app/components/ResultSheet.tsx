@@ -26,31 +26,34 @@ export function ResultSheet({
 
   const isSuccessful = query?.result && !query.error
 
-  const handleDragStart = useCallback((event: React.MouseEvent) => {
-    const startY = event.clientY
-    const startHeight = height
+  const handleDragStart = useCallback(
+    (event: React.MouseEvent) => {
+      const startY = event.clientY
+      const startHeight = height
 
-    setIsDragging(true)
+      setIsDragging(true)
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const maxHeight = window.innerHeight * 0.8
-      const newHeight = Math.min(
-        maxHeight,
-        Math.max(minHeight, startHeight + (startY - moveEvent.clientY))
-      )
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const maxHeight = window.innerHeight * 0.8
+        const newHeight = Math.min(
+          maxHeight,
+          Math.max(minHeight, startHeight + (startY - moveEvent.clientY))
+        )
 
-      setHeight(newHeight)
-    }
+        setHeight(newHeight)
+      }
 
-    const handleMouseUp = () => {
-      setIsDragging(false)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
+      const handleMouseUp = () => {
+        setIsDragging(false)
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  }, [height])
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    },
+    [height]
+  )
 
   return (
     <div

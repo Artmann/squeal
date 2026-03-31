@@ -63,6 +63,59 @@ describe('MysqlAdapter', () => {
         expect.objectContaining({ port: 3306 })
       )
     })
+
+    it('does not include ssl when sslMode is disable', async () => {
+      const adapter = new MysqlAdapter({
+        ...connectionInfo,
+        sslMode: 'disable'
+      })
+
+      await adapter.testConnection()
+
+      expect(mysql.createConnection).toHaveBeenCalledWith(
+        expect.not.objectContaining({ ssl: expect.anything() })
+      )
+    })
+
+    it('uses rejectUnauthorized: false for sslMode require', async () => {
+      const adapter = new MysqlAdapter({
+        ...connectionInfo,
+        sslMode: 'require'
+      })
+
+      await adapter.testConnection()
+
+      expect(mysql.createConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ ssl: { rejectUnauthorized: false } })
+      )
+    })
+
+    it('uses rejectUnauthorized: true for sslMode verify-full without cert', async () => {
+      const adapter = new MysqlAdapter({
+        ...connectionInfo,
+        sslMode: 'verify-full'
+      })
+
+      await adapter.testConnection()
+
+      expect(mysql.createConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ ssl: { rejectUnauthorized: true } })
+      )
+    })
+
+    it('uses rejectUnauthorized: true for sslMode verify-full with system cert', async () => {
+      const adapter = new MysqlAdapter({
+        ...connectionInfo,
+        sslMode: 'verify-full',
+        sslRootCert: 'system'
+      })
+
+      await adapter.testConnection()
+
+      expect(mysql.createConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ ssl: { rejectUnauthorized: true } })
+      )
+    })
   })
 
   describe('runQuery', () => {

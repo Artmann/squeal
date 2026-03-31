@@ -14,11 +14,17 @@ const portSchema = z
     return typeof value === 'number' ? value : Number(value)
   })
 
+export const sslModeSchema = z.enum(['disable', 'require', 'verify-full'])
+
+export type SslMode = z.infer<typeof sslModeSchema>
+
 export const postgresConnectionInfoSchema = z.object({
   database: z.string().min(1, 'Database name is required.'),
   host: z.string().min(1, 'Host is required.'),
   password: z.string().min(1, 'Password is required.'),
   port: portSchema,
+  sslMode: sslModeSchema.optional(),
+  sslRootCert: z.string().optional(),
   username: z.string().min(1, 'Username is required.')
 })
 
@@ -31,6 +37,8 @@ export const mysqlConnectionInfoSchema = z.object({
   host: z.string().min(1, 'Host is required.'),
   password: z.string().min(1, 'Password is required.'),
   port: portSchema,
+  sslMode: sslModeSchema.optional(),
+  sslRootCert: z.string().optional(),
   username: z.string().min(1, 'Username is required.')
 })
 

@@ -24,7 +24,12 @@ export class WorksheetService {
 
   async updateWorksheet(
     id: string,
-    updates: { content?: string; databaseId?: string | null; lastOpenedAt?: number; name?: string }
+    updates: {
+      content?: string
+      databaseId?: string | null
+      lastOpenedAt?: number
+      name?: string
+    }
   ): Promise<WorksheetDto> {
     const [worksheet] = await database
       .update(worksheetsTable)
