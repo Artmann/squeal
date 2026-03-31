@@ -51,7 +51,7 @@ export function DatabaseSelector(): ReactElement {
         console.error('Error updating worksheet database:', error)
       }
     },
-    [dispatch, openWorksheetId]
+    [dispatch, openWorksheetId, currentWorksheet]
   )
 
   if (databases.length === 0) {
