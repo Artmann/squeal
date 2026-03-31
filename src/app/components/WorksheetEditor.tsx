@@ -1,4 +1,4 @@
-import { autocompletion, completeFromList } from '@codemirror/autocomplete'
+import { autocompletion } from '@codemirror/autocomplete'
 import { sql } from '@codemirror/lang-sql'
 import { Prec, RangeSetBuilder } from '@codemirror/state'
 import type { ViewUpdate } from '@codemirror/view'
@@ -61,16 +61,7 @@ export function WorksheetEditor({
       catppuccinHighlighting,
       sql(),
       EditorView.lineWrapping,
-      autocompletion({
-        override: [
-          completeFromList([
-            { apply: 'SELECT ', label: 'SELECT', type: 'keyword' },
-            { apply: 'FROM ', label: 'FROM', type: 'keyword' },
-            { apply: 'users', label: 'users', type: 'table' },
-            { apply: 'orders', label: 'orders', type: 'table' }
-          ])
-        ]
-      }),
+      autocompletion(),
       Prec.highest(
         keymap.of([
           {

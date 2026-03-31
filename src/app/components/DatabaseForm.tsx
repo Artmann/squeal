@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import {
   CheckCircle2Icon,
   FolderOpenIcon,
+  Loader2Icon,
   LoaderCircleIcon,
   XCircleIcon
 } from 'lucide-react'
@@ -178,8 +179,6 @@ export function DatabaseForm({
     (event: React.FormEvent) => {
       event.preventDefault()
 
-      console.log('Testing connection', connectionInfo)
-
       form.clearErrors()
 
       setIsTestingConnection(true)
@@ -208,27 +207,19 @@ export function DatabaseForm({
       ])
         .then(([result]) => {
           if (result.success) {
-            console.log('Connection successful!')
-
             toast.success('Connection successful!')
           } else {
-            console.error('Connection failed:', result.message)
-
             toast.error('Connection failed', { description: result.message })
           }
 
           setConnectTestResult(result)
         })
         .catch((error) => {
-          console.error('Connection test error:', error)
-
           toast.error('Connection test failed', { description: error.message })
 
           form.setError('root', { message: error.message })
 
           if (error instanceof ApiError && error.details) {
-            console.log('Validation errors:', error.details)
-
             const fieldErrors = errorDetailsToFormFieldErrors(error.details)
 
             for (const [field, { message }] of Object.entries(fieldErrors)) {
@@ -581,6 +572,7 @@ export function DatabaseForm({
             size="sm"
             type="submit"
           >
+            {isSaving && <Loader2Icon className="size-3 animate-spin" />}
             {isSaving ? 'Saving...' : 'Save'}
           </Button>
         </div>

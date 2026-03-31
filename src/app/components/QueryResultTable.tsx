@@ -15,8 +15,6 @@ export const QueryResultTable = memo(function QueryResultTable({
 }: {
   result: any
 }): ReactElement {
-  console.log({ result })
-
   const fieldNames = result.fields.map((field: any) => field.name)
 
   return (
@@ -48,11 +46,16 @@ export const QueryResultTable = memo(function QueryResultTable({
                 <TableCell
                   className={cn(
                     'border-r border-surface-0 last:border-r-0',
-                    isNumber ? 'text-right' : 'text-left'
+                    isNumber ? 'text-right' : 'text-left',
+                    value === null && 'text-subtext-0'
                   )}
                   key={`${rowIndex}-${name}`}
                 >
-                  {String(value)}
+                  {value === null
+                    ? 'null'
+                    : typeof value === 'object'
+                      ? JSON.stringify(value)
+                      : String(value)}
                 </TableCell>
               )
             })}
