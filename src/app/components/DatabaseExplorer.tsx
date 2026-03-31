@@ -46,7 +46,7 @@ export function DatabaseExplorer(): ReactElement {
   }, [dispatch])
 
   return (
-    <div className="flex flex-col h-full p-3">
+    <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xs font-medium">Database Explorer</h2>
 
@@ -78,7 +78,7 @@ export function DatabaseExplorer(): ReactElement {
               <ContextMenu>
                 <ContextMenuTrigger>
                   <Button
-                    className="flex items-center gap-1 px-2 py-0 cursor-default h-5 font-normal"
+                    className="flex justify-start items-center gap-1 -ml-2 px-0 py-1 cursor-default h-5 font-normal w-full"
                     size="sm"
                     variant="ghost"
                     onClick={() => dispatch(expandDatabase(database.id))}
@@ -117,7 +117,7 @@ export function DatabaseExplorer(): ReactElement {
                         className="border-l border-surface-0"
                       >
                         <Button
-                          className="flex items-center gap-1 px-2 py-0 cursor-default h-5 font-normal"
+                          className="flex items-center gap-1 px-0 py-0 cursor-default h-5 font-normal"
                           size="sm"
                           variant="ghost"
                           onClick={() => dispatch(expandTable(tableKey))}

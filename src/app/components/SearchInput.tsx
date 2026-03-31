@@ -18,7 +18,7 @@ export const SearchInput = memo(function SearchInput({
   return (
     <div className="relative">
       <Input
-        className={cn('pl-7 py-0', className)}
+        className={cn('h-7 pl-7 py-0', className)}
         placeholder="Search..."
         value={value}
         style={{ fontSize: '12px' }}
