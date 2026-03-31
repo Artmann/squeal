@@ -38,6 +38,7 @@ describe('createStore', () => {
       apiPort: 7847,
       databases: [],
       lastOpenWorksheetId: 'ws-2',
+      queries: [],
       worksheets: testWorksheets
     }
 
@@ -50,6 +51,7 @@ describe('createStore', () => {
     window.__BOOTSTRAP_DATA__ = {
       apiPort: 7847,
       databases: [],
+      queries: [],
       worksheets: testWorksheets
     }
 

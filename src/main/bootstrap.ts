@@ -24,16 +24,21 @@ export async function bootstrap(): Promise<BootstrapData> {
     database.select().from(queriesTable).limit(250)
   ])
 
-  const queries: QueryDto[] = queryRows.map((row) => ({
-    content: row.content,
-    databaseId: row.databaseId,
-    error: row.error ?? null,
-    finishedAt: row.finishedAt ?? null,
-    id: row.id,
-    queriedAt: row.queriedAt,
-    result: row.result ? JSON.parse(row.result) : null,
-    worksheetId: row.worksheetId
-  }))
+  const queries: QueryDto[] = queryRows.map((row) => {
+    const parsed = row.result ? JSON.parse(row.result) : null
+
+    return {
+      content: row.content,
+      databaseId: row.databaseId,
+      error: row.error ?? null,
+      finishedAt: row.finishedAt ?? null,
+      id: row.id,
+      queriedAt: row.queriedAt,
+      result: parsed,
+      truncated: parsed?.truncated ?? false,
+      worksheetId: row.worksheetId
+    }
+  })
 
   if (worksheets.length === 0) {
     const defaultWorksheet =

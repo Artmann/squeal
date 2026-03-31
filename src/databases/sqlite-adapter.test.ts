@@ -66,7 +66,8 @@ describe('SqliteAdapter', () => {
       expect(result).toEqual({
         fields: [{ name: 'id' }, { name: 'name' }],
         rowCount: 1,
-        rows: [{ id: 1, name: 'Test' }]
+        rows: [{ id: 1, name: 'Test' }],
+        truncated: false
       })
       expect(mockClose).toHaveBeenCalled()
     })
@@ -91,7 +92,8 @@ describe('SqliteAdapter', () => {
           { letter: 'a', num: 1 },
           { letter: 'b', num: 2 },
           { letter: 'c', num: 3 }
-        ]
+        ],
+        truncated: false
       })
     })
 
@@ -107,8 +109,27 @@ describe('SqliteAdapter', () => {
       expect(result).toEqual({
         fields: [],
         rowCount: 0,
-        rows: []
+        rows: [],
+        truncated: false
       })
+    })
+
+    it('truncates results to 10,000 rows', async () => {
+      const manyRows = Array.from({ length: 10_001 }, (_, i) => [i])
+
+      mockExecute.mockResolvedValueOnce({
+        columns: ['id'],
+        rows: manyRows
+      })
+
+      const adapter = new SqliteAdapter(connectionInfo)
+      const result = await adapter.runQuery('SELECT id FROM big_table')
+
+      expect(result.rows).toHaveLength(10_000)
+      expect(result.rowCount).toEqual(10_001)
+      expect(result.truncated).toEqual(true)
+      expect(result.rows[0]).toEqual({ id: 0 })
+      expect(result.rows[9_999]).toEqual({ id: 9_999 })
     })
 
     it('closes connection even when query fails', async () => {

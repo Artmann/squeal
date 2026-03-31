@@ -41,7 +41,9 @@
       "Bash(xargs ls:*)",
       "Bash(ls -la /Users/artmann/code/squeal/*.config.* /Users/artmann/code/squeal/tailwind*)",
       "Bash(yarn vitest:*)",
-      "Bash(yarn tsc:*)"
+      "Bash(yarn tsc:*)",
+      "Bash(grep -r \"LIMIT\\\\|limit\" /Users/artmann/code/squeal/src/databases/adapter.ts /Users/artmann/code/squeal/src/databases/*-adapter.ts)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []

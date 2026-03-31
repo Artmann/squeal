@@ -50,10 +50,15 @@ export class PostgresAdapter implements DatabaseAdapter {
 
       console.log(`  ✓ Query executed successfully\n`)
 
+      const maxRows = 10_000
+      const allRows = result.rows as Record<string, unknown>[]
+      const truncated = allRows.length > maxRows
+
       return {
         fields: result.fields.map((f) => ({ name: f.name })),
         rowCount: result.rowCount ?? 0,
-        rows: result.rows as Record<string, unknown>[]
+        rows: truncated ? allRows.slice(0, maxRows) : allRows,
+        truncated
       }
     } finally {
       await client.end()

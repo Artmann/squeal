@@ -74,7 +74,7 @@ describe('GET /queries/:id', () => {
         ${databaseId},
         ${worksheetId},
         ${queriedAt},
-        ${JSON.stringify({ fields: [{ name: 'id' }], rowCount: 1, rows: [{ id: 1 }] })},
+        ${JSON.stringify({ fields: [{ name: 'id' }], rowCount: 1, rows: [{ id: 1 }], truncated: false })},
         ${queriedAt + 100}
       )
     `)
@@ -90,7 +90,13 @@ describe('GET /queries/:id', () => {
       content: 'SELECT * FROM products',
       databaseId,
       worksheetId,
-      result: { fields: [{ name: 'id' }], rowCount: 1, rows: [{ id: 1 }] }
+      result: {
+        fields: [{ name: 'id' }],
+        rowCount: 1,
+        rows: [{ id: 1 }],
+        truncated: false
+      },
+      truncated: false
     })
   })
 

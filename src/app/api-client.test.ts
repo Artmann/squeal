@@ -200,6 +200,7 @@ describe('apiClient', () => {
         id: request.id,
         queriedAt: request.queriedAt,
         result: null,
+        truncated: false,
         worksheetId: request.worksheetId
       }
       const responseData = { query }
@@ -224,6 +225,7 @@ describe('apiClient', () => {
         id: request.id,
         queriedAt: request.queriedAt,
         result: { columns: ['id', 'name'], rows: [[1, 'Alice']] },
+        truncated: false,
         worksheetId: request.worksheetId
       }
       const responseData = { query }
@@ -247,6 +249,7 @@ describe('apiClient', () => {
         id: queryId,
         queriedAt: 1704067200000,
         result: { columns: ['?column?'], rows: [[1]] },
+        truncated: false,
         worksheetId: 'ws-123'
       }
       const responseData = { query }
@@ -270,6 +273,7 @@ describe('apiClient', () => {
         id: queryId,
         queriedAt: 1704067200000,
         result: { columns: ['?column?'], rows: [[1]] },
+        truncated: false,
         worksheetId: 'ws-123'
       }
 

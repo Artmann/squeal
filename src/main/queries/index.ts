@@ -17,6 +17,7 @@ export interface QueryDto {
   id: string
   queriedAt: number
   result: any | null
+  truncated: boolean
   worksheetId: string
 }
 
@@ -81,6 +82,8 @@ queryRouter.post('/', async (context) => {
 })
 
 function transformQuery(query: any): QueryDto {
+  const parsed = query.result ? JSON.parse(query.result) : null
+
   return {
     content: query.content,
     databaseId: query.databaseId,
@@ -88,7 +91,8 @@ function transformQuery(query: any): QueryDto {
     finishedAt: query.finishedAt ?? null,
     id: query.id,
     queriedAt: query.queriedAt,
-    result: query.result ? JSON.parse(query.result) : null,
+    result: parsed,
+    truncated: parsed?.truncated ?? false,
     worksheetId: query.worksheetId
   }
 }

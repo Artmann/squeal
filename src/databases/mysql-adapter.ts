@@ -48,12 +48,19 @@ export class MysqlAdapter implements DatabaseAdapter {
 
       console.log(`  ✓ Query executed successfully\n`)
 
+      const maxRows = 10_000
+      const allRows = Array.isArray(rows)
+        ? (rows as Record<string, unknown>[])
+        : []
+      const truncated = allRows.length > maxRows
+
       return {
         fields: Array.isArray(fields)
           ? fields.map((f) => ({ name: f.name }))
           : [],
         rowCount: Array.isArray(rows) ? rows.length : 0,
-        rows: Array.isArray(rows) ? (rows as Record<string, unknown>[]) : []
+        rows: truncated ? allRows.slice(0, maxRows) : allRows,
+        truncated
       }
     } finally {
       await connection.end()

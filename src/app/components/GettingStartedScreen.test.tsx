@@ -63,9 +63,9 @@ describe('GettingStartedScreen', () => {
   it('renders the welcome screen with form fields', () => {
     renderGettingStartedScreen()
 
-    expect(screen.getByText('Welcome 👋')).toBeInTheDocument()
+    expect(screen.getByText('Connect a database')).toBeInTheDocument()
     expect(
-      screen.getByText('Connect your first database to get started.')
+      screen.getByText('Add your first database connection to get started.')
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
     expect(screen.getByLabelText('Host')).toBeInTheDocument()

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WorksheetDto } from '@/glue/worksheets'
-import { DatabaseDto } from '@/glue/databases'
 
 const mockListWorksheets = vi.fn()
 const mockCreateWorksheet = vi.fn()

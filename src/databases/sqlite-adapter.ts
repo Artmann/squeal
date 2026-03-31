@@ -73,10 +73,14 @@ export class SqliteAdapter implements DatabaseAdapter {
         return record
       })
 
+      const maxRows = 10_000
+      const truncated = rows.length > maxRows
+
       return {
         fields,
         rowCount: result.rows.length,
-        rows
+        rows: truncated ? rows.slice(0, maxRows) : rows,
+        truncated
       }
     } finally {
       client.close()

@@ -2,6 +2,7 @@ export interface QueryResult {
   fields: { name: string }[]
   rowCount: number
   rows: Record<string, unknown>[]
+  truncated: boolean
 }
 
 export interface ColumnInfo {

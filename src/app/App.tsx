@@ -17,11 +17,7 @@ import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 import { WorksheetEditor } from './components/WorksheetEditor'
 import { useAppDispatch, useAppSelector } from './store'
-import {
-  editorSlice,
-  queryCreated,
-  queryFetched
-} from './store/editor-slice'
+import { editorSlice, queryCreated, queryFetched } from './store/editor-slice'
 import { createAstFromSql } from './sql-parser'
 
 export function App(): ReactElement {
@@ -168,6 +164,7 @@ export function App(): ReactElement {
         id: queryId,
         queriedAt,
         result: null,
+        truncated: false,
         worksheetId: openWorksheetId ?? ''
       })
     )
@@ -290,4 +287,4 @@ export function App(): ReactElement {
   )
 }
 
-const pollInterval = 10
+const pollInterval = 250

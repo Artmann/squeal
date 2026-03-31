@@ -89,7 +89,9 @@ export function WorksheetExplorer(): ReactElement {
         .updateWorksheet(worksheet.id, {
           lastOpenedAt: Date.now()
         })
-        .catch(() => {})
+        .catch(() => {
+          // Fire-and-forget: selection persistence after creation is best-effort
+        })
 
       // Auto-enter rename mode so the user can name it immediately
       setEditingWorksheetId(worksheet.id)

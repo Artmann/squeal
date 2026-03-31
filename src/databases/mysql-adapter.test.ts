@@ -131,7 +131,8 @@ describe('MysqlAdapter', () => {
       expect(result).toEqual({
         fields: [{ name: 'id' }, { name: 'name' }],
         rowCount: 1,
-        rows: [{ id: 1, name: 'Test' }]
+        rows: [{ id: 1, name: 'Test' }],
+        truncated: false
       })
       expect(mockEnd).toHaveBeenCalled()
     })
@@ -151,7 +152,8 @@ describe('MysqlAdapter', () => {
       expect(result).toEqual({
         fields: [{ name: 'letter' }, { name: 'num' }],
         rowCount: 3,
-        rows: mockRows
+        rows: mockRows,
+        truncated: false
       })
     })
 
@@ -164,8 +166,24 @@ describe('MysqlAdapter', () => {
       expect(result).toEqual({
         fields: [],
         rowCount: 0,
-        rows: []
+        rows: [],
+        truncated: false
       })
+    })
+
+    it('truncates results to 10,000 rows', async () => {
+      const manyRows = Array.from({ length: 10_001 }, (_, i) => ({ id: i }))
+      const mockFields = [{ name: 'id' }]
+      mockQuery.mockResolvedValueOnce([manyRows, mockFields])
+
+      const adapter = new MysqlAdapter(connectionInfo)
+      const result = await adapter.runQuery('SELECT id FROM big_table')
+
+      expect(result.rows).toHaveLength(10_000)
+      expect(result.rowCount).toEqual(10_001)
+      expect(result.truncated).toEqual(true)
+      expect(result.rows[0]).toEqual({ id: 0 })
+      expect(result.rows[9_999]).toEqual({ id: 9_999 })
     })
 
     it('closes connection even when query fails', async () => {

@@ -321,20 +321,13 @@ describe('WorksheetExplorer', () => {
 
       await user.click(addButton as HTMLElement)
 
-      // Wait for the API call to complete
+      // Wait for the API call to complete and auto-rename mode to activate
       await waitFor(() => {
         expect(apiClient.createWorksheet).toHaveBeenCalled()
       })
 
-      // Find and double-click the worksheet to rename it
-      const worksheetButton = await screen.findByRole('button', {
-        name: /Worksheet/
-      })
-
-      await user.dblClick(worksheetButton)
-
-      // Type new name and save
-      const input = screen.getByDisplayValue(/Worksheet/)
+      // The component automatically enters rename mode after creation — find the input directly
+      const input = await screen.findByDisplayValue(/Worksheet/)
 
       await user.clear(input)
       await user.type(input, 'My New Worksheet{Enter}')

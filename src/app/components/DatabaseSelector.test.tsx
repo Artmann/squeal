@@ -25,9 +25,9 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
   // ResizeObserver polyfill for Radix popover/portal
   window.ResizeObserver = class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+    observe = vi.fn()
+    unobserve = vi.fn()
+    disconnect = vi.fn()
   } as unknown as typeof window.ResizeObserver
 })
 
@@ -164,7 +164,9 @@ describe('DatabaseSelector', () => {
 
     // Mock a slow API response so we can inspect the optimistic update
     vi.mocked(apiClient.updateWorksheet).mockImplementation(
-      () => new Promise(() => {}) // Never resolves — lets us inspect optimistic state
+      // Never resolves — lets us inspect optimistic state
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      () => new Promise(() => {})
     )
 
     render(

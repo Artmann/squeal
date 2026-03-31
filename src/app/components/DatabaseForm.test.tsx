@@ -20,9 +20,9 @@ beforeAll(() => {
   Element.prototype.releasePointerCapture = vi.fn()
   Element.prototype.scrollIntoView = vi.fn()
   window.ResizeObserver = class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+    observe = vi.fn()
+    unobserve = vi.fn()
+    disconnect = vi.fn()
   } as unknown as typeof window.ResizeObserver
 })
 

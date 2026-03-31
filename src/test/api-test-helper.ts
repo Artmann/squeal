@@ -19,7 +19,8 @@ export const mockAdapterConfig = {
     rows: [
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' }
-    ]
+    ],
+    truncated: false
   }),
   testConnection: async (): Promise<void> => {
     // Default: connection succeeds.
@@ -100,7 +101,8 @@ export async function resetTestDatabase(): Promise<void> {
     rows: [
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' }
-    ]
+    ],
+    truncated: false
   })
   mockAdapterConfig.testConnection = async () => {
     // Default: connection succeeds.
