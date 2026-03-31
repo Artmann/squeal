@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import invariant from 'tiny-invariant'
+import { log } from 'tiny-typescript-logger'
 
 import { MysqlAdapter } from './mysql-adapter'
 import { PostgresAdapter } from './postgres-adapter'
@@ -52,12 +53,14 @@ connectionTestRouter.post('/', async (context) => {
   try {
     await adapter.testConnection()
   } catch (error) {
+    log.error('Connection test failed:', error)
+
     return context.json(
       {
         message: error instanceof Error ? error.message : String(error),
         success: false
       },
-      500
+      200
     )
   }
 
