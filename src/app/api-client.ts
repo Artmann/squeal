@@ -8,7 +8,12 @@ import {
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
-import { CreateQueryResponse, GetQueryResponse, QueryDto } from '@/main/queries'
+import {
+  CreateQueryResponse,
+  GetQueriesResponse,
+  GetQueryResponse,
+  QueryDto
+} from '@/main/queries'
 import {
   CreateWorksheetResponse,
   UpdateWorksheetResponse
@@ -110,6 +115,13 @@ export const apiClient = {
     })
 
     return handleResponse<CreateQueryResponse>(response)
+  },
+
+  async getQueries(): Promise<QueryDto[]> {
+    const response = await fetch(`${baseUrl}/queries`)
+    const data = await handleResponse<GetQueriesResponse>(response)
+
+    return data.queries
   },
 
   async getQuery(queryId: string): Promise<QueryDto> {

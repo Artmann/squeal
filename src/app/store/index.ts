@@ -14,7 +14,7 @@ export interface RootState {
 }
 
 export function createStore() {
-  const { databases, lastOpenWorksheetId, worksheets } =
+  const { databases, lastOpenWorksheetId, queries, worksheets } =
     window.__BOOTSTRAP_DATA__
 
   const openWorksheetId = lastOpenWorksheetId ?? worksheets[0]?.id
@@ -30,7 +30,7 @@ export function createStore() {
         databases,
         databaseSearchQuery: '',
         openWorksheetId,
-        queries: [],
+        queries,
         schemas: {},
         worksheets,
         worksheetSearchQuery: ''

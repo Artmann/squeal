@@ -101,8 +101,6 @@ export const editorSlice = createSlice({
       state.schemas[action.payload.databaseId] = action.payload.schema
     },
     worksheetSelected: (state, action: PayloadAction<string>) => {
-      console.log('Selecting worksheet', action.payload)
-
       state.openWorksheetId = action.payload
     },
     worksheetSearchQueryUpdated: (state, action: PayloadAction<string>) => {

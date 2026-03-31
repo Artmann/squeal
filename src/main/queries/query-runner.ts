@@ -54,8 +54,6 @@ class QueryRunner {
       worksheetId: input.worksheetId
     }
 
-    console.log('Inserting query into database:', data)
-
     const [insertedQueryRow] = await database
       .insert(queriesTable)
       .values(data)
@@ -94,7 +92,6 @@ class QueryRunner {
 
       const result = await adapter.runQuery(query.content)
 
-      console.log('Query result:', result)
       await database
         .update(queriesTable)
         .set({
@@ -103,8 +100,6 @@ class QueryRunner {
         })
         .where(eq(queriesTable.id, query.id))
     } catch (error) {
-      console.error('Query failed:', error)
-
       const errorMessage = extractErrorMessage(error)
 
       await database
