@@ -25,6 +25,7 @@ const createWorksheetSchema = z.object({
 const updateWorksheetSchema = z.object({
   content: z.string().optional(),
   databaseId: z.string().nullable().optional(),
+  lastOpenedAt: z.number().optional(),
   name: z.string().optional()
 })
 

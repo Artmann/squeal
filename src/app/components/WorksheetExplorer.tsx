@@ -46,6 +46,12 @@ export function WorksheetExplorer(): ReactElement {
   const handleSelectWorksheet = useCallback(
     (worksheetId: string) => {
       dispatch(editorSlice.actions.worksheetSelected(worksheetId))
+
+      apiClient.updateWorksheet(worksheetId, {
+        lastOpenedAt: Date.now()
+      }).catch(() => {
+        // Fire-and-forget: selection persistence is best-effort
+      })
     },
     [dispatch]
   )
@@ -59,6 +65,7 @@ export function WorksheetExplorer(): ReactElement {
       createdAt: Date.now(),
       databaseId: null,
       id: optimisticId,
+      lastOpenedAt: Date.now(),
       name
     }
 
@@ -70,6 +77,11 @@ export function WorksheetExplorer(): ReactElement {
       // Replace optimistic worksheet with real one from API
       dispatch(editorSlice.actions.worksheetRemoved(optimisticId))
       dispatch(editorSlice.actions.worksheetCreated(worksheet))
+
+      // Persist the selection
+      apiClient.updateWorksheet(worksheet.id, {
+        lastOpenedAt: Date.now()
+      }).catch(() => {})
     } catch (error) {
       dispatch(editorSlice.actions.worksheetRemoved(optimisticId))
 

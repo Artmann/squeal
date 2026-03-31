@@ -6,6 +6,7 @@ import { WorksheetService } from './worksheets/worksheet-service'
 export interface BootstrapData {
   apiPort: number
   databases: DatabaseDto[]
+  lastOpenWorksheetId?: string
   worksheets: WorksheetDto[]
 }
 
@@ -25,9 +26,21 @@ export async function bootstrap(): Promise<BootstrapData> {
     worksheets.push(defaultWorksheet)
   }
 
+  // Find the most recently opened worksheet
+  let lastOpenWorksheetId: string | undefined
+  let maxLastOpenedAt = 0
+
+  for (const worksheet of worksheets) {
+    if (worksheet.lastOpenedAt !== null && worksheet.lastOpenedAt > maxLastOpenedAt) {
+      maxLastOpenedAt = worksheet.lastOpenedAt
+      lastOpenWorksheetId = worksheet.id
+    }
+  }
+
   return {
     apiPort: 7847,
     databases,
+    lastOpenWorksheetId,
     worksheets
   }
 }

@@ -14,7 +14,9 @@ export interface RootState {
 }
 
 export function createStore() {
-  const { databases, worksheets } = window.__BOOTSTRAP_DATA__
+  const { databases, lastOpenWorksheetId, worksheets } = window.__BOOTSTRAP_DATA__
+
+  const openWorksheetId = lastOpenWorksheetId ?? worksheets[0]?.id
 
   const store = configureStore({
     reducer: {
@@ -26,7 +28,7 @@ export function createStore() {
       editor: {
         databases,
         databaseSearchQuery: '',
-        openWorksheetId: worksheets[0]?.id,
+        openWorksheetId,
         queries: [],
         schemas: {},
         worksheets,

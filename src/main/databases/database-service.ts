@@ -58,6 +58,7 @@ export class DatabaseService {
           createdAt: updated.createdAt,
           databaseId: updated.databaseId ?? null,
           id: updated.id,
+          lastOpenedAt: updated.lastOpenedAt ?? null,
           name: updated.name
         }
       }

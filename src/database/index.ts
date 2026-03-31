@@ -74,4 +74,15 @@ export async function initializeDatabase() {
     .catch(() => {
       // Column already exists, ignore error.
     })
+
+  // Add lastOpenedAt column for existing databases that don't have it.
+  await database
+    .run(
+      sql`
+    ALTER TABLE worksheets ADD COLUMN lastOpenedAt INTEGER
+  `
+    )
+    .catch(() => {
+      // Column already exists, ignore error.
+    })
 }

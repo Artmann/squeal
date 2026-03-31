@@ -26,6 +26,7 @@ vi.mock('@/database', () => ({
                   createdAt: 1704067200000,
                   databaseId: null as string | null,
                   deletedAt: null as number | null,
+                  lastOpenedAt: null as number | null,
                   name: 'Test Worksheet'
                 }
               ]
@@ -82,9 +83,11 @@ describe('WorksheetService', () => {
       const result = await service.createWorksheet('My Worksheet')
 
       expect(result).toEqual({
+        content: undefined,
         createdAt: 1704067200000,
         databaseId: null,
         id: 'test-worksheet-id',
+        lastOpenedAt: null,
         name: 'Test Worksheet'
       })
     })

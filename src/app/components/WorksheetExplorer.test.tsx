@@ -13,7 +13,7 @@ import { WorksheetExplorer } from './WorksheetExplorer'
 vi.mock('../api-client', () => ({
   apiClient: {
     createWorksheet: vi.fn(),
-    updateWorksheet: vi.fn()
+    updateWorksheet: vi.fn().mockResolvedValue({})
   }
 }))
 
@@ -24,6 +24,7 @@ const testWorksheet: WorksheetDto = {
   createdAt: 1704067200000,
   databaseId: null,
   id: 'ws-123',
+  lastOpenedAt: null,
   name: 'Test Worksheet'
 }
 
@@ -103,6 +104,39 @@ describe('WorksheetExplorer', () => {
     expect(store.getState().editor.openWorksheetId).toEqual('ws-123')
   })
 
+  it('selecting a worksheet should call updateWorksheet with lastOpenedAt', async () => {
+    const user = userEvent.setup()
+    const secondWorksheet: WorksheetDto = {
+      content: '',
+      createdAt: 1704067300000,
+      databaseId: null,
+      id: 'ws-456',
+      lastOpenedAt: null,
+      name: 'Second Worksheet'
+    }
+
+    const store = createTestStore({
+      worksheets: [testWorksheet, secondWorksheet],
+      openWorksheetId: 'ws-123'
+    })
+
+    vi.mocked(apiClient.updateWorksheet).mockResolvedValue(secondWorksheet)
+
+    render(
+      <TestEnvironment store={store}>
+        <WorksheetExplorer />
+      </TestEnvironment>
+    )
+
+    await user.click(screen.getByText('Second Worksheet'))
+
+    await waitFor(() => {
+      expect(apiClient.updateWorksheet).toHaveBeenCalledWith('ws-456', {
+        lastOpenedAt: expect.any(Number)
+      })
+    })
+  })
+
   describe('rename functionality', () => {
     it('enters edit mode on double click', async () => {
       const user = userEvent.setup()
@@ -174,7 +208,10 @@ describe('WorksheetExplorer', () => {
 
       expect(screen.queryByDisplayValue('New Name')).not.toBeInTheDocument()
       expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
-      expect(apiClient.updateWorksheet).not.toHaveBeenCalled()
+      expect(apiClient.updateWorksheet).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ name: expect.any(String) })
+      )
     })
 
     it('saves new name on blur', async () => {
@@ -222,7 +259,10 @@ describe('WorksheetExplorer', () => {
       await user.clear(input)
       await user.type(input, '{Enter}')
 
-      expect(apiClient.updateWorksheet).not.toHaveBeenCalled()
+      expect(apiClient.updateWorksheet).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ name: expect.any(String) })
+      )
       expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
     })
 
@@ -242,7 +282,10 @@ describe('WorksheetExplorer', () => {
 
       await user.type(input, '{Enter}')
 
-      expect(apiClient.updateWorksheet).not.toHaveBeenCalled()
+      expect(apiClient.updateWorksheet).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ name: expect.any(String) })
+      )
     })
 
     it('can rename a newly created worksheet', async () => {
@@ -254,6 +297,7 @@ describe('WorksheetExplorer', () => {
         createdAt: Date.now(),
         databaseId: null,
         id: 'real-db-id',
+        lastOpenedAt: null,
         name: 'Worksheet 01/05/2026 12:00:00'
       }
 

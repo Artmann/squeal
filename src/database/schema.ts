@@ -61,5 +61,6 @@ export const worksheetsTable = sqliteTable('worksheets', {
     .$defaultFn(() => Date.now()),
   databaseId: text(),
   deletedAt: integer(),
+  lastOpenedAt: integer(),
   name: text().notNull().default('Untitled Worksheet')
 })

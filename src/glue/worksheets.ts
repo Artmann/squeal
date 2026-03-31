@@ -3,5 +3,6 @@ export interface WorksheetDto {
   createdAt: number
   databaseId: string | null
   id: string
+  lastOpenedAt: number | null
   name: string
 }

@@ -172,6 +172,7 @@ async function createTestDatabase(): Promise<LibSQLDatabase> {
       createdAt INTEGER NOT NULL,
       databaseId TEXT,
       deletedAt INTEGER,
+      lastOpenedAt INTEGER,
       name TEXT NOT NULL DEFAULT 'Untitled Worksheet'
     )
   `)

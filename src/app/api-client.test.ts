@@ -397,6 +397,7 @@ describe('apiClient', () => {
         createdAt: 1704067200000,
         databaseId: null,
         id: worksheetId,
+        lastOpenedAt: null,
         name: 'New Name'
       }
 

@@ -24,7 +24,7 @@ export class WorksheetService {
 
   async updateWorksheet(
     id: string,
-    updates: { content?: string; databaseId?: string | null; name?: string }
+    updates: { content?: string; databaseId?: string | null; lastOpenedAt?: number; name?: string }
   ): Promise<WorksheetDto> {
     const [worksheet] = await database
       .update(worksheetsTable)
@@ -44,6 +44,7 @@ function transformWorksheet(
     createdAt: worksheet.createdAt,
     databaseId: worksheet.databaseId ?? null,
     id: worksheet.id,
+    lastOpenedAt: worksheet.lastOpenedAt ?? null,
     name: worksheet.name
   }
 }
