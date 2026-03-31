@@ -48,7 +48,9 @@ export function DatabaseExplorer(): ReactElement {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-xs font-medium">Database Explorer</h2>
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-subtext-0">
+          Database Explorer
+        </h2>
 
         <Button
           size="icon-sm"
@@ -85,7 +87,7 @@ export function DatabaseExplorer(): ReactElement {
                   >
                     <ChevronRight
                       className={cn(
-                        'size-3',
+                        'size-3 transition-transform duration-150',
                         isDatabaseExpanded ? 'rotate-90' : ''
                       )}
                     />
@@ -124,7 +126,7 @@ export function DatabaseExplorer(): ReactElement {
                         >
                           <ChevronRight
                             className={cn(
-                              'size-3',
+                              'size-3 transition-transform duration-150',
                               isTableExpanded ? 'rotate-90' : ''
                             )}
                           />

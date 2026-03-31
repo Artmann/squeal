@@ -19,8 +19,14 @@ export function TitleBar(): ReactElement {
   }
 
   return (
-    <div className="title-bar h-7 flex items-center justify-between bg-mantle border-b border-surface-0 select-none">
-      <div className="flex-1 drag-region h-full flex items-center px-3" />
+    <div className="title-bar relative h-7 flex items-center justify-between bg-mantle border-b border-surface-0 select-none">
+      <div className="flex-1 drag-region h-full" />
+
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <span className="text-[11px] font-semibold tracking-wider text-subtext-0 select-none">
+          Squeal
+        </span>
+      </div>
 
       {!isMac && (
         <div className="flex h-full">

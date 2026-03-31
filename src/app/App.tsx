@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import { Loader2Icon, PlayIcon } from 'lucide-react'
+import { Loader2Icon, PlayIcon, XCircleIcon } from 'lucide-react'
 import { ReactElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import invariant from 'tiny-invariant'
@@ -91,16 +91,6 @@ export function App(): ReactElement {
   )
 
   const isQueryRunning = query && !query.finishedAt
-
-  console.log({
-    activeStatementIndex,
-    cursorPosition,
-    isQueryRunning,
-    openWorksheetId,
-    queries,
-    statements,
-    worksheets
-  })
 
   const dispatch = useAppDispatch()
 
@@ -275,8 +265,17 @@ export function App(): ReactElement {
               {query?.result && <QueryResultTable result={query.result} />}
 
               {query?.error && (
-                <div className="w-full h-full flex justify-center items-center">
-                  {query.error}
+                <div className="w-full h-full flex justify-center items-center p-6">
+                  <div className="w-full max-w-lg flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-red font-medium text-sm">
+                      <XCircleIcon className="size-4 shrink-0" />
+                      Query failed
+                    </div>
+
+                    <pre className="text-xs text-subtext-0 font-mono whitespace-pre-wrap bg-surface-0 rounded-md p-3 border border-surface-1">
+                      {query.error}
+                    </pre>
+                  </div>
                 </div>
               )}
             </ResultSheet>

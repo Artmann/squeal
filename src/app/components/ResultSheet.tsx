@@ -67,27 +67,28 @@ export function ResultSheet({
       style={{ height: isOpen ? `${height}px` : '0' }}
     >
       <div
-        className="h-1 cursor-row-resize hover:bg-mauve/30 flex-shrink-0"
+        className="h-2 cursor-row-resize hover:bg-mauve/10 flex-shrink-0 flex items-center justify-center group"
         onMouseDown={handleDragStart}
-      />
-
-      <div>
-        <div className="flex items-center justify-between px-3 py-2 border-b border-surface-0">
-          <div className={cn(isSuccessful ? 'text-mauve' : '')}>
-            Results (
-            {query?.queriedAt && <TimeAgo timestamp={query.queriedAt} />})
-          </div>
-          {query?.result && (
-            <div className="flex items-center gap-4 text-subtext-0">
-              <div>
-                {Intl.NumberFormat().format(query.result.rowCount)}{' '}
-                {query.result.rowCount > 1 ? 'rows' : 'row'}
-              </div>
-              {executionTime && <div>{executionTime} ms</div>}
-            </div>
-          )}
-        </div>
+      >
+        <div className="w-8 h-0.5 rounded-full bg-overlay-1 group-hover:bg-mauve/50 transition-colors" />
       </div>
+
+      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-0 text-subtext-0">
+        <div className="flex items-center gap-3">
+          {isSuccessful ? (
+            <span className="text-mauve font-medium">
+              {Intl.NumberFormat().format(query.result.rowCount)}{' '}
+              {query.result.rowCount === 1 ? 'row' : 'rows'}
+            </span>
+          ) : (
+            <span>Results</span>
+          )}
+          {executionTime && <span>{executionTime}ms</span>}
+        </div>
+
+        {query?.queriedAt && <TimeAgo timestamp={query.queriedAt} />}
+      </div>
+
       <div className="flex-1 min-h-0 overflow-auto">{children}</div>
     </div>
   )

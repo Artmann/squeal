@@ -1,4 +1,3 @@
-import dayjs from 'dayjs'
 import { FileBracesIcon, PlusIcon } from 'lucide-react'
 import { ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -60,7 +59,12 @@ export function WorksheetExplorer(): ReactElement {
 
   const handleNewWorksheet = useCallback(async () => {
     const optimisticId = uuid()
-    const name = `Worksheet ${dayjs().format('MM/DD/YYYY HH:mm:ss')}`
+
+    const untitledCount = worksheets.filter(
+      (w) => w.name === 'Untitled' || /^Untitled \d+$/.test(w.name)
+    ).length
+    const name =
+      untitledCount === 0 ? 'Untitled' : `Untitled ${untitledCount + 1}`
 
     const optimisticWorksheet: WorksheetDto = {
       content: '',
@@ -86,6 +90,10 @@ export function WorksheetExplorer(): ReactElement {
           lastOpenedAt: Date.now()
         })
         .catch(() => {})
+
+      // Auto-enter rename mode so the user can name it immediately
+      setEditingWorksheetId(worksheet.id)
+      setEditingName(worksheet.name)
     } catch (error) {
       dispatch(editorSlice.actions.worksheetRemoved(optimisticId))
 
@@ -93,7 +101,7 @@ export function WorksheetExplorer(): ReactElement {
 
       toast.error('Failed to create worksheet', { description: message })
     }
-  }, [dispatch])
+  }, [dispatch, worksheets])
 
   const handleDoubleClick = useCallback((worksheet: WorksheetDto) => {
     setEditingWorksheetId(worksheet.id)
@@ -158,7 +166,9 @@ export function WorksheetExplorer(): ReactElement {
   return (
     <div className="flex flex-col h-full">
       <div className="mb-2 flex justify-between items-center">
-        <h2 className="text-xs font-medium">Worksheets</h2>
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-subtext-0">
+          Worksheets
+        </h2>
         <div>
           <Button
             size="icon-sm"
@@ -201,7 +211,9 @@ export function WorksheetExplorer(): ReactElement {
               key={worksheet.id}
               className={cn(
                 'w-full px-3 py-0.5 text-left flex justify-start items-center gap-2 text-xs font-normal',
-                worksheet.id === openWorksheetId ? 'bg-surface-0' : ''
+                worksheet.id === openWorksheetId
+                  ? 'bg-mauve/10 text-mauve shadow-[inset_2px_0_0_var(--color-mauve)]'
+                  : ''
               )}
               size="sm"
               variant="ghost"

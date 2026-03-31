@@ -25,9 +25,15 @@ export function GettingStartedScreen(): ReactElement {
     <div className="fixed inset-0 z-100 bg-mantle flex justify-center items-center">
       <div className="w-full max-w-md flex flex-col gap-6">
         <div>
-          <h1 className="text-3xl font-semibold mb-2">Welcome 👋</h1>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-mauve mb-3">
+            Squeal
+          </div>
 
-          <p>Connect your first database to get started.</p>
+          <h1 className="text-3xl font-semibold mb-2">Connect a database</h1>
+
+          <p className="text-subtext-0">
+            Add your first database connection to get started.
+          </p>
         </div>
 
         <DatabaseForm onSuccess={handleSuccess} />

@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import '@fontsource-variable/geist';
+@import '@fontsource/geist-mono';
 @import './styles/themes/catppuccin-latte.css';
 @import './styles/themes/catppuccin-frappe.css';
 
@@ -81,6 +83,10 @@
   --radius-md: 0.5rem;
   --radius-lg: 0.625rem;
   --radius-xl: 1rem;
+
+  /* Typography */
+  --font-sans: 'Geist Variable', sans-serif;
+  --font-mono: 'Geist Mono', monospace;
 }
 
 @layer base {
@@ -91,6 +97,7 @@
 
   body {
     @apply bg-base text-text;
+    font-family: var(--font-sans);
   }
 
   .cm-editor {
