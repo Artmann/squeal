@@ -4,6 +4,10 @@ import { Client, type ClientConfig } from 'pg'
 
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
+  extractMissingRelation,
+  rewriteWithQuotedIdentifiers
+} from './postgres-identifier-fixer'
+import {
   postgresColumnsQuery,
   postgresForeignKeysQuery,
   transformToSchemaInfo
@@ -23,14 +27,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     try {
       await client.connect()
 
-      const columnsResult = await client.query(postgresColumnsQuery)
-      const foreignKeysResult = await client.query(postgresForeignKeysQuery)
-
-      return transformToSchemaInfo(
-        this.connectionInfo.database,
-        columnsResult.rows,
-        foreignKeysResult.rows
-      )
+      return await this.getSchemaWithClient(client)
     } finally {
       await client.end()
     }
@@ -44,25 +41,60 @@ export class PostgresAdapter implements DatabaseAdapter {
 
       console.log('Connected to database')
 
-      console.log(`Running query:\n${query}\n`)
+      try {
+        return await this.executeQuery(client, query)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const missingRelation = extractMissingRelation(message)
 
-      const result = await client.query(query)
+        if (!missingRelation) {
+          throw error
+        }
 
-      console.log(`  ✓ Query executed successfully\n`)
+        const schema = await this.getSchemaWithClient(client)
+        const rewritten = rewriteWithQuotedIdentifiers(query, schema, missingRelation)
 
-      const maxRows = 10_000
-      const allRows = result.rows as Record<string, unknown>[]
-      const truncated = allRows.length > maxRows
+        if (!rewritten) {
+          throw error
+        }
 
-      return {
-        fields: result.fields.map((f) => ({ name: f.name })),
-        rowCount: result.rowCount ?? 0,
-        rows: truncated ? allRows.slice(0, maxRows) : allRows,
-        truncated
+        console.log(`  ↻ Retrying with quoted identifiers:\n${rewritten}\n`)
+
+        return await this.executeQuery(client, rewritten)
       }
     } finally {
       await client.end()
     }
+  }
+
+  private async executeQuery(client: Client, query: string): Promise<QueryResult> {
+    console.log(`Running query:\n${query}\n`)
+
+    const result = await client.query(query)
+
+    console.log(`  ✓ Query executed successfully\n`)
+
+    const maxRows = 10_000
+    const allRows = result.rows as Record<string, unknown>[]
+    const truncated = allRows.length > maxRows
+
+    return {
+      fields: result.fields.map((f) => ({ name: f.name })),
+      rowCount: result.rowCount ?? 0,
+      rows: truncated ? allRows.slice(0, maxRows) : allRows,
+      truncated
+    }
+  }
+
+  private async getSchemaWithClient(client: Client): Promise<SchemaInfo> {
+    const columnsResult = await client.query(postgresColumnsQuery)
+    const foreignKeysResult = await client.query(postgresForeignKeysQuery)
+
+    return transformToSchemaInfo(
+      this.connectionInfo.database,
+      columnsResult.rows,
+      foreignKeysResult.rows
+    )
   }
 
   async testConnection(): Promise<void> {
