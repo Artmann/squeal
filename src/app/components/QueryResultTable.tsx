@@ -8,9 +8,50 @@ import {
   TableHeader,
   TableRow
 } from './ui/table'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger
+} from './ui/context-menu'
 import { cn } from '../lib/utils'
 
 const pageSize = 100
+
+export function formatCellValue(value: unknown): string {
+  if (value === null) {
+    return 'null'
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value)
+  }
+
+  return String(value)
+}
+
+export function escapeCsvField(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+
+  return value
+}
+
+export function formatRowAsCsv(row: Record<string, unknown>, fieldNames: string[]): string {
+  const header = fieldNames.map(escapeCsvField).join(',')
+  const values = fieldNames.map((name) => escapeCsvField(formatCellValue(row[name]))).join(',')
+
+  return `${header}\n${values}`
+}
+
+export function formatRowAsJson(row: Record<string, unknown>): string {
+  return JSON.stringify(row, null, 2)
+}
 
 export const QueryResultTable = memo(function QueryResultTable({
   result
@@ -59,20 +100,59 @@ export const QueryResultTable = memo(function QueryResultTable({
                   const isNumber = typeof value === 'number'
 
                   return (
-                    <TableCell
-                      className={cn(
-                        'border-r border-surface-0 last:border-r-0',
-                        isNumber ? 'text-right' : 'text-left',
-                        value === null && 'text-subtext-0'
-                      )}
-                      key={`${rowIndex}-${name}`}
-                    >
-                      {value === null
-                        ? 'null'
-                        : typeof value === 'object'
-                          ? JSON.stringify(value)
-                          : String(value)}
-                    </TableCell>
+                    <ContextMenu key={`${rowIndex}-${name}`}>
+                      <ContextMenuTrigger asChild>
+                        <TableCell
+                          className={cn(
+                            'border-r border-surface-0 last:border-r-0',
+                            isNumber ? 'text-right' : 'text-left',
+                            value === null && 'text-subtext-0'
+                          )}
+                        >
+                          {formatCellValue(value)}
+                        </TableCell>
+                      </ContextMenuTrigger>
+
+                      <ContextMenuContent>
+                        <ContextMenuItem
+                          className="text-xs"
+                          onSelect={() => navigator.clipboard.writeText(formatCellValue(value))}
+                        >
+                          Copy
+                        </ContextMenuItem>
+
+                        <ContextMenuItem
+                          className="text-xs"
+                          onSelect={() => navigator.clipboard.writeText(name)}
+                        >
+                          Copy Column Name
+                        </ContextMenuItem>
+
+                        <ContextMenuSeparator />
+
+                        <ContextMenuSub>
+                          <ContextMenuSubTrigger className="text-xs">
+                            Copy Row
+                          </ContextMenuSubTrigger>
+
+                          <ContextMenuSubContent>
+                            <ContextMenuItem
+                              className="text-xs"
+                              onSelect={() => navigator.clipboard.writeText(formatRowAsCsv(row, fieldNames))}
+                            >
+                              As CSV
+                            </ContextMenuItem>
+
+                            <ContextMenuItem
+                              className="text-xs"
+                              onSelect={() => navigator.clipboard.writeText(formatRowAsJson(row))}
+                            >
+                              As JSON
+                            </ContextMenuItem>
+                          </ContextMenuSubContent>
+                        </ContextMenuSub>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   )
                 })}
               </TableRow>
