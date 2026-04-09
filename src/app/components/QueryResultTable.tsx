@@ -51,7 +51,7 @@ export const QueryResultTable = memo(function QueryResultTable({
           <TableBody>
             {pageRows.map((row: any, rowIndex: number) => (
               <TableRow key={String(page * pageSize + rowIndex)}>
-                <TableCell className="border-r border-surface-0 px-0.5 text-center text-subtext-0">
+                <TableCell className="border-r border-surface-0 px-2 text-center text-subtext-0">
                   {page * pageSize + rowIndex + 1}
                 </TableCell>
                 {fieldNames.map((name: string) => {
