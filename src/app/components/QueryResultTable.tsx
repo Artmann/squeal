@@ -1,4 +1,4 @@
-import { memo, ReactElement, useState } from 'react'
+import { memo, ReactElement, useEffect, useRef, useState } from 'react'
 
 import {
   Table,
@@ -18,6 +18,11 @@ export const QueryResultTable = memo(function QueryResultTable({
   result: any
 }): ReactElement {
   const [page, setPage] = useState(0)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo(0, 0)
+  }, [page])
 
   const fieldNames = result.fields.map((field: any) => field.name)
   const totalRows: number = result.rows.length
@@ -28,7 +33,7 @@ export const QueryResultTable = memo(function QueryResultTable({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" ref={scrollRef}>
         <Table className="w-full text-xs">
           <TableHeader className="sticky top-0 bg-base">
             <TableRow className="bg-base">
