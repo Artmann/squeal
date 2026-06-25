@@ -1,7 +1,8 @@
 import { ChevronRight, Database, Pencil, Plus, Table2Icon } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
-import { editorSlice } from '../store/editor-slice'
+import { useDatabases, useDatabaseSchema } from '../hooks/queries'
+import { databaseSearchQueryUpdated } from '../store/editor-slice'
 import { uiActions } from '../store/ui-slice'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
@@ -14,23 +15,20 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
+import { DatabaseDto } from '@/glue/databases'
 
 export function DatabaseExplorer(): ReactElement {
   const dispatch = useAppDispatch()
-  const databases = useAppSelector((state) => state.editor.databases)
+  const databases = useDatabases()
   const expandedDatabases = useAppSelector(
     (state) => state.databaseExplorer.expandedDatabases
   )
-  const expandedTables = useAppSelector(
-    (state) => state.databaseExplorer.expandedTables
-  )
-  const schemas = useAppSelector((state) => state.editor.schemas)
 
   const databaseSearchQuery = useAppSelector(
     (state) => state.editor.databaseSearchQuery ?? ''
   )
 
-  const filteredDatabases = databases.filter((database) =>
+  const filteredDatabases = databases.data.filter((database) =>
     database.name.toLowerCase().includes(databaseSearchQuery.toLowerCase())
   )
 
@@ -64,98 +62,19 @@ export function DatabaseExplorer(): ReactElement {
       <div className="mb-2">
         <SearchInput
           value={databaseSearchQuery}
-          onChange={(newValue) =>
-            dispatch(editorSlice.actions.databaseSearchQueryUpdated(newValue))
-          }
+          onChange={(newValue) => dispatch(databaseSearchQueryUpdated(newValue))}
         />
       </div>
 
       <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
-        {filteredDatabases.map((database) => {
-          const isDatabaseExpanded = Boolean(expandedDatabases[database.id])
-          const tables = schemas[database.id]?.tables || []
-
-          return (
-            <div key={database.id}>
-              <ContextMenu>
-                <ContextMenuTrigger>
-                  <Button
-                    className="flex justify-start items-center gap-1 -ml-2 px-0 py-1 cursor-default h-5 font-normal w-full"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => dispatch(expandDatabase(database.id))}
-                  >
-                    <ChevronRight
-                      className={cn(
-                        'size-3 transition-transform duration-150',
-                        isDatabaseExpanded ? 'rotate-90' : ''
-                      )}
-                    />
-                    <Database className="size-3" />
-                    <span className="text-xs">{database.name}</span>
-                  </Button>
-                </ContextMenuTrigger>
-
-                <ContextMenuContent>
-                  <ContextMenuItem
-                    className="flex items-center gap-2 min-w-32 text-xs"
-                    onClick={() => handleEditDatabase(database.id)}
-                  >
-                    <Pencil className="size-3" />
-                    Edit
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-
-              {isDatabaseExpanded && (
-                <div className="flex flex-col gap-0.5 pl-4 pt-1">
-                  {tables.map((table) => {
-                    const tableKey = `${database.id}-${table.tableName}`
-                    const isTableExpanded = Boolean(expandedTables[tableKey])
-
-                    return (
-                      <div
-                        key={tableKey}
-                        className="border-l border-surface-0"
-                      >
-                        <Button
-                          className="flex items-center gap-1 px-0 py-0 cursor-default h-5 font-normal"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => dispatch(expandTable(tableKey))}
-                        >
-                          <ChevronRight
-                            className={cn(
-                              'size-3 transition-transform duration-150',
-                              isTableExpanded ? 'rotate-90' : ''
-                            )}
-                          />
-                          <Table2Icon className="size-3" />
-                          <span>{table.tableName}</span>
-                        </Button>
-
-                        {isTableExpanded && (
-                          <div className="flex flex-col pl-4">
-                            {table.columns.map((column) => (
-                              <div
-                                key={`${tableKey}-${column.columnName}`}
-                                className="flex items-center gap-1 px-3 py-0.5 border-l border-surface-0"
-                              >
-                                <span className="text-xs text-muted-foreground">
-                                  {column.columnName} ({column.dataType})
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {filteredDatabases.map((database) => (
+          <DatabaseRow
+            key={database.id}
+            database={database}
+            isExpanded={Boolean(expandedDatabases[database.id])}
+            onEdit={handleEditDatabase}
+          />
+        ))}
 
         {filteredDatabases.length === 0 && (
           <div className="text-xs text-muted-foreground mt-2">
@@ -171,6 +90,107 @@ export function DatabaseExplorer(): ReactElement {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+interface DatabaseRowProps {
+  database: DatabaseDto
+  isExpanded: boolean
+  onEdit: (databaseId: string) => void
+}
+
+function DatabaseRow({
+  database,
+  isExpanded,
+  onEdit
+}: DatabaseRowProps): ReactElement {
+  const dispatch = useAppDispatch()
+  const expandedTables = useAppSelector(
+    (state) => state.databaseExplorer.expandedTables
+  )
+  const schema = useDatabaseSchema(isExpanded ? database.id : undefined)
+
+  const tables = schema.data?.tables ?? []
+
+  return (
+    <div>
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <Button
+            className="flex justify-start items-center gap-1 -ml-2 px-0 py-1 cursor-default h-5 font-normal w-full"
+            size="sm"
+            variant="ghost"
+            onClick={() => dispatch(expandDatabase(database.id))}
+          >
+            <ChevronRight
+              className={cn(
+                'size-3 transition-transform duration-150',
+                isExpanded ? 'rotate-90' : ''
+              )}
+            />
+            <Database className="size-3" />
+            <span className="text-xs">{database.name}</span>
+          </Button>
+        </ContextMenuTrigger>
+
+        <ContextMenuContent>
+          <ContextMenuItem
+            className="flex items-center gap-2 min-w-32 text-xs"
+            onClick={() => onEdit(database.id)}
+          >
+            <Pencil className="size-3" />
+            Edit
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {isExpanded && (
+        <div className="flex flex-col gap-0.5 pl-4 pt-1">
+          {tables.map((table) => {
+            const tableKey = `${database.id}-${table.tableName}`
+            const isTableExpanded = Boolean(expandedTables[tableKey])
+
+            return (
+              <div
+                key={tableKey}
+                className="border-l border-surface-0"
+              >
+                <Button
+                  className="flex items-center gap-1 px-0 py-0 cursor-default h-5 font-normal"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => dispatch(expandTable(tableKey))}
+                >
+                  <ChevronRight
+                    className={cn(
+                      'size-3 transition-transform duration-150',
+                      isTableExpanded ? 'rotate-90' : ''
+                    )}
+                  />
+                  <Table2Icon className="size-3" />
+                  <span>{table.tableName}</span>
+                </Button>
+
+                {isTableExpanded && (
+                  <div className="flex flex-col pl-4">
+                    {table.columns.map((column) => (
+                      <div
+                        key={`${tableKey}-${column.columnName}`}
+                        className="flex items-center gap-1 px-3 py-0.5 border-l border-surface-0"
+                      >
+                        <span className="text-xs text-muted-foreground">
+                          {column.columnName} ({column.dataType})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

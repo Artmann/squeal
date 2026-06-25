@@ -32,3 +32,20 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
   results
 - Refer to @CODE_STYLE.md
 - Don't include the Claude footer in commits
+
+## Testing the running app with agent-browser
+
+The app exposes Chrome DevTools Protocol on port `9222` whenever it isn't
+packaged (set in `src/main.ts` via `app.commandLine.appendSwitch`). Start the
+app with `yarn start`, then drive the renderer with
+[agent-browser](https://github.com/vercel-labs/agent-browser):
+
+```bash
+agent-browser --cdp 9222 snapshot -i
+agent-browser --cdp 9222 click @e1
+agent-browser --cdp 9222 screenshot
+```
+
+Use `--cdp 9222` (not `--auto-connect`) so it attaches to the Electron window
+rather than the user's regular Chrome. Refs invalidate after navigation or
+DOM changes — re-snapshot before re-interacting.

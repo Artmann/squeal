@@ -1,11 +1,17 @@
 import dayjs from 'dayjs'
 import { Loader2Icon, PlayIcon, XCircleIcon } from 'lucide-react'
-import { ReactElement, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ReactElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { toast } from 'sonner'
 import invariant from 'tiny-invariant'
 import { v7 } from 'uuid'
 
-import { apiClient } from './api-client'
 import { AppSidebar } from './components/AppSidebar'
 import { DatabaseSelector } from './components/DatabaseSelector'
 import { EditorScreen } from './components/EditorScreen'
@@ -16,23 +22,38 @@ import { TitleBar } from './components/TitleBar'
 import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 import { WorksheetEditor } from './components/WorksheetEditor'
-import { useAppDispatch, useAppSelector } from './store'
-import { editorSlice, queryCreated, queryFetched } from './store/editor-slice'
+import {
+  useDatabases,
+  useQueriesList,
+  useQueryById,
+  useWorksheets
+} from './hooks/queries'
+import { useCreateQuery, useUpdateWorksheet } from './hooks/mutations'
+import { useAppSelector } from './store'
 import { createAstFromSql } from './sql-parser'
 
+const saveDebounceMs = 300
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+
 export function App(): ReactElement {
-  const queries = useAppSelector((state) => state.editor.queries)
-  const worksheets = useAppSelector((state) => state.editor.worksheets)
+  const databases = useDatabases()
+  const worksheets = useWorksheets()
+  const queries = useQueriesList()
+
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
   )
-  const uiState = useAppSelector((state) => state.ui)
+  const editorScreen = useAppSelector((state) => state.ui.editorScreen)
+
+  const showGettingStartedScreen = databases.data.length === 0
 
   const [cursorPosition, setCursorPosition] = useState<number>(0)
 
   const currentWorksheet = useMemo(
-    () => worksheets.find((worksheet) => worksheet.id === openWorksheetId),
-    [worksheets, openWorksheetId]
+    () =>
+      worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
+    [worksheets.data, openWorksheetId]
   )
 
   const statements = useMemo(() => {
@@ -40,9 +61,7 @@ export function App(): ReactElement {
       return []
     }
 
-    const parsed = createAstFromSql(currentWorksheet.content).statements
-
-    return parsed
+    return createAstFromSql(currentWorksheet.content).statements
   }, [currentWorksheet?.content])
 
   const activeStatementIndex = useMemo(() => {
@@ -61,8 +80,6 @@ export function App(): ReactElement {
       }
     }
 
-    // If the cursor is not within any statement, we'll fall back to the last statement
-    // that is before the cursor position.
     for (let i = statements.length - 1; i >= 0; i--) {
       const statement = statements[i]
 
@@ -82,71 +99,84 @@ export function App(): ReactElement {
     return statements[activeStatementIndex]
   }, [statements, activeStatementIndex])
 
-  const [query] = useMemo(
-    () =>
-      queries
-        .filter((q) => q.worksheetId === openWorksheetId)
-        .sort((a, b) => b.queriedAt - a.queriedAt),
-    [queries, openWorksheetId]
+  const latestQueryForWorksheet = useMemo(() => {
+    const sorted = queries.data
+      .filter((q) => q.worksheetId === openWorksheetId)
+      .sort((a, b) => b.queriedAt - a.queriedAt)
+
+    return sorted[0]
+  }, [queries.data, openWorksheetId])
+
+  const liveQueryResult = useQueryById(latestQueryForWorksheet?.id)
+  const query = liveQueryResult.data ?? latestQueryForWorksheet
+
+  const isQueryRunning = Boolean(query && !query.finishedAt)
+
+  const updateWorksheet = useUpdateWorksheet()
+  const createQuery = useCreateQuery()
+
+  const { mutate: mutateWorksheet } = updateWorksheet
+
+  const saveTimer = useRef<NodeJS.Timeout | undefined>(undefined)
+  const pendingSave = useRef<{ content: string; id: string } | undefined>(
+    undefined
   )
+  const [saveState, setSaveState] = useState<SaveState>('idle')
 
-  const isQueryRunning = query && !query.finishedAt
+  const flushSave = useCallback(() => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+      saveTimer.current = undefined
+    }
 
-  const dispatch = useAppDispatch()
+    const pending = pendingSave.current
 
-  useEffect(
-    function pollQueryResult() {
-      let handle: NodeJS.Timeout | undefined
+    if (!pending) {
+      return
+    }
 
-      if (!isQueryRunning) {
-        return
-      }
+    pendingSave.current = undefined
 
-      const check = () => {
-        if (!query) {
-          return
-        }
-
-        apiClient
-          .getQuery(query.id)
-          .then((freshQuery) => {
-            dispatch(queryFetched(freshQuery))
-
-            handle = setTimeout(check, pollInterval)
-          })
-          .catch((error) => {
-            console.error('Error fetching query:', error)
-          })
-      }
-
-      check()
-
-      return () => {
-        if (handle) {
-          clearTimeout(handle)
+    mutateWorksheet(
+      { id: pending.id, updates: { content: pending.content } },
+      {
+        onSuccess: () => {
+          setSaveState('saved')
+        },
+        onError: () => {
+          setSaveState('error')
+          toast.error('Failed to save worksheet')
         }
       }
-    },
-    [isQueryRunning, query?.id, dispatch]
-  )
+    )
+  }, [mutateWorksheet])
+
+  useEffect(() => {
+    // Flush any pending save when switching worksheets or unmounting so the
+    // last edits are never dropped inside the debounce window.
+    return () => {
+      flushSave()
+    }
+  }, [flushSave, openWorksheetId])
 
   const handleUpdateContent = useCallback(
-    async (newContent: string) => {
+    (newContent: string) => {
       invariant(openWorksheetId, 'No worksheet is open')
 
-      dispatch(
-        editorSlice.actions.worksheetContentUpdated({
-          id: openWorksheetId,
-          content: newContent
-        })
-      )
+      pendingSave.current = { content: newContent, id: openWorksheetId }
 
-      void apiClient.updateWorksheet(openWorksheetId, { content: newContent })
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+      }
+
+      setSaveState('saving')
+
+      saveTimer.current = setTimeout(flushSave, saveDebounceMs)
     },
-    [dispatch, openWorksheetId]
+    [flushSave, openWorksheetId]
   )
 
-  const handleRunQuery = async () => {
+  const handleRunQuery = useCallback(() => {
     if (!activeStatement) {
       console.error('No active statement')
 
@@ -156,49 +186,43 @@ export function App(): ReactElement {
     const queryId = v7()
     const queriedAt = Date.now()
 
-    dispatch(
-      queryCreated({
+    createQuery.mutate(
+      {
         content: activeStatement.text,
-        databaseId: currentWorksheet?.databaseId ?? '',
-        error: null,
+        databaseId: currentWorksheet?.databaseId ?? undefined,
         id: queryId,
         queriedAt,
-        result: null,
-        truncated: false,
         worksheetId: openWorksheetId ?? ''
-      })
+      },
+      {
+        onError: (error) => {
+          const message =
+            error instanceof Error ? error.message : 'Failed to run query'
+
+          toast.error('Query failed', { description: message })
+        }
+      }
     )
+  }, [activeStatement, createQuery, currentWorksheet?.databaseId, openWorksheetId])
 
-    try {
-      const data = await apiClient.createQuery({
-        content: activeStatement.text,
-        databaseId: currentWorksheet?.databaseId,
-        id: queryId,
-        queriedAt,
-        worksheetId: openWorksheetId ?? ''
-      })
+  if (!currentWorksheet) {
+    return (
+      <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
+        {showGettingStartedScreen && <GettingStartedScreen />}
 
-      dispatch(queryFetched(data.query))
-    } catch (error) {
-      console.error('Error running query:', error)
-
-      const message =
-        error instanceof Error ? error.message : 'Failed to run query'
-
-      toast.error('Query failed', { description: message })
-    }
+        <TitleBar />
+      </main>
+    )
   }
 
   return (
     <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
-      {uiState.showGettingStartedScreen && <GettingStartedScreen />}
+      {showGettingStartedScreen && <GettingStartedScreen />}
 
-      {uiState.editorScreen && (
+      {editorScreen && (
         <EditorScreen
-          databaseId={uiState.editorScreen.databaseId}
-          mode={
-            uiState.editorScreen.type === 'create-database' ? 'create' : 'edit'
-          }
+          databaseId={editorScreen.databaseId}
+          mode={editorScreen.type === 'create-database' ? 'create' : 'edit'}
         />
       )}
 
@@ -224,7 +248,10 @@ export function App(): ReactElement {
               )}
             </Button>
 
-            <DatabaseSelector />
+            <div className="flex items-center gap-3">
+              <SaveIndicator state={saveState} />
+              <DatabaseSelector />
+            </div>
           </header>
 
           <div className="relative flex-1 min-h-0 bg-base">
@@ -287,4 +314,20 @@ export function App(): ReactElement {
   )
 }
 
-const pollInterval = 250
+function SaveIndicator({
+  state
+}: {
+  state: SaveState
+}): ReactElement | null {
+  if (state === 'idle') {
+    return null
+  }
+
+  const text =
+    state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : 'Save failed'
+
+  const className =
+    state === 'error' ? 'text-red text-xs' : 'text-subtext-0 text-xs'
+
+  return <span className={className}>{text}</span>
+}

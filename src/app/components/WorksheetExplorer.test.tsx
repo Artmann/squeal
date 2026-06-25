@@ -1,19 +1,16 @@
-import { configureStore } from '@reduxjs/toolkit'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ReactNode } from 'react'
-import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WorksheetDto } from '@/glue/worksheets'
 
-import editorReducer from '../store/editor-slice'
+import { renderWithProviders } from '../test-utils'
 import { WorksheetExplorer } from './WorksheetExplorer'
 
 vi.mock('../api-client', () => ({
   apiClient: {
     createWorksheet: vi.fn(),
-    updateWorksheet: vi.fn().mockResolvedValue({})
+    updateWorksheet: vi.fn()
   }
 }))
 
@@ -28,83 +25,37 @@ const testWorksheet: WorksheetDto = {
   name: 'Test Worksheet'
 }
 
-function createTestStore(options?: {
-  openWorksheetId?: string
-  worksheets?: WorksheetDto[]
-}) {
-  return configureStore({
-    preloadedState: {
-      editor: {
-        databases: [],
-        databaseSearchQuery: '',
-        openWorksheetId: options?.openWorksheetId,
-        queries: [],
-        schemas: {},
-        worksheets: options?.worksheets ?? [testWorksheet],
-        worksheetSearchQuery: ''
-      }
-    },
-    reducer: {
-      editor: editorReducer
-    }
-  })
-}
-
-function TestEnvironment({
-  children,
-  store
-}: {
-  children: ReactNode
-  store: ReturnType<typeof createTestStore>
-}) {
-  return <Provider store={store}>{children}</Provider>
-}
-
 describe('WorksheetExplorer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(apiClient.updateWorksheet).mockResolvedValue(testWorksheet)
   })
 
   it('renders the header', () => {
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <WorksheetExplorer />
-      </TestEnvironment>
-    )
+    renderWithProviders(<WorksheetExplorer />, { worksheets: [testWorksheet] })
 
     expect(screen.getByText('Worksheets')).toBeInTheDocument()
   })
 
   it('renders worksheet names', () => {
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <WorksheetExplorer />
-      </TestEnvironment>
-    )
+    renderWithProviders(<WorksheetExplorer />, { worksheets: [testWorksheet] })
 
     expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
   })
 
-  it('selects worksheet on single click', async () => {
+  it('selects a worksheet on single click', async () => {
     const user = userEvent.setup()
-    const store = createTestStore()
 
-    render(
-      <TestEnvironment store={store}>
-        <WorksheetExplorer />
-      </TestEnvironment>
-    )
+    const { store } = renderWithProviders(<WorksheetExplorer />, {
+      worksheets: [testWorksheet]
+    })
 
     await user.click(screen.getByText('Test Worksheet'))
 
     expect(store.getState().editor.openWorksheetId).toEqual('ws-123')
   })
 
-  it('selecting a worksheet should call updateWorksheet with lastOpenedAt', async () => {
+  it('persists the last-opened time when a worksheet is selected', async () => {
     const user = userEvent.setup()
     const secondWorksheet: WorksheetDto = {
       content: '',
@@ -115,18 +66,10 @@ describe('WorksheetExplorer', () => {
       name: 'Second Worksheet'
     }
 
-    const store = createTestStore({
-      worksheets: [testWorksheet, secondWorksheet],
-      openWorksheetId: 'ws-123'
+    renderWithProviders(<WorksheetExplorer />, {
+      editor: { openWorksheetId: 'ws-123' },
+      worksheets: [testWorksheet, secondWorksheet]
     })
-
-    vi.mocked(apiClient.updateWorksheet).mockResolvedValue(secondWorksheet)
-
-    render(
-      <TestEnvironment store={store}>
-        <WorksheetExplorer />
-      </TestEnvironment>
-    )
 
     await user.click(screen.getByText('Second Worksheet'))
 
@@ -137,16 +80,13 @@ describe('WorksheetExplorer', () => {
     })
   })
 
-  describe('rename functionality', () => {
+  describe('rename', () => {
     it('enters edit mode on double click', async () => {
       const user = userEvent.setup()
-      const store = createTestStore()
 
-      render(
-        <TestEnvironment store={store}>
-          <WorksheetExplorer />
-        </TestEnvironment>
-      )
+      renderWithProviders(<WorksheetExplorer />, {
+        worksheets: [testWorksheet]
+      })
 
       await user.dblClick(screen.getByText('Test Worksheet'))
 
@@ -156,18 +96,12 @@ describe('WorksheetExplorer', () => {
       expect(input.tagName).toEqual('INPUT')
     })
 
-    it('saves new name on Enter key', async () => {
+    it('saves the new name on Enter', async () => {
       const user = userEvent.setup()
-      const store = createTestStore()
-      const updatedWorksheet = { ...testWorksheet, name: 'Renamed Worksheet' }
 
-      vi.mocked(apiClient.updateWorksheet).mockResolvedValue(updatedWorksheet)
-
-      render(
-        <TestEnvironment store={store}>
-          <WorksheetExplorer />
-        </TestEnvironment>
-      )
+      renderWithProviders(<WorksheetExplorer />, {
+        worksheets: [testWorksheet]
+      })
 
       await user.dblClick(screen.getByText('Test Worksheet'))
 
@@ -181,23 +115,14 @@ describe('WorksheetExplorer', () => {
           name: 'Renamed Worksheet'
         })
       })
-
-      await waitFor(() => {
-        expect(store.getState().editor.worksheets[0].name).toEqual(
-          'Renamed Worksheet'
-        )
-      })
     })
 
-    it('cancels editing on Escape key', async () => {
+    it('cancels editing on Escape', async () => {
       const user = userEvent.setup()
-      const store = createTestStore()
 
-      render(
-        <TestEnvironment store={store}>
-          <WorksheetExplorer />
-        </TestEnvironment>
-      )
+      renderWithProviders(<WorksheetExplorer />, {
+        worksheets: [testWorksheet]
+      })
 
       await user.dblClick(screen.getByText('Test Worksheet'))
 
@@ -214,18 +139,12 @@ describe('WorksheetExplorer', () => {
       )
     })
 
-    it('saves new name on blur', async () => {
+    it('saves the new name on blur', async () => {
       const user = userEvent.setup()
-      const store = createTestStore()
-      const updatedWorksheet = { ...testWorksheet, name: 'Blurred Name' }
 
-      vi.mocked(apiClient.updateWorksheet).mockResolvedValue(updatedWorksheet)
-
-      render(
-        <TestEnvironment store={store}>
-          <WorksheetExplorer />
-        </TestEnvironment>
-      )
+      renderWithProviders(<WorksheetExplorer />, {
+        worksheets: [testWorksheet]
+      })
 
       await user.dblClick(screen.getByText('Test Worksheet'))
 
@@ -242,15 +161,12 @@ describe('WorksheetExplorer', () => {
       })
     })
 
-    it('does not save empty name', async () => {
+    it('does not save an empty name', async () => {
       const user = userEvent.setup()
-      const store = createTestStore()
 
-      render(
-        <TestEnvironment store={store}>
-          <WorksheetExplorer />
-        </TestEnvironment>
-      )
+      renderWithProviders(<WorksheetExplorer />, {
+        worksheets: [testWorksheet]
+      })
 
       await user.dblClick(screen.getByText('Test Worksheet'))
 
@@ -266,15 +182,12 @@ describe('WorksheetExplorer', () => {
       expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
     })
 
-    it('does not save if name is unchanged', async () => {
+    it('does not save an unchanged name', async () => {
       const user = userEvent.setup()
-      const store = createTestStore()
 
-      render(
-        <TestEnvironment store={store}>
-          <WorksheetExplorer />
-        </TestEnvironment>
-      )
+      renderWithProviders(<WorksheetExplorer />, {
+        worksheets: [testWorksheet]
+      })
 
       await user.dblClick(screen.getByText('Test Worksheet'))
 
@@ -288,51 +201,37 @@ describe('WorksheetExplorer', () => {
       )
     })
 
-    it('can rename a newly created worksheet', async () => {
+    it('can rename a newly created worksheet using its real id', async () => {
       const user = userEvent.setup()
-      const store = createTestStore({ worksheets: [] })
 
       const createdWorksheet: WorksheetDto = {
         content: '',
-        createdAt: Date.now(),
+        createdAt: 1704067200000,
         databaseId: null,
         id: 'real-db-id',
         lastOpenedAt: null,
-        name: 'Worksheet 01/05/2026 12:00:00'
+        name: 'Worksheet draft'
       }
 
       vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)
 
-      const renamedWorksheet = { ...createdWorksheet, name: 'My New Worksheet' }
+      renderWithProviders(<WorksheetExplorer />, { worksheets: [] })
 
-      vi.mocked(apiClient.updateWorksheet).mockResolvedValue(renamedWorksheet)
-
-      render(
-        <TestEnvironment store={store}>
-          <WorksheetExplorer />
-        </TestEnvironment>
-      )
-
-      // Click the add button to create a new worksheet
-      const buttons = screen.getAllByRole('button')
-      const addButton = buttons.find((button) =>
-        button.querySelector('svg.lucide-plus')
-      )
+      const addButton = screen
+        .getAllByRole('button')
+        .find((button) => button.querySelector('svg.lucide-plus'))
 
       await user.click(addButton as HTMLElement)
 
-      // Wait for the API call to complete and auto-rename mode to activate
       await waitFor(() => {
         expect(apiClient.createWorksheet).toHaveBeenCalled()
       })
 
-      // The component automatically enters rename mode after creation — find the input directly
-      const input = await screen.findByDisplayValue(/Worksheet/)
+      const input = await screen.findByDisplayValue('Worksheet draft')
 
       await user.clear(input)
       await user.type(input, 'My New Worksheet{Enter}')
 
-      // Should call updateWorksheet with the REAL database ID, not the optimistic ID
       await waitFor(() => {
         expect(apiClient.updateWorksheet).toHaveBeenCalledWith('real-db-id', {
           name: 'My New Worksheet'

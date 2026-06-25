@@ -1,26 +1,8 @@
-import { ReactElement, useCallback } from 'react'
+import { ReactElement } from 'react'
 
-import { useAppDispatch } from '../store'
-import { databaseAdded, worksheetUpdated } from '../store/editor-slice'
-import { uiActions } from '../store/ui-slice'
-import { DatabaseForm, DatabaseFormResult } from './DatabaseForm'
+import { DatabaseForm } from './DatabaseForm'
 
 export function GettingStartedScreen(): ReactElement {
-  const dispatch = useAppDispatch()
-
-  const handleSuccess = useCallback(
-    (result: DatabaseFormResult) => {
-      dispatch(databaseAdded(result.database))
-
-      if (result.updatedWorksheet) {
-        dispatch(worksheetUpdated(result.updatedWorksheet))
-      }
-
-      dispatch(uiActions.gettingStartedCompleted())
-    },
-    [dispatch]
-  )
-
   return (
     <div className="fixed inset-0 z-100 bg-mantle flex justify-center items-center">
       <div className="w-full max-w-md flex flex-col gap-6">
@@ -36,7 +18,7 @@ export function GettingStartedScreen(): ReactElement {
           </p>
         </div>
 
-        <DatabaseForm onSuccess={handleSuccess} />
+        <DatabaseForm />
       </div>
     </div>
   )

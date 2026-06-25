@@ -7,12 +7,9 @@ export interface EditorScreen {
 
 export interface UiState {
   editorScreen?: EditorScreen
-  showGettingStartedScreen?: boolean
 }
 
-const initialState: UiState = {
-  showGettingStartedScreen: true
-}
+const initialState: UiState = {}
 
 export const uiSlice = createSlice({
   name: 'ui',
@@ -20,10 +17,6 @@ export const uiSlice = createSlice({
   reducers: {
     closeEditorScreen: (state) => {
       state.editorScreen = undefined
-    },
-
-    gettingStartedCompleted: (state) => {
-      state.showGettingStartedScreen = false
     },
 
     openCreateDatabase: (state) => {

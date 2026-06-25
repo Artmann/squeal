@@ -1,14 +1,10 @@
 import { XIcon } from 'lucide-react'
 import { ReactElement, useCallback, useMemo } from 'react'
 
-import { useAppDispatch, useAppSelector } from '../store'
-import {
-  databaseAdded,
-  databaseUpdated,
-  worksheetUpdated
-} from '../store/editor-slice'
+import { useDatabases } from '../hooks/queries'
+import { useAppDispatch } from '../store'
 import { uiActions } from '../store/ui-slice'
-import { DatabaseForm, DatabaseFormResult } from './DatabaseForm'
+import { DatabaseForm } from './DatabaseForm'
 import { Button } from './ui/button'
 
 export interface EditorScreenProps {
@@ -21,37 +17,19 @@ export function EditorScreen({
   mode
 }: EditorScreenProps): ReactElement {
   const dispatch = useAppDispatch()
-  const databases = useAppSelector((state) => state.editor.databases)
+  const databases = useDatabases()
 
   const database = useMemo(
-    () => (databaseId ? databases.find((d) => d.id === databaseId) : undefined),
-    [databases, databaseId]
+    () =>
+      databaseId
+        ? databases.data.find((d) => d.id === databaseId)
+        : undefined,
+    [databases.data, databaseId]
   )
 
   const handleClose = useCallback(() => {
     dispatch(uiActions.closeEditorScreen())
   }, [dispatch])
-
-  const handleCreateSuccess = useCallback(
-    (result: DatabaseFormResult) => {
-      dispatch(databaseAdded(result.database))
-
-      if (result.updatedWorksheet) {
-        dispatch(worksheetUpdated(result.updatedWorksheet))
-      }
-
-      dispatch(uiActions.closeEditorScreen())
-    },
-    [dispatch]
-  )
-
-  const handleEditSuccess = useCallback(
-    (result: DatabaseFormResult) => {
-      dispatch(databaseUpdated(result.database))
-      dispatch(uiActions.closeEditorScreen())
-    },
-    [dispatch]
-  )
 
   if (mode === 'edit' && !database) {
     return (
@@ -91,7 +69,7 @@ export function EditorScreen({
           databaseId={databaseId}
           defaultValues={defaultValues}
           onCancel={handleClose}
-          onSuccess={isCreateMode ? handleCreateSuccess : handleEditSuccess}
+          onSuccess={handleClose}
         />
       </div>
     </div>
