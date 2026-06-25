@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, use, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 
 import { useTheme } from '@/app/hooks/useTheme'
@@ -19,7 +19,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 }
 
 export function useThemeContext() {
-  const context = useContext(ThemeContext)
+  const context = use(ThemeContext)
 
   if (!context) {
     throw new Error('useThemeContext must be used within ThemeProvider')

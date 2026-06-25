@@ -119,7 +119,7 @@ export function tokenize(sql: string): Token[] {
     }
 
     // Multi-character operators
-    if (['<>', '<=', '>=', '!=', '||'].includes(sql.slice(pos, pos + 2))) {
+    if (multiCharacterOperators.has(sql.slice(pos, pos + 2))) {
       pos += 2
       tokens.push({
         end: pos,
@@ -161,6 +161,8 @@ export function tokenize(sql: string): Token[] {
 
   return tokens
 }
+
+const multiCharacterOperators = new Set(['<>', '<=', '>=', '!=', '||'])
 
 const keywords = new Set([
   'AND',

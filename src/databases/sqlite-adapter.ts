@@ -27,20 +27,22 @@ export class SqliteAdapter implements DatabaseAdapter {
         ORDER BY name
       `)
 
-      const tables = []
+      const tables = await Promise.all(
+        tablesResult.rows.map(async (row) => {
+          const tableName = row.name as string
+          const [columns, foreignKeys] = await Promise.all([
+            this.getTableColumns(client, tableName),
+            this.getTableForeignKeys(client, tableName)
+          ])
 
-      for (const row of tablesResult.rows) {
-        const tableName = row.name as string
-        const columns = await this.getTableColumns(client, tableName)
-        const foreignKeys = await this.getTableForeignKeys(client, tableName)
-
-        tables.push({
-          columns,
-          foreignKeys,
-          tableName,
-          tableSchema: 'main'
+          return {
+            columns,
+            foreignKeys,
+            tableName,
+            tableSchema: 'main'
+          }
         })
-      }
+      )
 
       return {
         databaseName: this.getDatabaseName(),

@@ -21,9 +21,7 @@ export function EditorScreen({
 
   const database = useMemo(
     () =>
-      databaseId
-        ? databases.data.find((d) => d.id === databaseId)
-        : undefined,
+      databaseId ? databases.data.find((d) => d.id === databaseId) : undefined,
     [databases.data, databaseId]
   )
 

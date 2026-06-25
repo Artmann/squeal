@@ -22,8 +22,7 @@ export function DatabaseSelector(): ReactElement {
   const updateWorksheet = useUpdateWorksheet()
 
   const currentWorksheet = useMemo(
-    () =>
-      worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
+    () => worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
     [worksheets.data, openWorksheetId]
   )
 

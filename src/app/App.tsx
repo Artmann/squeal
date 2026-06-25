@@ -21,6 +21,7 @@ import { ResultSheet } from './components/ResultSheet'
 import { TitleBar } from './components/TitleBar'
 import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
+
 import { WorksheetEditor } from './components/WorksheetEditor'
 import {
   useDatabases,
@@ -51,8 +52,7 @@ export function App(): ReactElement {
   const [cursorPosition, setCursorPosition] = useState<number>(0)
 
   const currentWorksheet = useMemo(
-    () =>
-      worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
+    () => worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
     [worksheets.data, openWorksheetId]
   )
 
@@ -203,7 +203,12 @@ export function App(): ReactElement {
         }
       }
     )
-  }, [activeStatement, createQuery, currentWorksheet?.databaseId, openWorksheetId])
+  }, [
+    activeStatement,
+    createQuery,
+    currentWorksheet?.databaseId,
+    openWorksheetId
+  ])
 
   if (!currentWorksheet) {
     return (
@@ -314,11 +319,7 @@ export function App(): ReactElement {
   )
 }
 
-function SaveIndicator({
-  state
-}: {
-  state: SaveState
-}): ReactElement | null {
+function SaveIndicator({ state }: { state: SaveState }): ReactElement | null {
   if (state === 'idle') {
     return null
   }

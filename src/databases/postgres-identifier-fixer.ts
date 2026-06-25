@@ -38,7 +38,7 @@ export function rewriteWithQuotedIdentifiers(
   }
 
   const tokens = tokenize(sql)
-  const replacements: { end: number, start: number, text: string }[] = []
+  const replacements: { end: number; start: number; text: string }[] = []
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
@@ -84,7 +84,10 @@ export function rewriteWithQuotedIdentifiers(
 
   for (let i = replacements.length - 1; i >= 0; i--) {
     const replacement = replacements[i]
-    result = result.slice(0, replacement.start) + replacement.text + result.slice(replacement.end)
+    result =
+      result.slice(0, replacement.start) +
+      replacement.text +
+      result.slice(replacement.end)
   }
 
   return result

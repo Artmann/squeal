@@ -1,12 +1,6 @@
 import { QueryErrorResetBoundary } from '@tanstack/react-query'
 import { Loader2Icon } from 'lucide-react'
-import {
-  Component,
-  ErrorInfo,
-  ReactNode,
-  Suspense,
-  useEffect
-} from 'react'
+import { Component, ErrorInfo, ReactNode, Suspense, useEffect } from 'react'
 
 import { Button } from './components/ui/button'
 import { useQueriesList, useWorksheets } from './hooks/queries'
@@ -50,10 +44,7 @@ interface ErrorBoundaryState {
   error: Error | null
 }
 
-class ErrorBoundary extends Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {

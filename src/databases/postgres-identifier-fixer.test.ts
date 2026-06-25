@@ -20,15 +20,13 @@ describe('extractMissingRelation', () => {
   })
 
   it('returns null for non-matching errors', () => {
-    expect(
-      extractMissingRelation('syntax error at position 5')
-    ).toEqual(null)
+    expect(extractMissingRelation('syntax error at position 5')).toEqual(null)
   })
 
   it('returns null for column errors', () => {
-    expect(
-      extractMissingRelation('column "firstname" does not exist')
-    ).toEqual(null)
+    expect(extractMissingRelation('column "firstname" does not exist')).toEqual(
+      null
+    )
   })
 })
 
@@ -62,11 +60,12 @@ describe('rewriteWithQuotedIdentifiers', () => {
   })
 
   it('rewrites multiple references to the same table', () => {
-    const sql = 'SELECT a.id FROM InsurancePlans a JOIN InsurancePlans b ON a.id = b.id'
+    const sql =
+      'SELECT a.id FROM InsurancePlans a JOIN InsurancePlans b ON a.id = b.id'
 
-    expect(
-      rewriteWithQuotedIdentifiers(sql, schema, 'insuranceplans')
-    ).toEqual('SELECT a.id FROM "public"."InsurancePlans" a JOIN "public"."InsurancePlans" b ON a.id = b.id')
+    expect(rewriteWithQuotedIdentifiers(sql, schema, 'insuranceplans')).toEqual(
+      'SELECT a.id FROM "public"."InsurancePlans" a JOIN "public"."InsurancePlans" b ON a.id = b.id'
+    )
   })
 
   it('leaves already-quoted identifiers unchanged', () => {
@@ -92,9 +91,9 @@ describe('rewriteWithQuotedIdentifiers', () => {
   it('preserves the rest of the query', () => {
     const sql = 'SELECT id, name FROM InsurancePlans WHERE id = 1 ORDER BY name'
 
-    expect(
-      rewriteWithQuotedIdentifiers(sql, schema, 'insuranceplans')
-    ).toEqual('SELECT id, name FROM "public"."InsurancePlans" WHERE id = 1 ORDER BY name')
+    expect(rewriteWithQuotedIdentifiers(sql, schema, 'insuranceplans')).toEqual(
+      'SELECT id, name FROM "public"."InsurancePlans" WHERE id = 1 ORDER BY name'
+    )
   })
 
   it('handles lowercase input matching a mixed-case table', () => {

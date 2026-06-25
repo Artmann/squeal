@@ -71,7 +71,10 @@ export function useCreateQuery() {
         return next
       })
 
-      queryClient.setQueryData(queryKeys.query(response.query.id), response.query)
+      queryClient.setQueryData(
+        queryKeys.query(response.query.id),
+        response.query
+      )
     }
   })
 }
@@ -104,8 +107,13 @@ export function useUpdateWorksheet() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: UpdateWorksheetInput }) =>
-      apiClient.updateWorksheet(id, updates),
+    mutationFn: ({
+      id,
+      updates
+    }: {
+      id: string
+      updates: UpdateWorksheetInput
+    }) => apiClient.updateWorksheet(id, updates),
     onMutate: async ({ id, updates }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.worksheets })
 
