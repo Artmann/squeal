@@ -68,6 +68,7 @@ function WindowButton({
         className
       )}
       onClick={onClick}
+      type="button"
     >
       {children}
     </button>

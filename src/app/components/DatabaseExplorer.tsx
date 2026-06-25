@@ -62,7 +62,9 @@ export function DatabaseExplorer(): ReactElement {
       <div className="mb-2">
         <SearchInput
           value={databaseSearchQuery}
-          onChange={(newValue) => dispatch(databaseSearchQueryUpdated(newValue))}
+          onChange={(newValue) =>
+            dispatch(databaseSearchQueryUpdated(newValue))
+          }
         />
       </div>
 

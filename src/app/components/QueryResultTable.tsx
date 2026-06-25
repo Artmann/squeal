@@ -19,39 +19,13 @@ import {
   ContextMenuTrigger
 } from './ui/context-menu'
 import { cn } from '../lib/utils'
+import {
+  formatCellValue,
+  formatRowAsCsv,
+  formatRowAsJson
+} from './query-result-format'
 
 const pageSize = 100
-
-export function formatCellValue(value: unknown): string {
-  if (value === null) {
-    return 'null'
-  }
-
-  if (typeof value === 'object') {
-    return JSON.stringify(value)
-  }
-
-  return String(value)
-}
-
-export function escapeCsvField(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`
-  }
-
-  return value
-}
-
-export function formatRowAsCsv(row: Record<string, unknown>, fieldNames: string[]): string {
-  const header = fieldNames.map(escapeCsvField).join(',')
-  const values = fieldNames.map((name) => escapeCsvField(formatCellValue(row[name]))).join(',')
-
-  return `${header}\n${values}`
-}
-
-export function formatRowAsJson(row: Record<string, unknown>): string {
-  return JSON.stringify(row, null, 2)
-}
 
 export const QueryResultTable = memo(function QueryResultTable({
   result
@@ -74,7 +48,10 @@ export const QueryResultTable = memo(function QueryResultTable({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto" ref={scrollRef}>
+      <div
+        className="flex-1 overflow-auto"
+        ref={scrollRef}
+      >
         <Table className="w-full text-xs">
           <TableHeader className="sticky top-0 bg-base">
             <TableRow className="bg-base">
@@ -116,7 +93,11 @@ export const QueryResultTable = memo(function QueryResultTable({
                       <ContextMenuContent>
                         <ContextMenuItem
                           className="text-xs"
-                          onSelect={() => navigator.clipboard.writeText(formatCellValue(value))}
+                          onSelect={() =>
+                            navigator.clipboard.writeText(
+                              formatCellValue(value)
+                            )
+                          }
                         >
                           Copy
                         </ContextMenuItem>
@@ -138,14 +119,22 @@ export const QueryResultTable = memo(function QueryResultTable({
                           <ContextMenuSubContent>
                             <ContextMenuItem
                               className="text-xs"
-                              onSelect={() => navigator.clipboard.writeText(formatRowAsCsv(row, fieldNames))}
+                              onSelect={() =>
+                                navigator.clipboard.writeText(
+                                  formatRowAsCsv(row, fieldNames)
+                                )
+                              }
                             >
                               As CSV
                             </ContextMenuItem>
 
                             <ContextMenuItem
                               className="text-xs"
-                              onSelect={() => navigator.clipboard.writeText(formatRowAsJson(row))}
+                              onSelect={() =>
+                                navigator.clipboard.writeText(
+                                  formatRowAsJson(row)
+                                )
+                              }
                             >
                               As JSON
                             </ContextMenuItem>
@@ -174,6 +163,7 @@ export const QueryResultTable = memo(function QueryResultTable({
               className="disabled:opacity-40"
               disabled={page === 0}
               onClick={() => setPage((p) => p - 1)}
+              type="button"
             >
               ← Prev
             </button>
@@ -184,6 +174,7 @@ export const QueryResultTable = memo(function QueryResultTable({
               className="disabled:opacity-40"
               disabled={page >= pageCount - 1}
               onClick={() => setPage((p) => p + 1)}
+              type="button"
             >
               Next →
             </button>

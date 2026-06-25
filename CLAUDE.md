@@ -47,5 +47,5 @@ agent-browser --cdp 9222 screenshot
 ```
 
 Use `--cdp 9222` (not `--auto-connect`) so it attaches to the Electron window
-rather than the user's regular Chrome. Refs invalidate after navigation or
-DOM changes — re-snapshot before re-interacting.
+rather than the user's regular Chrome. Refs invalidate after navigation or DOM
+changes — re-snapshot before re-interacting.

@@ -3,10 +3,7 @@ import { ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useWorksheets } from '../hooks/queries'
-import {
-  useCreateWorksheet,
-  useUpdateWorksheet
-} from '../hooks/mutations'
+import { useCreateWorksheet, useUpdateWorksheet } from '../hooks/mutations'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import {
@@ -183,6 +180,7 @@ export function WorksheetExplorer(): ReactElement {
             <button
               className="underline underline-offset-2 hover:text-text transition-colors"
               onClick={handleNewWorksheet}
+              type="button"
             >
               Create one
             </button>

@@ -52,7 +52,11 @@ export class PostgresAdapter implements DatabaseAdapter {
         }
 
         const schema = await this.getSchemaWithClient(client)
-        const rewritten = rewriteWithQuotedIdentifiers(query, schema, missingRelation)
+        const rewritten = rewriteWithQuotedIdentifiers(
+          query,
+          schema,
+          missingRelation
+        )
 
         if (!rewritten) {
           throw error
@@ -67,7 +71,10 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  private async executeQuery(client: Client, query: string): Promise<QueryResult> {
+  private async executeQuery(
+    client: Client,
+    query: string
+  ): Promise<QueryResult> {
     console.log(`Running query:\n${query}\n`)
 
     const result = await client.query(query)
@@ -87,8 +94,10 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   private async getSchemaWithClient(client: Client): Promise<SchemaInfo> {
-    const columnsResult = await client.query(postgresColumnsQuery)
-    const foreignKeysResult = await client.query(postgresForeignKeysQuery)
+    const [columnsResult, foreignKeysResult] = await Promise.all([
+      client.query(postgresColumnsQuery),
+      client.query(postgresForeignKeysQuery)
+    ])
 
     return transformToSchemaInfo(
       this.connectionInfo.database,

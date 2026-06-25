@@ -44,7 +44,7 @@ export function WorksheetEditor({
         view.focus()
       }
     }
-  }, [editorRef.current])
+  }, [])
 
   const handleUpdate = useCallback(
     (update: ViewUpdate) => {
@@ -155,9 +155,11 @@ export function WorksheetEditor({
         }}
         onUpdate={handleUpdate}
       />
-      <div
-        className="w-full flex-1"
+      <button
+        aria-label="Focus editor"
+        className="w-full flex-1 cursor-text"
         onClick={handleClickOutsideTheEditor}
+        type="button"
       />
     </div>
   )

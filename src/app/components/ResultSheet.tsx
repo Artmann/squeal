@@ -55,6 +55,20 @@ export function ResultSheet({
     [height]
   )
 
+  const handleResizeKeyDown = useCallback((event: React.KeyboardEvent) => {
+    const step = event.shiftKey ? 40 : 10
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setHeight((current) => Math.min(window.innerHeight * 0.8, current + step))
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setHeight((current) => Math.max(minHeight, current - step))
+    }
+  }, [])
+
   return (
     <div
       className={cn(
@@ -67,8 +81,13 @@ export function ResultSheet({
       style={{ height: isOpen ? `${height}px` : '0' }}
     >
       <div
+        aria-label="Resize results panel"
+        aria-orientation="horizontal"
         className="h-2 cursor-row-resize hover:bg-mauve/10 flex-shrink-0 flex items-center justify-center group"
+        onKeyDown={handleResizeKeyDown}
         onMouseDown={handleDragStart}
+        role="separator"
+        tabIndex={0}
       >
         <div className="w-8 h-0.5 rounded-full bg-overlay-1 group-hover:bg-mauve/50 transition-colors" />
       </div>

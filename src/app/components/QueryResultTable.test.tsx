@@ -6,9 +6,9 @@ import {
   escapeCsvField,
   formatCellValue,
   formatRowAsCsv,
-  formatRowAsJson,
-  QueryResultTable
-} from './QueryResultTable'
+  formatRowAsJson
+} from './query-result-format'
+import { QueryResultTable } from './QueryResultTable'
 
 const writeText = vi.fn().mockResolvedValue(undefined)
 
@@ -106,7 +106,6 @@ describe('QueryResultTable', () => {
     expect(screen.getByText('Copy Column Name')).toBeInTheDocument()
     expect(screen.getByText('Copy Row')).toBeInTheDocument()
   })
-
 })
 
 describe('formatRowAsCsv', () => {
