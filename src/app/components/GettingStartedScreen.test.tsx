@@ -1,200 +1,30 @@
-import { configureStore } from '@reduxjs/toolkit'
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { ReactNode } from 'react'
-import { Provider } from 'react-redux'
-import { Toaster } from 'sonner'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 
-import editorReducer from '../store/editor-slice'
-import uiReducer from '../store/ui-slice'
+import { renderWithProviders } from '../test-utils'
 import { GettingStartedScreen } from './GettingStartedScreen'
 
-function TestEnvironment({ children }: { children: ReactNode }) {
-  const store = configureStore({
-    reducer: {
-      editor: editorReducer,
-      ui: uiReducer
-    },
-    preloadedState: {
-      editor: { databases: [], queries: [], worksheets: [] },
-      ui: { showGettingStartedScreen: true }
-    }
-  })
-
-  return (
-    <Provider store={store}>
-      {children}
-      <Toaster />
-    </Provider>
-  )
-}
-
-function renderGettingStartedScreen() {
-  return render(
-    <TestEnvironment>
-      <GettingStartedScreen />
-    </TestEnvironment>
-  )
-}
-
-async function fillForm(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText('Name'), 'My Database')
-  await user.type(screen.getByLabelText('Host'), 'localhost')
-
-  const portInput = screen.getByLabelText('Port')
-  await user.clear(portInput)
-  await user.type(portInput, '5432')
-
-  await user.type(screen.getByLabelText('Username'), 'postgres')
-  await user.type(screen.getByLabelText('Password'), 'password')
-  await user.type(screen.getByLabelText('Database'), 'mydb')
-}
-
+// Form submission and validation behaviour is covered by DatabaseForm.test.tsx.
+// These tests only verify the getting-started wrapper renders the form.
 describe('GettingStartedScreen', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn())
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('renders the welcome screen with form fields', () => {
-    renderGettingStartedScreen()
+  it('renders the welcome copy', () => {
+    renderWithProviders(<GettingStartedScreen />)
 
     expect(screen.getByText('Connect a database')).toBeInTheDocument()
     expect(
       screen.getByText('Add your first database connection to get started.')
     ).toBeInTheDocument()
+  })
+
+  it('renders the database form fields', () => {
+    renderWithProviders(<GettingStartedScreen />)
+
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
     expect(screen.getByLabelText('Host')).toBeInTheDocument()
     expect(screen.getByLabelText('Port')).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByLabelText('Database')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Test Connection' })
-    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
-  })
-
-  it('shows success icon when connection test succeeds', async () => {
-    const user = userEvent.setup()
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () => Promise.resolve({ success: true }),
-      ok: true
-    } as Response)
-
-    renderGettingStartedScreen()
-
-    await fillForm(user)
-    await user.click(screen.getByRole('button', { name: 'Test Connection' }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('connection-success-icon')).toBeInTheDocument()
-    })
-  })
-
-  it('shows error icon when connection test fails', async () => {
-    const user = userEvent.setup()
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({ message: 'Connection refused', success: false }),
-      ok: true
-    } as Response)
-
-    renderGettingStartedScreen()
-
-    await fillForm(user)
-    await user.click(screen.getByRole('button', { name: 'Test Connection' }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('connection-error-icon')).toBeInTheDocument()
-    })
-  })
-
-  it('saves database and shows success toast', async () => {
-    const user = userEvent.setup()
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({
-          database: {
-            connectionInfo: {},
-            createdAt: Date.now(),
-            id: '123',
-            name: 'My Database',
-            type: 'postgres'
-          }
-        }),
-      ok: true
-    } as Response)
-
-    renderGettingStartedScreen()
-
-    await fillForm(user)
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Database saved!')).toBeInTheDocument()
-    })
-  })
-
-  it('shows error toast when save fails', async () => {
-    const user = userEvent.setup()
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({
-          error: {
-            message: 'Database already exists',
-            status: 400
-          }
-        }),
-      ok: true
-    } as Response)
-
-    renderGettingStartedScreen()
-
-    await fillForm(user)
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Failed to save database')).toBeInTheDocument()
-    })
-  })
-
-  it('displays field-level validation errors from API response', async () => {
-    const user = userEvent.setup()
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({
-          error: {
-            details: {
-              connectionInfo: {
-                host: 'Invalid host format'
-              },
-              name: 'Name is already taken'
-            },
-            message: 'Validation failed',
-            status: 400
-          }
-        }),
-      ok: true
-    } as Response)
-
-    renderGettingStartedScreen()
-
-    await fillForm(user)
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Name is already taken')).toBeInTheDocument()
-      expect(screen.getByText('Invalid host format')).toBeInTheDocument()
-    })
   })
 })

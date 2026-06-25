@@ -14,34 +14,13 @@ export interface RootState {
 }
 
 export function createStore() {
-  const { databases, lastOpenWorksheetId, queries, worksheets } =
-    window.__BOOTSTRAP_DATA__
-
-  const openWorksheetId = lastOpenWorksheetId ?? worksheets[0]?.id
-
-  const store = configureStore({
+  return configureStore({
     reducer: {
       databaseExplorer: databaseExplorerReducer,
       editor: editorReducer,
       ui: uiReducer
-    },
-    preloadedState: {
-      editor: {
-        databases,
-        databaseSearchQuery: '',
-        openWorksheetId,
-        queries,
-        schemas: {},
-        worksheets,
-        worksheetSearchQuery: ''
-      },
-      ui: {
-        showGettingStartedScreen: databases.length === 0
-      }
     }
   })
-
-  return store
 }
 
 export type AppDispatch = ReturnType<typeof createStore>['dispatch']

@@ -23,6 +23,7 @@ import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 import { apiClient } from '../api-client'
+import { useCreateDatabase, useUpdateDatabase } from '../hooks/mutations'
 import { Button } from './ui/button'
 import {
   Form,
@@ -99,11 +100,15 @@ export function DatabaseForm({
     resolver: zodResolver(createDatabaseSchema)
   })
 
+  const createDatabase = useCreateDatabase()
+  const updateDatabase = useUpdateDatabase()
+
   const [connectTestResult, setConnectTestResult] = useState<
     CreateConnectionTestResponse | undefined
   >()
-  const [isSaving, setIsSaving] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
+
+  const isSaving = createDatabase.isPending || updateDatabase.isPending
 
   const databaseType = form.watch('type')
   const connectionInfo = form.watch('connectionInfo')
@@ -133,46 +138,57 @@ export function DatabaseForm({
   const handleSubmit = useCallback(
     (values: FormOutput) => {
       form.clearErrors()
-      setIsSaving(true)
 
-      const apiCall =
-        isEditMode && databaseId
-          ? apiClient.updateDatabase(databaseId, values)
-          : apiClient.createDatabase(values)
-
-      apiCall
-        .then((result) => {
-          toast.success(isEditMode ? 'Database updated!' : 'Database saved!', {
-            description: isEditMode
-              ? `${result.database.name} has been updated.`
-              : `${result.database.name} has been added.`
-          })
-
-          onSuccess?.(result)
+      const handleSuccess = (result: DatabaseFormResult) => {
+        toast.success(isEditMode ? 'Database updated!' : 'Database saved!', {
+          description: isEditMode
+            ? `${result.database.name} has been updated.`
+            : `${result.database.name} has been added.`
         })
-        .catch((error) => {
-          console.error('Save database error:', error)
 
-          toast.error('Failed to save database', { description: error.message })
+        onSuccess?.(result)
+      }
 
-          form.setError('root', { message: error.message })
+      const handleFailure = (error: unknown) => {
+        console.error('Save database error:', error)
 
-          if (error instanceof ApiError && error.details) {
-            const fieldErrors = errorDetailsToFormFieldErrors(error.details)
+        const message =
+          error instanceof Error ? error.message : 'Unknown error'
 
-            for (const [field, { message }] of Object.entries(fieldErrors)) {
-              form.setError(field as keyof FormInput, {
-                message,
-                type: 'server'
-              })
-            }
+        toast.error('Failed to save database', { description: message })
+
+        form.setError('root', { message })
+
+        if (error instanceof ApiError && error.details) {
+          const fieldErrors = errorDetailsToFormFieldErrors(error.details)
+
+          for (const [field, { message: fieldMessage }] of Object.entries(
+            fieldErrors
+          )) {
+            form.setError(field as keyof FormInput, {
+              message: fieldMessage,
+              type: 'server'
+            })
           }
+        }
+      }
+
+      if (isEditMode && databaseId) {
+        updateDatabase.mutate(
+          { id: databaseId, request: values },
+          {
+            onSuccess: handleSuccess,
+            onError: handleFailure
+          }
+        )
+      } else {
+        createDatabase.mutate(values, {
+          onSuccess: handleSuccess,
+          onError: handleFailure
         })
-        .finally(() => {
-          setIsSaving(false)
-        })
+      }
     },
-    [databaseId, form, isEditMode, onSuccess]
+    [createDatabase, databaseId, form, isEditMode, onSuccess, updateDatabase]
   )
 
   const handleTestConnection = useCallback(

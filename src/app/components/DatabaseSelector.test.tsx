@@ -1,14 +1,12 @@
-import { configureStore } from '@reduxjs/toolkit'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ReactNode } from 'react'
-import { Provider } from 'react-redux'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 
-import editorReducer from '../store/editor-slice'
+import { queryKeys } from '../hooks/queries'
+import { renderWithProviders } from '../test-utils'
 import { DatabaseSelector } from './DatabaseSelector'
 
 vi.mock('../api-client', () => ({
@@ -17,13 +15,12 @@ vi.mock('../api-client', () => ({
   }
 }))
 
-// Radix UI Select uses DOM APIs not available in jsdom
+// Radix UI Select uses DOM APIs not available in jsdom.
 beforeAll(() => {
   Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false)
   Element.prototype.setPointerCapture = vi.fn()
   Element.prototype.releasePointerCapture = vi.fn()
   Element.prototype.scrollIntoView = vi.fn()
-  // ResizeObserver polyfill for Radix popover/portal
   window.ResizeObserver = class ResizeObserver {
     observe = vi.fn()
     unobserve = vi.fn()
@@ -35,11 +32,11 @@ import { apiClient } from '../api-client'
 
 const testDatabase: DatabaseDto = {
   connectionInfo: {
-    host: 'localhost',
-    port: 5432,
     database: 'testdb',
-    username: 'admin',
-    password: 'secret'
+    host: 'localhost',
+    password: 'secret',
+    port: 5432,
+    username: 'admin'
   },
   createdAt: 1704067200000,
   id: 'db-1',
@@ -48,17 +45,9 @@ const testDatabase: DatabaseDto = {
 }
 
 const testDatabase2: DatabaseDto = {
-  connectionInfo: {
-    host: 'localhost',
-    port: 5432,
-    database: 'testdb2',
-    username: 'admin',
-    password: 'secret'
-  },
-  createdAt: 1704067200000,
+  ...testDatabase,
   id: 'db-2',
-  name: 'Staging DB',
-  type: 'postgres'
+  name: 'Staging DB'
 }
 
 const testWorksheet: WorksheetDto = {
@@ -70,74 +59,46 @@ const testWorksheet: WorksheetDto = {
   name: 'Test Worksheet'
 }
 
-function createTestStore(options?: {
-  databases?: DatabaseDto[]
-  openWorksheetId?: string
-  worksheets?: WorksheetDto[]
-}) {
-  return configureStore({
-    preloadedState: {
-      editor: {
-        databases: options?.databases ?? [testDatabase, testDatabase2],
-        databaseSearchQuery: '',
-        openWorksheetId: options?.openWorksheetId ?? 'ws-123',
-        queries: [],
-        schemas: {},
-        worksheets: options?.worksheets ?? [testWorksheet],
-        worksheetSearchQuery: ''
-      }
-    },
-    reducer: {
-      editor: editorReducer
-    }
-  })
-}
-
-function TestEnvironment({
-  children,
-  store
-}: {
-  children: ReactNode
-  store: ReturnType<typeof createTestStore>
-}) {
-  return <Provider store={store}>{children}</Provider>
-}
-
 describe('DatabaseSelector', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('should display the currently selected database for the open worksheet', () => {
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseSelector />
-      </TestEnvironment>
-    )
+  it('displays the database selected for the open worksheet', () => {
+    renderWithProviders(<DatabaseSelector />, {
+      databases: [testDatabase, testDatabase2],
+      editor: { openWorksheetId: 'ws-123' },
+      worksheets: [testWorksheet]
+    })
 
     expect(screen.getByText('Production DB')).toBeInTheDocument()
   })
 
-  it('should call updateWorksheet API with the selected databaseId when user changes database', async () => {
+  it('shows "No databases configured" when there are no databases', () => {
+    renderWithProviders(<DatabaseSelector />, {
+      databases: [],
+      editor: { openWorksheetId: 'ws-123' },
+      worksheets: [testWorksheet]
+    })
+
+    expect(screen.getByText('No databases configured')).toBeInTheDocument()
+  })
+
+  it('updates the worksheet with the chosen database id', async () => {
     const user = userEvent.setup()
-    const updatedWorksheet = { ...testWorksheet, databaseId: 'db-2' }
 
-    vi.mocked(apiClient.updateWorksheet).mockResolvedValue(updatedWorksheet)
+    vi.mocked(apiClient.updateWorksheet).mockResolvedValue({
+      ...testWorksheet,
+      databaseId: 'db-2'
+    })
 
-    const store = createTestStore()
+    renderWithProviders(<DatabaseSelector />, {
+      databases: [testDatabase, testDatabase2],
+      editor: { openWorksheetId: 'ws-123' },
+      worksheets: [testWorksheet]
+    })
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseSelector />
-      </TestEnvironment>
-    )
-
-    // Open the select dropdown
     await user.click(screen.getByRole('combobox'))
-
-    // Select the second database
     await user.click(screen.getByText('Staging DB'))
 
     await waitFor(() => {
@@ -147,62 +108,35 @@ describe('DatabaseSelector', () => {
     })
   })
 
-  it('should use current worksheet data in optimistic update, not stale data', async () => {
+  it('optimistically updates the database while preserving other fields', async () => {
     const user = userEvent.setup()
-    const worksheet: WorksheetDto = {
-      content: 'SELECT * FROM orders',
-      createdAt: 1704067200000,
-      databaseId: 'db-1',
-      id: 'ws-123',
-      lastOpenedAt: null,
-      name: 'Test Worksheet'
-    }
 
-    const store = createTestStore({
-      worksheets: [worksheet]
-    })
-
-    // Mock a slow API response so we can inspect the optimistic update
+    // Never resolves so we can inspect the optimistic cache state.
     vi.mocked(apiClient.updateWorksheet).mockImplementation(
-      // Never resolves — lets us inspect optimistic state
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      () => new Promise(() => {})
+      () =>
+        new Promise<WorksheetDto>(() => {
+          // Never resolves so the optimistic state can be inspected.
+        })
     )
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseSelector />
-      </TestEnvironment>
-    )
-
-    // Simulate content update (user typing in editor) before changing database
-    store.dispatch({
-      type: 'editor/worksheetContentUpdated',
-      payload: { id: 'ws-123', content: 'SELECT * FROM updated_table' }
+    const { queryClient } = renderWithProviders(<DatabaseSelector />, {
+      databases: [testDatabase, testDatabase2],
+      editor: { openWorksheetId: 'ws-123' },
+      worksheets: [testWorksheet]
     })
 
-    // Now change the database
     await user.click(screen.getByRole('combobox'))
     await user.click(screen.getByText('Staging DB'))
 
-    // The optimistic update should preserve the updated content, not use stale data
     await waitFor(() => {
-      const ws = store.getState().editor.worksheets[0]
+      const worksheets = queryClient.getQueryData<WorksheetDto[]>(
+        queryKeys.worksheets
+      )
 
-      expect(ws.databaseId).toEqual('db-2')
-      expect(ws.content).toEqual('SELECT * FROM updated_table')
+      expect(worksheets?.[0]).toEqual({
+        ...testWorksheet,
+        databaseId: 'db-2'
+      })
     })
-  })
-
-  it('should show "No databases configured" when databases array is empty', () => {
-    const store = createTestStore({ databases: [] })
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseSelector />
-      </TestEnvironment>
-    )
-
-    expect(screen.getByText('No databases configured')).toBeInTheDocument()
   })
 })

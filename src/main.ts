@@ -4,13 +4,10 @@ import started from 'electron-squirrel-startup'
 
 import { apiPort, startServer } from './api'
 import { initializeDatabase } from './database'
-import { bootstrap, BootstrapData } from './main/bootstrap'
 
-let bootstrapData: BootstrapData | null = null
-
-ipcMain.handle('get-bootstrap-data', () => {
-  return bootstrapData
-})
+if (!app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222')
+}
 
 ipcMain.handle('window-minimize', () => {
   mainWindow?.minimize()
@@ -61,8 +58,6 @@ const createWindow = async () => {
     },
     width: 1300
   })
-
-  bootstrapData = await bootstrap()
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)

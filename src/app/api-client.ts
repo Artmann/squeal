@@ -16,6 +16,7 @@ import {
 } from '@/main/queries'
 import {
   CreateWorksheetResponse,
+  ListWorksheetsResponse,
   UpdateWorksheetResponse
 } from '@/main/worksheets'
 
@@ -24,6 +25,10 @@ const baseUrl = 'http://localhost:7847'
 interface CreateDatabaseResponse {
   database: DatabaseDto
   updatedWorksheet?: WorksheetDto
+}
+
+interface GetDatabasesResponse {
+  databases: DatabaseDto[]
 }
 
 interface GetSchemaResponse {
@@ -92,6 +97,20 @@ export const apiClient = {
     })
 
     return handleResponse<CreateDatabaseResponse>(response)
+  },
+
+  async getDatabases(): Promise<DatabaseDto[]> {
+    const response = await fetch(`${baseUrl}/databases`)
+    const data = await handleResponse<GetDatabasesResponse>(response)
+
+    return data.databases
+  },
+
+  async getWorksheets(): Promise<WorksheetDto[]> {
+    const response = await fetch(`${baseUrl}/worksheets`)
+    const data = await handleResponse<ListWorksheetsResponse>(response)
+
+    return data.worksheets
   },
 
   async getDatabaseSchema(databaseId: string): Promise<SchemaInfo> {

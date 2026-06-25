@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Toaster } from 'sonner'
@@ -40,11 +41,18 @@ async function fillForm(user: ReturnType<typeof userEvent.setup>) {
 }
 
 function renderDatabaseForm(props: Parameters<typeof DatabaseForm>[0] = {}) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false }
+    }
+  })
+
   return render(
-    <>
+    <QueryClientProvider client={queryClient}>
       <DatabaseForm {...props} />
       <Toaster />
-    </>
+    </QueryClientProvider>
   )
 }
 

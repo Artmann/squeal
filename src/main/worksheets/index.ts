@@ -18,6 +18,10 @@ export interface UpdateWorksheetResponse {
   worksheet: WorksheetDto
 }
 
+export interface ListWorksheetsResponse {
+  worksheets: WorksheetDto[]
+}
+
 const createWorksheetSchema = z.object({
   name: z.string()
 })
@@ -27,6 +31,23 @@ const updateWorksheetSchema = z.object({
   databaseId: z.string().nullable().optional(),
   lastOpenedAt: z.number().optional(),
   name: z.string().optional()
+})
+
+worksheetRouter.get('/', async (context) => {
+  let worksheets = await worksheetService.listWorksheets()
+
+  if (worksheets.length === 0) {
+    const defaultWorksheet =
+      await worksheetService.createWorksheet('My First Worksheet')
+
+    worksheets = [defaultWorksheet]
+  }
+
+  const response: ListWorksheetsResponse = {
+    worksheets
+  }
+
+  return context.json(response)
 })
 
 worksheetRouter.post('/', async (context) => {

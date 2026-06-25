@@ -1,12 +1,18 @@
 import { FileBracesIcon, PlusIcon } from 'lucide-react'
 import { ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { v4 as uuid } from 'uuid'
 
-import { apiClient } from '../api-client'
+import { useWorksheets } from '../hooks/queries'
+import {
+  useCreateWorksheet,
+  useUpdateWorksheet
+} from '../hooks/mutations'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
-import { editorSlice } from '../store/editor-slice'
+import {
+  worksheetSearchQueryUpdated,
+  worksheetSelected
+} from '../store/editor-slice'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { SearchInput } from './SearchInput'
@@ -14,13 +20,16 @@ import { WorksheetDto } from '@/glue/worksheets'
 
 export function WorksheetExplorer(): ReactElement {
   const dispatch = useAppDispatch()
-  const worksheets = useAppSelector((state) => state.editor.worksheets)
+  const worksheets = useWorksheets()
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
   )
   const worksheetSearchQuery = useAppSelector(
     (state) => state.editor.worksheetSearchQuery ?? ''
   )
+
+  const createWorksheet = useCreateWorksheet()
+  const updateWorksheet = useUpdateWorksheet()
 
   const [editingWorksheetId, setEditingWorksheetId] = useState<string | null>(
     null
@@ -35,7 +44,7 @@ export function WorksheetExplorer(): ReactElement {
     }
   }, [editingWorksheetId])
 
-  const filteredWorksheets = worksheets.filter((worksheet) =>
+  const filteredWorksheets = worksheets.data.filter((worksheet) =>
     worksheet.name.toLowerCase().includes(worksheetSearchQuery.toLowerCase())
   )
   const sortedWorksheets = filteredWorksheets.sort((a, b) =>
@@ -44,66 +53,42 @@ export function WorksheetExplorer(): ReactElement {
 
   const handleSelectWorksheet = useCallback(
     (worksheetId: string) => {
-      dispatch(editorSlice.actions.worksheetSelected(worksheetId))
+      dispatch(worksheetSelected(worksheetId))
 
-      apiClient
-        .updateWorksheet(worksheetId, {
-          lastOpenedAt: Date.now()
-        })
-        .catch(() => {
-          // Fire-and-forget: selection persistence is best-effort
-        })
+      updateWorksheet.mutate({
+        id: worksheetId,
+        updates: { lastOpenedAt: Date.now() }
+      })
     },
-    [dispatch]
+    [dispatch, updateWorksheet]
   )
 
-  const handleNewWorksheet = useCallback(async () => {
-    const optimisticId = uuid()
-
-    const untitledCount = worksheets.filter(
+  const handleNewWorksheet = useCallback(() => {
+    const untitledCount = worksheets.data.filter(
       (w) => w.name === 'Untitled' || /^Untitled \d+$/.test(w.name)
     ).length
     const name =
       untitledCount === 0 ? 'Untitled' : `Untitled ${untitledCount + 1}`
 
-    const optimisticWorksheet: WorksheetDto = {
-      content: '',
-      createdAt: Date.now(),
-      databaseId: null,
-      id: optimisticId,
-      lastOpenedAt: Date.now(),
-      name
-    }
+    createWorksheet.mutate(name, {
+      onSuccess: (worksheet) => {
+        dispatch(worksheetSelected(worksheet.id))
 
-    dispatch(editorSlice.actions.worksheetCreated(optimisticWorksheet))
-
-    try {
-      const worksheet = await apiClient.createWorksheet(name)
-
-      // Replace optimistic worksheet with real one from API
-      dispatch(editorSlice.actions.worksheetRemoved(optimisticId))
-      dispatch(editorSlice.actions.worksheetCreated(worksheet))
-
-      // Persist the selection
-      apiClient
-        .updateWorksheet(worksheet.id, {
-          lastOpenedAt: Date.now()
-        })
-        .catch(() => {
-          // Fire-and-forget: selection persistence after creation is best-effort
+        updateWorksheet.mutate({
+          id: worksheet.id,
+          updates: { lastOpenedAt: Date.now() }
         })
 
-      // Auto-enter rename mode so the user can name it immediately
-      setEditingWorksheetId(worksheet.id)
-      setEditingName(worksheet.name)
-    } catch (error) {
-      dispatch(editorSlice.actions.worksheetRemoved(optimisticId))
+        setEditingWorksheetId(worksheet.id)
+        setEditingName(worksheet.name)
+      },
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : 'Unknown error'
 
-      const message = error instanceof Error ? error.message : 'Unknown error'
-
-      toast.error('Failed to create worksheet', { description: message })
-    }
-  }, [dispatch, worksheets])
+        toast.error('Failed to create worksheet', { description: message })
+      }
+    })
+  }, [createWorksheet, dispatch, updateWorksheet, worksheets.data])
 
   const handleDoubleClick = useCallback((worksheet: WorksheetDto) => {
     setEditingWorksheetId(worksheet.id)
@@ -116,7 +101,7 @@ export function WorksheetExplorer(): ReactElement {
   }, [])
 
   const handleRenameSubmit = useCallback(
-    async (worksheetId: string) => {
+    (worksheetId: string) => {
       const trimmedName = editingName.trim()
 
       if (!trimmedName) {
@@ -125,7 +110,7 @@ export function WorksheetExplorer(): ReactElement {
         return
       }
 
-      const worksheet = worksheets.find((w) => w.id === worksheetId)
+      const worksheet = worksheets.data.find((w) => w.id === worksheetId)
 
       if (!worksheet || worksheet.name === trimmedName) {
         handleRenameCancel()
@@ -135,21 +120,21 @@ export function WorksheetExplorer(): ReactElement {
 
       setEditingWorksheetId(null)
 
-      try {
-        const updatedWorksheet = await apiClient.updateWorksheet(worksheetId, {
-          name: trimmedName
-        })
+      updateWorksheet.mutate(
+        { id: worksheetId, updates: { name: trimmedName } },
+        {
+          onError: (error) => {
+            const message =
+              error instanceof Error ? error.message : 'Unknown error'
 
-        dispatch(editorSlice.actions.worksheetUpdated(updatedWorksheet))
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-
-        toast.error('Failed to rename worksheet', { description: message })
-      }
+            toast.error('Failed to rename worksheet', { description: message })
+          }
+        }
+      )
 
       setEditingName('')
     },
-    [dispatch, editingName, handleRenameCancel, worksheets]
+    [editingName, handleRenameCancel, updateWorksheet, worksheets.data]
   )
 
   const handleKeyDown = useCallback(
@@ -186,7 +171,7 @@ export function WorksheetExplorer(): ReactElement {
         <SearchInput
           value={worksheetSearchQuery}
           onChange={(newValue) =>
-            dispatch(editorSlice.actions.worksheetSearchQueryUpdated(newValue))
+            dispatch(worksheetSearchQueryUpdated(newValue))
           }
         />
       </div>

@@ -67,6 +67,13 @@ connectionTestRouter.post('/', async (context) => {
   return context.json({ success: true })
 })
 
+databaseRouter.get('/', async (context) => {
+  const service = new DatabaseService()
+  const databases = await service.listDatabases()
+
+  return context.json({ databases })
+})
+
 databaseRouter.post('/', async (context) => {
   const body = await context.req.json()
   const result = await createDatabaseSchema.safeParseAsync(body)

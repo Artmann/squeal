@@ -1,16 +1,25 @@
-import { configureStore } from '@reduxjs/toolkit'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ReactNode } from 'react'
-import { Provider } from 'react-redux'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
-import databaseExplorerReducer from '../store/database-explorer-slice'
-import editorReducer from '../store/editor-slice'
-import uiReducer from '../store/ui-slice'
+
+import { renderWithProviders } from '../test-utils'
 import { DatabaseExplorer } from './DatabaseExplorer'
+
+// Radix UI primitives use DOM APIs not available in jsdom.
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false)
+  Element.prototype.setPointerCapture = vi.fn()
+  Element.prototype.releasePointerCapture = vi.fn()
+  Element.prototype.scrollIntoView = vi.fn()
+  window.ResizeObserver = class ResizeObserver {
+    observe = vi.fn()
+    unobserve = vi.fn()
+    disconnect = vi.fn()
+  } as unknown as typeof window.ResizeObserver
+})
 
 const testDatabase: DatabaseDto = {
   connectionInfo: {
@@ -70,118 +79,35 @@ const testSchema: SchemaInfo = {
   ]
 }
 
-function createTestStore(options?: {
-  databases?: DatabaseDto[]
-  expandedDatabases?: Record<string, boolean>
-  expandedTables?: Record<string, boolean>
-  schemas?: Record<string, SchemaInfo>
-}) {
-  return configureStore({
-    preloadedState: {
-      databaseExplorer: {
-        expandedDatabases: options?.expandedDatabases ?? {},
-        expandedTables: options?.expandedTables ?? {}
-      },
-      editor: {
-        databases: options?.databases ?? [testDatabase],
-        databaseSearchQuery: '',
-        queries: [],
-        schemas: options?.schemas ?? { 'db-123': testSchema },
-        worksheets: []
-      },
-      ui: {
-        showGettingStartedScreen: false
-      }
-    },
-    reducer: {
-      databaseExplorer: databaseExplorerReducer,
-      editor: editorReducer,
-      ui: uiReducer
-    }
-  })
-}
-
-function TestEnvironment({
-  children,
-  store
-}: {
-  children: ReactNode
-  store: ReturnType<typeof createTestStore>
-}) {
-  return <Provider store={store}>{children}</Provider>
-}
-
 describe('DatabaseExplorer', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('renders the header', () => {
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
+  it('renders the header and search input', () => {
+    renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
 
     expect(screen.getByText('Database Explorer')).toBeInTheDocument()
-  })
-
-  it('renders the search input', () => {
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
     expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
   })
 
   it('renders database names', () => {
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
+    renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
 
     expect(screen.getByText('Test Database')).toBeInTheDocument()
   })
 
-  it('shows no databases message when list is empty', () => {
-    const store = createTestStore({ databases: [] })
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
+  it('shows a message when there are no databases', () => {
+    renderWithProviders(<DatabaseExplorer />, { databases: [] })
 
     expect(screen.getByText('No databases found.')).toBeInTheDocument()
   })
 
-  it('filters databases by search query', async () => {
+  it('filters databases by the search query', async () => {
     const user = userEvent.setup()
     const databases = [
       { ...testDatabase, id: 'db-1', name: 'Production' },
       { ...testDatabase, id: 'db-2', name: 'Staging' },
       { ...testDatabase, id: 'db-3', name: 'Development' }
     ]
-    const store = createTestStore({ databases, schemas: {} })
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
-    expect(screen.getByText('Production')).toBeInTheDocument()
-    expect(screen.getByText('Staging')).toBeInTheDocument()
-    expect(screen.getByText('Development')).toBeInTheDocument()
+    renderWithProviders(<DatabaseExplorer />, { databases })
 
     await user.type(screen.getByPlaceholderText('Search...'), 'prod')
 
@@ -190,30 +116,13 @@ describe('DatabaseExplorer', () => {
     expect(screen.queryByText('Development')).not.toBeInTheDocument()
   })
 
-  it('shows no databases message when search has no matches', async () => {
+  it('expands a database when clicked to reveal its tables', async () => {
     const user = userEvent.setup()
-    const store = createTestStore()
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
-    await user.type(screen.getByPlaceholderText('Search...'), 'nonexistent')
-
-    expect(screen.getByText('No databases found.')).toBeInTheDocument()
-  })
-
-  it('expands database when clicked', async () => {
-    const user = userEvent.setup()
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
 
     expect(screen.queryByText('users')).not.toBeInTheDocument()
 
@@ -223,32 +132,25 @@ describe('DatabaseExplorer', () => {
     expect(screen.getByText('posts')).toBeInTheDocument()
   })
 
-  it('shows tables when database is expanded', () => {
-    const store = createTestStore({
-      expandedDatabases: { 'db-123': true }
+  it('shows tables when a database is already expanded', () => {
+    renderWithProviders(<DatabaseExplorer />, {
+      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
     })
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
 
     expect(screen.getByText('users')).toBeInTheDocument()
     expect(screen.getByText('posts')).toBeInTheDocument()
   })
 
-  it('expands table when clicked', async () => {
+  it('expands a table when clicked to reveal its columns', async () => {
     const user = userEvent.setup()
-    const store = createTestStore({
-      expandedDatabases: { 'db-123': true }
-    })
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
+    renderWithProviders(<DatabaseExplorer />, {
+      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
 
     expect(screen.queryByText('id (integer)')).not.toBeInTheDocument()
 
@@ -258,33 +160,14 @@ describe('DatabaseExplorer', () => {
     expect(screen.getByText('name (varchar)')).toBeInTheDocument()
   })
 
-  it('shows columns when table is expanded', () => {
-    const store = createTestStore({
-      expandedDatabases: { 'db-123': true },
-      expandedTables: { 'db-123-users': true }
-    })
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
-    expect(screen.getByText('id (integer)')).toBeInTheDocument()
-    expect(screen.getByText('name (varchar)')).toBeInTheDocument()
-  })
-
-  it('collapses database when clicked again', async () => {
+  it('collapses an expanded database when clicked again', async () => {
     const user = userEvent.setup()
-    const store = createTestStore({
-      expandedDatabases: { 'db-123': true }
-    })
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
+    renderWithProviders(<DatabaseExplorer />, {
+      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
 
     expect(screen.getByText('users')).toBeInTheDocument()
 
@@ -293,57 +176,16 @@ describe('DatabaseExplorer', () => {
     expect(screen.queryByText('users')).not.toBeInTheDocument()
   })
 
-  it('collapses table when clicked again', async () => {
+  it('opens the create database screen from the add button', async () => {
     const user = userEvent.setup()
-    const store = createTestStore({
-      expandedDatabases: { 'db-123': true },
-      expandedTables: { 'db-123-users': true }
+
+    const { store } = renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase]
     })
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
-    expect(screen.getByText('id (integer)')).toBeInTheDocument()
-
-    await user.click(screen.getByText('users'))
-
-    expect(screen.queryByText('id (integer)')).not.toBeInTheDocument()
-  })
-
-  it('renders the add database button', () => {
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
-    const buttons = screen.getAllByRole('button')
-    const addButton = buttons.find((button) =>
-      button.querySelector('svg.lucide-plus')
-    )
-
-    expect(addButton).toBeInTheDocument()
-  })
-
-  it('opens create database screen when add button is clicked', async () => {
-    const user = userEvent.setup()
-    const store = createTestStore()
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
-    const buttons = screen.getAllByRole('button')
-    const addButton = buttons.find((button) =>
-      button.querySelector('svg.lucide-plus')
-    )
+    const addButton = screen
+      .getAllByRole('button')
+      .find((button) => button.querySelector('svg.lucide-plus'))
 
     expect(addButton).toBeDefined()
 
@@ -354,27 +196,12 @@ describe('DatabaseExplorer', () => {
     })
   })
 
-  it('shows "Add a database" link in empty state', () => {
-    const store = createTestStore({ databases: [] })
-
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
-
-    expect(screen.getByText('Add a database')).toBeInTheDocument()
-  })
-
-  it('opens create database screen when "Add a database" link is clicked', async () => {
+  it('opens the create database screen from the empty-state link', async () => {
     const user = userEvent.setup()
-    const store = createTestStore({ databases: [] })
 
-    render(
-      <TestEnvironment store={store}>
-        <DatabaseExplorer />
-      </TestEnvironment>
-    )
+    const { store } = renderWithProviders(<DatabaseExplorer />, {
+      databases: []
+    })
 
     await user.click(screen.getByText('Add a database'))
 

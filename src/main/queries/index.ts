@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import invariant from 'tiny-invariant'
 
@@ -26,7 +26,11 @@ export interface GetQueriesResponse {
 }
 
 queryRouter.get('/', async (context) => {
-  const queries = await database.select().from(queriesTable).limit(250)
+  const queries = await database
+    .select()
+    .from(queriesTable)
+    .orderBy(desc(queriesTable.queriedAt))
+    .limit(250)
 
   return context.json({ queries: queries.map(transformQuery) })
 })
