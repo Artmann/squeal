@@ -5,7 +5,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 
-import { queryKeys } from '../hooks/queries'
 import { renderWithProviders } from '../test-utils'
 import { DatabaseSelector } from './DatabaseSelector'
 
@@ -119,7 +118,7 @@ describe('DatabaseSelector', () => {
         })
     )
 
-    const { queryClient } = renderWithProviders(<DatabaseSelector />, {
+    const { collections } = renderWithProviders(<DatabaseSelector />, {
       databases: [testDatabase, testDatabase2],
       editor: { openWorksheetId: 'ws-123' },
       worksheets: [testWorksheet]
@@ -129,12 +128,12 @@ describe('DatabaseSelector', () => {
     await user.click(screen.getByText('Staging DB'))
 
     await waitFor(() => {
-      const worksheets = queryClient.getQueryData<WorksheetDto[]>(
-        queryKeys.worksheets
-      )
-
-      expect(worksheets?.[0]).toEqual({
+      expect(collections.worksheets.get('ws-123')).toEqual({
         ...testWorksheet,
+        $collectionId: expect.any(String),
+        $key: 'ws-123',
+        $origin: 'local',
+        $synced: false,
         databaseId: 'db-2'
       })
     })

@@ -2,8 +2,9 @@ import { FileBracesIcon, PlusIcon } from 'lucide-react'
 import { ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { useCollections } from '../collections-context'
 import { useWorksheets } from '../hooks/queries'
-import { useCreateWorksheet, useUpdateWorksheet } from '../hooks/mutations'
+import { useCreateWorksheet } from '../hooks/mutations'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import {
@@ -26,7 +27,7 @@ export function WorksheetExplorer(): ReactElement {
   )
 
   const createWorksheet = useCreateWorksheet()
-  const updateWorksheet = useUpdateWorksheet()
+  const { worksheets: worksheetsCollection } = useCollections()
 
   const [editingWorksheetId, setEditingWorksheetId] = useState<string | null>(
     null
@@ -48,16 +49,23 @@ export function WorksheetExplorer(): ReactElement {
     a.createdAt > b.createdAt ? -1 : 1
   )
 
+  const touchWorksheet = useCallback(
+    (worksheetId: string) => {
+      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
+        draft.lastOpenedAt = Date.now()
+      })
+
+      void transaction.isPersisted.promise.catch((): void => undefined)
+    },
+    [worksheetsCollection]
+  )
+
   const handleSelectWorksheet = useCallback(
     (worksheetId: string) => {
       dispatch(worksheetSelected(worksheetId))
-
-      updateWorksheet.mutate({
-        id: worksheetId,
-        updates: { lastOpenedAt: Date.now() }
-      })
+      touchWorksheet(worksheetId)
     },
-    [dispatch, updateWorksheet]
+    [dispatch, touchWorksheet]
   )
 
   const handleNewWorksheet = useCallback(() => {
@@ -70,11 +78,7 @@ export function WorksheetExplorer(): ReactElement {
     createWorksheet.mutate(name, {
       onSuccess: (worksheet) => {
         dispatch(worksheetSelected(worksheet.id))
-
-        updateWorksheet.mutate({
-          id: worksheet.id,
-          updates: { lastOpenedAt: Date.now() }
-        })
+        touchWorksheet(worksheet.id)
 
         setEditingWorksheetId(worksheet.id)
         setEditingName(worksheet.name)
@@ -85,7 +89,7 @@ export function WorksheetExplorer(): ReactElement {
         toast.error('Failed to create worksheet', { description: message })
       }
     })
-  }, [createWorksheet, dispatch, updateWorksheet, worksheets.data])
+  }, [createWorksheet, dispatch, touchWorksheet, worksheets.data])
 
   const handleDoubleClick = useCallback((worksheet: WorksheetDto) => {
     setEditingWorksheetId(worksheet.id)
@@ -117,21 +121,19 @@ export function WorksheetExplorer(): ReactElement {
 
       setEditingWorksheetId(null)
 
-      updateWorksheet.mutate(
-        { id: worksheetId, updates: { name: trimmedName } },
-        {
-          onError: (error) => {
-            const message =
-              error instanceof Error ? error.message : 'Unknown error'
+      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
+        draft.name = trimmedName
+      })
 
-            toast.error('Failed to rename worksheet', { description: message })
-          }
-        }
-      )
+      void transaction.isPersisted.promise.catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+
+        toast.error('Failed to rename worksheet', { description: message })
+      })
 
       setEditingName('')
     },
-    [editingName, handleRenameCancel, updateWorksheet, worksheets.data]
+    [editingName, handleRenameCancel, worksheetsCollection, worksheets.data]
   )
 
   const handleKeyDown = useCallback(

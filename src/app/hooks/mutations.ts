@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient } from '../api-client'
+import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import { CreateDatabaseRequest } from '@/databases/schemas'
 import { DatabaseDto } from '@/glue/databases'
@@ -92,74 +93,12 @@ export function useCancelQuery() {
 }
 
 export function useCreateWorksheet() {
-  const queryClient = useQueryClient()
+  const { worksheets } = useCollections()
 
   return useMutation({
     mutationFn: (name: string) => apiClient.createWorksheet(name),
     onSuccess: (worksheet) => {
-      queryClient.setQueryData<WorksheetDto[]>(queryKeys.worksheets, (old) => {
-        if (!old) {
-          return [worksheet]
-        }
-
-        return [...old, worksheet]
-      })
-    }
-  })
-}
-
-export interface UpdateWorksheetInput {
-  databaseId?: string | null
-  content?: string
-  lastOpenedAt?: number
-  name?: string
-}
-
-export function useUpdateWorksheet() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: ({
-      id,
-      updates
-    }: {
-      id: string
-      updates: UpdateWorksheetInput
-    }) => apiClient.updateWorksheet(id, updates),
-    onMutate: async ({ id, updates }) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.worksheets })
-
-      const previous = queryClient.getQueryData<WorksheetDto[]>(
-        queryKeys.worksheets
-      )
-
-      queryClient.setQueryData<WorksheetDto[]>(queryKeys.worksheets, (old) => {
-        if (!old) {
-          return old
-        }
-
-        return old.map((worksheet) =>
-          worksheet.id === id ? { ...worksheet, ...updates } : worksheet
-        )
-      })
-
-      return { previous }
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKeys.worksheets, context.previous)
-      }
-    },
-    onSuccess: (worksheet) => {
-      queryClient.setQueryData<WorksheetDto[]>(queryKeys.worksheets, (old) => {
-        if (!old) {
-          return [worksheet]
-        }
-
-        return old.map((existing) =>
-          existing.id === worksheet.id ? worksheet : existing
-        )
-      })
+      worksheets.utils.writeInsert(worksheet)
     }
   })
 }

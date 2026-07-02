@@ -28,17 +28,14 @@ import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 
 import { WorksheetEditor } from './components/WorksheetEditor'
+import { useCollections } from './collections-context'
 import {
   useDatabases,
   useQueriesList,
   useQueryById,
   useWorksheets
 } from './hooks/queries'
-import {
-  useCancelQuery,
-  useCreateQuery,
-  useUpdateWorksheet
-} from './hooks/mutations'
+import { useCancelQuery, useCreateQuery } from './hooks/mutations'
 import { useAppSelector } from './store'
 import { createAstFromSql } from './sql-parser'
 import { canceledQueryMessage } from '@/glue/queries'
@@ -126,7 +123,7 @@ export function App(): ReactElement {
 
   const isQueryRunning = Boolean(query && !query.finishedAt)
 
-  const updateWorksheet = useUpdateWorksheet()
+  const { worksheets: worksheetsCollection } = useCollections()
   const createQuery = useCreateQuery()
   const cancelQuery = useCancelQuery()
 
@@ -137,8 +134,6 @@ export function App(): ReactElement {
       mutateCancelQuery(query.id)
     }
   }, [mutateCancelQuery, query?.id])
-
-  const { mutate: mutateWorksheet } = updateWorksheet
 
   const saveTimer = useRef<NodeJS.Timeout | undefined>(undefined)
   const pendingSave = useRef<{ content: string; id: string } | undefined>(
@@ -160,19 +155,19 @@ export function App(): ReactElement {
 
     pendingSave.current = undefined
 
-    mutateWorksheet(
-      { id: pending.id, updates: { content: pending.content } },
-      {
-        onSuccess: () => {
-          setSaveState('saved')
-        },
-        onError: () => {
-          setSaveState('error')
-          toast.error('Failed to save worksheet')
-        }
-      }
-    )
-  }, [mutateWorksheet])
+    const transaction = worksheetsCollection.update(pending.id, (draft) => {
+      draft.content = pending.content
+    })
+
+    void transaction.isPersisted.promise
+      .then(() => {
+        setSaveState('saved')
+      })
+      .catch(() => {
+        setSaveState('error')
+        toast.error('Failed to save worksheet')
+      })
+  }, [worksheetsCollection])
 
   useEffect(() => {
     // Flush any pending save when switching worksheets or unmounting so the
