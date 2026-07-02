@@ -1,9 +1,10 @@
+import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 
 import { apiClient } from '../api-client'
+import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import { DatabaseDto } from '@/glue/databases'
-import { WorksheetDto } from '@/glue/worksheets'
 import { QueryDto } from '@/main/queries'
 import { SchemaInfo } from '@/databases/adapter'
 
@@ -17,10 +18,12 @@ export function useDatabases() {
 }
 
 export function useWorksheets() {
-  return useSuspenseQuery<WorksheetDto[]>({
-    queryKey: queryKeys.worksheets,
-    queryFn: () => apiClient.getWorksheets()
-  })
+  const { worksheets } = useCollections()
+
+  return useLiveSuspenseQuery(
+    (query) => query.from({ worksheet: worksheets }),
+    [worksheets]
+  )
 }
 
 export function useQueriesList() {

@@ -2,8 +2,8 @@ import { DatabaseIcon } from 'lucide-react'
 import invariant from 'tiny-invariant'
 import { ReactElement, useCallback, useMemo } from 'react'
 
+import { useCollections } from '../collections-context'
 import { useDatabases, useWorksheets } from '../hooks/queries'
-import { useUpdateWorksheet } from '../hooks/mutations'
 import { useAppSelector } from '../store'
 import {
   Select,
@@ -19,7 +19,7 @@ export function DatabaseSelector(): ReactElement {
   const openWorksheetId = useAppSelector(
     (state) => state.editor.openWorksheetId
   )
-  const updateWorksheet = useUpdateWorksheet()
+  const { worksheets: worksheetsCollection } = useCollections()
 
   const currentWorksheet = useMemo(
     () => worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
@@ -34,12 +34,17 @@ export function DatabaseSelector(): ReactElement {
 
       invariant(currentWorksheet, 'No current worksheet found.')
 
-      updateWorksheet.mutate({
-        id: openWorksheetId,
-        updates: { databaseId }
-      })
+      const transaction = worksheetsCollection.update(
+        openWorksheetId,
+        (draft) => {
+          draft.databaseId = databaseId
+        }
+      )
+
+      // The optimistic change rolls back automatically if the save fails.
+      void transaction.isPersisted.promise.catch((): void => undefined)
     },
-    [currentWorksheet, openWorksheetId, updateWorksheet]
+    [currentWorksheet, openWorksheetId, worksheetsCollection]
   )
 
   if (databases.data.length === 0) {
