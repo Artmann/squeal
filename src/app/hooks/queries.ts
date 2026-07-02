@@ -8,8 +8,6 @@ import { queryKeys } from '../query-keys'
 import { QueryDto } from '@/main/queries'
 import { SchemaInfo } from '@/databases/adapter'
 
-export { queryKeys } from '../query-keys'
-
 export const queryPollInterval = 250
 
 export function useDatabases() {
