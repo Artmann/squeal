@@ -7,6 +7,8 @@ import { queriesTable } from '@/database/schema'
 import { ApiError, ValidationError } from '@/errors'
 import { createQuerySchema, queryRunner } from './query-runner'
 
+export { canceledQueryMessage } from './query-runner'
+
 export const queryRouter = new Hono()
 
 export interface QueryDto {
@@ -83,6 +85,16 @@ queryRouter.post('/', async (context) => {
   }
 
   return context.json(response)
+})
+
+queryRouter.post('/:id/cancel', async (context) => {
+  const { id } = context.req.param()
+
+  invariant(id, 'Query ID is required')
+
+  await queryRunner.cancelQuery(id)
+
+  return context.json({ success: true })
 })
 
 function transformQuery(query: any): QueryDto {

@@ -175,15 +175,16 @@ export function WorksheetExplorer(): ReactElement {
 
       <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
         {sortedWorksheets.length === 0 && (
-          <p className="text-xs text-subtext-0 px-1 mt-1">
-            No worksheets yet.{' '}
+          <p className="text-xs text-subtext-0 px-1 mt-1 leading-relaxed">
+            Worksheets are where you write and save SQL.{' '}
             <button
               className="underline underline-offset-2 hover:text-text transition-colors"
               onClick={handleNewWorksheet}
               type="button"
             >
-              Create one
+              Create your first one
             </button>
+            .
           </p>
         )}
 

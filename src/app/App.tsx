@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import { Loader2Icon, PlayIcon, XCircleIcon } from 'lucide-react'
+import { BanIcon, Loader2Icon, PlayIcon, XCircleIcon } from 'lucide-react'
 import {
   ReactElement,
   useCallback,
@@ -13,6 +13,11 @@ import invariant from 'tiny-invariant'
 import { v7 } from 'uuid'
 
 import { AppSidebar } from './components/AppSidebar'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from './components/ui/tooltip'
 import { DatabaseSelector } from './components/DatabaseSelector'
 import { EditorScreen } from './components/EditorScreen'
 import { GettingStartedScreen } from './components/GettingStartedScreen'
@@ -29,11 +34,20 @@ import {
   useQueryById,
   useWorksheets
 } from './hooks/queries'
-import { useCreateQuery, useUpdateWorksheet } from './hooks/mutations'
+import {
+  useCancelQuery,
+  useCreateQuery,
+  useUpdateWorksheet
+} from './hooks/mutations'
 import { useAppSelector } from './store'
 import { createAstFromSql } from './sql-parser'
+import { canceledQueryMessage } from '@/main/queries'
 
 const saveDebounceMs = 300
+
+const runShortcut = navigator.platform.toLowerCase().includes('mac')
+  ? '⌘ ↵'
+  : 'Ctrl ↵'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -114,6 +128,15 @@ export function App(): ReactElement {
 
   const updateWorksheet = useUpdateWorksheet()
   const createQuery = useCreateQuery()
+  const cancelQuery = useCancelQuery()
+
+  const { mutate: mutateCancelQuery } = cancelQuery
+
+  const handleCancelQuery = useCallback(() => {
+    if (query?.id) {
+      mutateCancelQuery(query.id)
+    }
+  }, [mutateCancelQuery, query?.id])
 
   const { mutate: mutateWorksheet } = updateWorksheet
 
@@ -240,18 +263,39 @@ export function App(): ReactElement {
 
         <div className="flex-1 min-h-0 flex flex-col">
           <header className="w-full p-3 border-b border-surface-0 flex items-center gap-3 justify-between">
-            <Button
-              className="cursor-pointer"
-              disabled={isQueryRunning || !activeStatement}
-              size="icon-sm"
-              onClick={handleRunQuery}
-            >
-              {isQueryRunning ? (
-                <Loader2Icon className="size-3 animate-spin" />
-              ) : (
-                <PlayIcon className="size-3" />
-              )}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    className="cursor-pointer"
+                    disabled={isQueryRunning || !activeStatement}
+                    size="icon-sm"
+                    onClick={handleRunQuery}
+                  >
+                    {isQueryRunning ? (
+                      <Loader2Icon className="size-3 animate-spin" />
+                    ) : (
+                      <PlayIcon className="size-3" />
+                    )}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+
+              <TooltipContent side="bottom">
+                {isQueryRunning ? (
+                  'Running…'
+                ) : activeStatement ? (
+                  <span className="flex items-center gap-2">
+                    Run statement
+                    <kbd className="font-mono text-[10px] opacity-70">
+                      {runShortcut}
+                    </kbd>
+                  </span>
+                ) : (
+                  'Place your cursor in a statement to run it'
+                )}
+              </TooltipContent>
+            </Tooltip>
 
             <div className="flex items-center gap-3">
               <SaveIndicator state={saveState} />
@@ -275,48 +319,97 @@ export function App(): ReactElement {
             >
               {isQueryRunning && (
                 <div className="w-full h-full flex justify-center items-center">
-                  <div className="w-full max-w-sm flex flex-col gap-2">
-                    <h2 className="text-lg font-medium">Running query</h2>
+                  <div className="w-full max-w-sm flex flex-col gap-3">
+                    <h2 className="flex items-center gap-2 text-lg font-medium">
+                      <Loader2Icon className="size-4 animate-spin text-mauve" />
+                      Running query
+                    </h2>
 
                     <Separator />
 
-                    <div className="text-subtext-0 text-sm">
+                    <div className="flex flex-col gap-1 text-subtext-0 text-sm">
                       <div className="flex items-center justify-between">
-                        <div>Start time</div>
+                        <div>Elapsed</div>
+                        <div className="text-right font-mono tabular-nums text-text">
+                          {query?.queriedAt && (
+                            <ElapsedTime since={query.queriedAt} />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>Started</div>
                         <div className="text-right">
                           {query?.queriedAt &&
-                            dayjs(query.queriedAt).format(
-                              'YYYY-MM-DD HH:mm:ss'
-                            )}
+                            dayjs(query.queriedAt).format('HH:mm:ss')}
                         </div>
                       </div>
                     </div>
+
+                    <Button
+                      className="self-start"
+                      disabled={cancelQuery.isPending}
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelQuery}
+                    >
+                      {cancelQuery.isPending ? 'Canceling…' : 'Cancel query'}
+                    </Button>
                   </div>
                 </div>
               )}
 
               {query?.result && <QueryResultTable result={query.result} />}
 
-              {query?.error && (
-                <div className="w-full h-full flex justify-center items-center p-6">
-                  <div className="w-full max-w-lg flex flex-col gap-3">
-                    <div className="flex items-center gap-2 text-red font-medium text-sm">
-                      <XCircleIcon className="size-4 shrink-0" />
-                      Query failed
+              {query?.error &&
+                (query.error === canceledQueryMessage ? (
+                  <div className="w-full h-full flex justify-center items-center p-6">
+                    <div className="flex items-center gap-2 text-subtext-0 text-sm">
+                      <BanIcon className="size-4 shrink-0" />
+                      Query canceled.
                     </div>
-
-                    <pre className="text-xs text-subtext-0 font-mono whitespace-pre-wrap bg-surface-0 rounded-md p-3 border border-surface-1">
-                      {query.error}
-                    </pre>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="w-full h-full flex justify-center items-center p-6">
+                    <div className="w-full max-w-lg flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-red font-medium text-sm">
+                        <XCircleIcon className="size-4 shrink-0" />
+                        Query failed
+                      </div>
+
+                      <pre className="text-xs text-subtext-0 font-mono whitespace-pre-wrap bg-surface-0 rounded-md p-3 border border-surface-1">
+                        {query.error}
+                      </pre>
+                    </div>
+                  </div>
+                ))}
             </ResultSheet>
           </div>
         </div>
       </div>
     </main>
   )
+}
+
+function ElapsedTime({ since }: { since: number }): ReactElement {
+  const [now, setNow] = useState<number>(() => Date.now())
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 250)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const seconds = Math.max(0, (now - since) / 1000)
+
+  const formatted =
+    seconds < 60
+      ? `${seconds.toFixed(1)}s`
+      : `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)
+          .toString()
+          .padStart(2, '0')}s`
+
+  return <>{formatted}</>
 }
 
 function SaveIndicator({ state }: { state: SaveState }): ReactElement | null {
@@ -330,5 +423,11 @@ function SaveIndicator({ state }: { state: SaveState }): ReactElement | null {
   const className =
     state === 'error' ? 'text-red text-xs' : 'text-subtext-0 text-xs'
 
-  return <span className={className}>{text}</span>
+  return (
+    <span
+      className={`${className} motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300`}
+    >
+      {text}
+    </span>
+  )
 }
