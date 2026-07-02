@@ -10,7 +10,9 @@ import { DatabaseDto } from '@/glue/databases'
 import { QueryDto } from '@/main/queries'
 import { WorksheetDto } from '@/glue/worksheets'
 
-import { queryKeys } from './hooks/queries'
+import { createCollections } from './collections'
+import { CollectionsProvider } from './collections-context'
+import { queryKeys } from './query-keys'
 import databaseExplorerReducer, {
   DatabaseExplorerState
 } from './store/database-explorer-slice'
@@ -58,6 +60,10 @@ export function renderWithProviders(
     queryClient.setQueryData(queryKeys.schema(databaseId), schema)
   }
 
+  // Created after seeding so the collections hydrate from the query cache
+  // instead of fetching.
+  const collections = createCollections(queryClient)
+
   const store = configureStore({
     reducer: {
       databaseExplorer: databaseExplorerReducer,
@@ -80,12 +86,14 @@ export function renderWithProviders(
 
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <Provider store={store}>
-        {ui}
-        <Toaster />
-      </Provider>
+      <CollectionsProvider collections={collections}>
+        <Provider store={store}>
+          {ui}
+          <Toaster />
+        </Provider>
+      </CollectionsProvider>
     </QueryClientProvider>
   )
 
-  return { ...result, queryClient, store }
+  return { ...result, collections, queryClient, store }
 }

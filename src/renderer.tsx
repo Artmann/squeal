@@ -6,6 +6,8 @@ import { Toaster } from 'sonner'
 
 import { App } from './app/App'
 import { AppShell } from './app/AppShell'
+import { createCollections } from './app/collections'
+import { CollectionsProvider } from './app/collections-context'
 import { ThemeProvider } from './app/components/ThemeProvider'
 import './app/index.css'
 import { createQueryClient } from './app/query-client'
@@ -20,18 +22,21 @@ function main() {
 
   const store = createStore()
   const queryClient = createQueryClient()
+  const collections = createCollections(queryClient)
 
   createRoot(root).render(
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
-        <Provider store={store}>
-          <ThemeProvider>
-            <AppShell>
-              <App />
-              <Toaster />
-            </AppShell>
-          </ThemeProvider>
-        </Provider>
+        <CollectionsProvider collections={collections}>
+          <Provider store={store}>
+            <ThemeProvider>
+              <AppShell>
+                <App />
+                <Toaster />
+              </AppShell>
+            </ThemeProvider>
+          </Provider>
+        </CollectionsProvider>
       </QueryClientProvider>
     </React.StrictMode>
   )

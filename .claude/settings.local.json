@@ -47,7 +47,8 @@
       "Bash(grep -r \"Pool\\\\|pool\\\\|connection\" /Users/artmann/code/squeal/src/databases/*.ts)",
       "Bash(head -30 /Users/artmann/code/squeal/tsconfig.*.json)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__package-registry__get-npm-package-details"
     ],
     "deny": [],
     "ask": []
