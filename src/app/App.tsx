@@ -41,7 +41,7 @@ import {
 } from './hooks/mutations'
 import { useAppSelector } from './store'
 import { createAstFromSql } from './sql-parser'
-import { canceledQueryMessage } from '@/main/queries'
+import { canceledQueryMessage } from '@/glue/queries'
 
 const saveDebounceMs = 300
 
