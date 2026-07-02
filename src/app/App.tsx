@@ -32,10 +32,11 @@ import { useCollections } from './collections-context'
 import {
   useDatabases,
   useQueriesList,
-  useQueryById,
+  useQueryResultSync,
   useWorksheets
 } from './hooks/queries'
-import { useCancelQuery, useCreateQuery } from './hooks/mutations'
+import { useCancelQuery } from './hooks/mutations'
+import { QueryDto } from '@/main/queries'
 import { useAppSelector } from './store'
 import { createAstFromSql } from './sql-parser'
 import { canceledQueryMessage } from '@/glue/queries'
@@ -110,7 +111,7 @@ export function App(): ReactElement {
     return statements[activeStatementIndex]
   }, [statements, activeStatementIndex])
 
-  const latestQueryForWorksheet = useMemo(() => {
+  const query = useMemo(() => {
     const sorted = queries.data
       .filter((q) => q.worksheetId === openWorksheetId)
       .sort((a, b) => b.queriedAt - a.queriedAt)
@@ -118,22 +119,21 @@ export function App(): ReactElement {
     return sorted[0]
   }, [queries.data, openWorksheetId])
 
-  const liveQueryResult = useQueryById(latestQueryForWorksheet?.id)
-  const query = liveQueryResult.data ?? latestQueryForWorksheet
+  useQueryResultSync(query)
 
   const isQueryRunning = Boolean(query && !query.finishedAt)
 
-  const { worksheets: worksheetsCollection } = useCollections()
-  const createQuery = useCreateQuery()
+  const { queries: queriesCollection, worksheets: worksheetsCollection } =
+    useCollections()
   const cancelQuery = useCancelQuery()
 
-  const { mutate: mutateCancelQuery } = cancelQuery
+  const { cancel: cancelQueryById } = cancelQuery
 
   const handleCancelQuery = useCallback(() => {
     if (query?.id) {
-      mutateCancelQuery(query.id)
+      cancelQueryById(query.id)
     }
-  }, [mutateCancelQuery, query?.id])
+  }, [cancelQueryById, query?.id])
 
   const saveTimer = useRef<NodeJS.Timeout | undefined>(undefined)
   const pendingSave = useRef<{ content: string; id: string } | undefined>(
@@ -201,31 +201,32 @@ export function App(): ReactElement {
       return
     }
 
-    const queryId = v7()
-    const queriedAt = Date.now()
+    const optimistic: QueryDto = {
+      content: activeStatement.text,
+      databaseId: currentWorksheet?.databaseId ?? '',
+      error: null,
+      finishedAt: null,
+      id: v7(),
+      queriedAt: Date.now(),
+      result: null,
+      truncated: false,
+      worksheetId: openWorksheetId ?? ''
+    }
 
-    createQuery.mutate(
-      {
-        content: activeStatement.text,
-        databaseId: currentWorksheet?.databaseId ?? undefined,
-        id: queryId,
-        queriedAt,
-        worksheetId: openWorksheetId ?? ''
-      },
-      {
-        onError: (error) => {
-          const message =
-            error instanceof Error ? error.message : 'Failed to run query'
+    const transaction = queriesCollection.insert(optimistic)
 
-          toast.error('Query failed', { description: message })
-        }
-      }
-    )
+    // The optimistic row rolls back automatically if the create fails.
+    void transaction.isPersisted.promise.catch((error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to run query'
+
+      toast.error('Query failed', { description: message })
+    })
   }, [
     activeStatement,
-    createQuery,
     currentWorksheet?.databaseId,
-    openWorksheetId
+    openWorksheetId,
+    queriesCollection
   ])
 
   if (!currentWorksheet) {

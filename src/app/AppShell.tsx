@@ -1,7 +1,15 @@
 import { QueryErrorResetBoundary } from '@tanstack/react-query'
 import { Loader2Icon } from 'lucide-react'
-import { Component, ErrorInfo, ReactNode, Suspense, useEffect } from 'react'
+import {
+  Component,
+  ErrorInfo,
+  ReactNode,
+  Suspense,
+  useCallback,
+  useEffect
+} from 'react'
 
+import { useCollections } from './collections-context'
 import { Button } from './components/ui/button'
 import { useQueriesList, useWorksheets } from './hooks/queries'
 import { useAppDispatch, useAppSelector } from './store'
@@ -109,12 +117,33 @@ function AppDataLoader({ children }: { children: ReactNode }): ReactNode {
 }
 
 export function AppShell({ children }: { children: ReactNode }): ReactNode {
+  const collections = useCollections()
+
+  // Resetting the query error boundary is not enough to restart a collection
+  // whose sync failed, so clear collection errors too.
+  const clearCollectionErrors = useCallback(() => {
+    const all = [
+      collections.databases,
+      collections.queries,
+      collections.worksheets
+    ]
+
+    for (const collection of all) {
+      if (collection.utils.isError) {
+        void collection.utils.clearError().catch((): void => undefined)
+      }
+    }
+  }, [collections])
+
   return (
     <QueryErrorResetBoundary>
       {({ reset }) => (
         <ErrorBoundary
           fallback={(retry) => <DataLoadError onRetry={retry} />}
-          onReset={reset}
+          onReset={() => {
+            reset()
+            clearCollectionErrors()
+          }}
         >
           <Suspense fallback={<FullScreenSpinner />}>
             <AppDataLoader>{children}</AppDataLoader>

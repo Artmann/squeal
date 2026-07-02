@@ -1,95 +1,78 @@
+import { createOptimisticAction } from '@tanstack/react-db'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useMemo, useState } from 'react'
 
 import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
+import { queryPollInterval } from './queries'
 import { queryKeys } from '../query-keys'
 import { CreateDatabaseRequest } from '@/databases/schemas'
-import { DatabaseDto } from '@/glue/databases'
-import { WorksheetDto } from '@/glue/worksheets'
+import { canceledQueryMessage } from '@/glue/queries'
 import { QueryDto } from '@/main/queries'
 
-export interface CreateQueryInput {
-  content: string
-  databaseId?: string
-  id: string
-  queriedAt: number
-  worksheetId: string
-}
+const cancelPollAttempts = 20
 
-export function useCreateQuery() {
-  const queryClient = useQueryClient()
+// The cancel endpoint only signals the running adapter; the backend finalizes
+// the row afterwards. Wait for that so the optimistic canceled state is not
+// dropped before the server row catches up.
+async function waitForQueryToFinish(
+  queryId: string
+): Promise<QueryDto | undefined> {
+  for (let attempt = 0; attempt < cancelPollAttempts; attempt++) {
+    const query = await apiClient.getQuery(queryId)
 
-  return useMutation({
-    mutationFn: (input: CreateQueryInput) => apiClient.createQuery(input),
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.queries })
-
-      const previous = queryClient.getQueryData<QueryDto[]>(queryKeys.queries)
-
-      const optimistic: QueryDto = {
-        content: input.content,
-        databaseId: input.databaseId ?? '',
-        error: null,
-        finishedAt: null,
-        id: input.id,
-        queriedAt: input.queriedAt,
-        result: null,
-        truncated: false,
-        worksheetId: input.worksheetId
-      }
-
-      queryClient.setQueryData<QueryDto[]>(queryKeys.queries, (old) => {
-        const next = old ? [...old] : []
-        next.unshift(optimistic)
-
-        return next
-      })
-
-      queryClient.setQueryData(queryKeys.query(input.id), optimistic)
-
-      return { previous }
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(queryKeys.queries, context.previous)
-      }
-    },
-    onSuccess: (response) => {
-      queryClient.setQueryData<QueryDto[]>(queryKeys.queries, (old) => {
-        if (!old) {
-          return [response.query]
-        }
-
-        const index = old.findIndex((query) => query.id === response.query.id)
-
-        if (index < 0) {
-          return [response.query, ...old]
-        }
-
-        const next = [...old]
-        next[index] = response.query
-
-        return next
-      })
-
-      queryClient.setQueryData(
-        queryKeys.query(response.query.id),
-        response.query
-      )
+    if (query.finishedAt) {
+      return query
     }
-  })
+
+    await new Promise((resolve) => setTimeout(resolve, queryPollInterval))
+  }
+
+  return undefined
 }
 
 export function useCancelQuery() {
-  const queryClient = useQueryClient()
+  const { queries } = useCollections()
+  const [isPending, setIsPending] = useState(false)
 
-  return useMutation({
-    mutationFn: (queryId: string) => apiClient.cancelQuery(queryId),
-    onSuccess: (_result, queryId) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.query(queryId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.queries })
-    }
-  })
+  const cancelAction = useMemo(
+    () =>
+      createOptimisticAction<string>({
+        onMutate: (queryId) => {
+          queries.update(queryId, (draft) => {
+            draft.error = canceledQueryMessage
+            draft.finishedAt = Date.now()
+          })
+        },
+        mutationFn: async (queryId) => {
+          await apiClient.cancelQuery(queryId)
+
+          const finalQuery = await waitForQueryToFinish(queryId)
+
+          if (finalQuery && queries.status === 'ready') {
+            queries.utils.writeUpsert(finalQuery)
+          }
+        }
+      }),
+    [queries]
+  )
+
+  const cancel = useCallback(
+    (queryId: string) => {
+      setIsPending(true)
+
+      const transaction = cancelAction(queryId)
+
+      void transaction.isPersisted.promise
+        .catch((): void => undefined)
+        .finally(() => {
+          setIsPending(false)
+        })
+    },
+    [cancelAction]
+  )
+
+  return { cancel, isPending }
 }
 
 export function useCreateWorksheet() {
