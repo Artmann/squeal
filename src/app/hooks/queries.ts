@@ -87,11 +87,14 @@ export function useQueryResultSync(query: QueryDto | undefined): void {
   useEffect(() => {
     // Also re-runs when the collection row regresses to running (for example
     // when a slow insert response lands after the poller saw the query
-    // finish) so the finished result always wins.
-    if (!finished || !isRunning || queries.status !== 'ready') {
+    // finish) so the finished result always wins. Collection status is not
+    // reactive, so wait for readiness instead of checking it once.
+    if (!finished || !isRunning) {
       return
     }
 
-    queries.utils.writeUpsert(finished)
+    void queries.stateWhenReady().then(() => {
+      queries.utils.writeUpsert(finished)
+    })
   }, [finished, isRunning, queries])
 }
