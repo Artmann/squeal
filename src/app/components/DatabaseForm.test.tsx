@@ -12,6 +12,8 @@ import {
   vi
 } from 'vitest'
 
+import { createCollections } from '../collections'
+import { CollectionsProvider } from '../collections-context'
 import { DatabaseForm } from './DatabaseForm'
 
 // Radix UI Select uses DOM APIs not available in jsdom
@@ -48,10 +50,14 @@ function renderDatabaseForm(props: Parameters<typeof DatabaseForm>[0] = {}) {
     }
   })
 
+  const collections = createCollections(queryClient)
+
   return render(
     <QueryClientProvider client={queryClient}>
-      <DatabaseForm {...props} />
-      <Toaster />
+      <CollectionsProvider collections={collections}>
+        <DatabaseForm {...props} />
+        <Toaster />
+      </CollectionsProvider>
     </QueryClientProvider>
   )
 }

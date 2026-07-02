@@ -98,47 +98,36 @@ export function useCreateWorksheet() {
   return useMutation({
     mutationFn: (name: string) => apiClient.createWorksheet(name),
     onSuccess: (worksheet) => {
-      worksheets.utils.writeInsert(worksheet)
+      if (worksheets.status === 'ready') {
+        worksheets.utils.writeInsert(worksheet)
+      }
     }
   })
 }
 
 export function useCreateDatabase() {
-  const queryClient = useQueryClient()
+  const { databases, worksheets } = useCollections()
 
   return useMutation({
     mutationFn: (request: CreateDatabaseRequest) =>
       apiClient.createDatabase(request),
     onSuccess: (response) => {
-      queryClient.setQueryData<DatabaseDto[]>(queryKeys.databases, (old) => {
-        if (!old) {
-          return [response.database]
-        }
+      // Manual writes reconcile already-synced state. A collection that has
+      // not started syncing will fetch fresh data, new row included, on first
+      // read instead.
+      if (databases.status === 'ready') {
+        databases.utils.writeInsert(response.database)
+      }
 
-        return [...old, response.database]
-      })
-
-      if (response.updatedWorksheet) {
-        const updated = response.updatedWorksheet
-
-        queryClient.setQueryData<WorksheetDto[]>(
-          queryKeys.worksheets,
-          (old) => {
-            if (!old) {
-              return [updated]
-            }
-
-            return old.map((worksheet) =>
-              worksheet.id === updated.id ? updated : worksheet
-            )
-          }
-        )
+      if (response.updatedWorksheet && worksheets.status === 'ready') {
+        worksheets.utils.writeUpsert(response.updatedWorksheet)
       }
     }
   })
 }
 
 export function useUpdateDatabase() {
+  const { databases } = useCollections()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -150,15 +139,9 @@ export function useUpdateDatabase() {
       request: CreateDatabaseRequest
     }) => apiClient.updateDatabase(id, request),
     onSuccess: (response) => {
-      queryClient.setQueryData<DatabaseDto[]>(queryKeys.databases, (old) => {
-        if (!old) {
-          return [response.database]
-        }
-
-        return old.map((existing) =>
-          existing.id === response.database.id ? response.database : existing
-        )
-      })
+      if (databases.status === 'ready') {
+        databases.utils.writeUpsert(response.database)
+      }
 
       queryClient.invalidateQueries({
         queryKey: queryKeys.schema(response.database.id)

@@ -11,10 +11,12 @@ import { SchemaInfo } from '@/databases/adapter'
 export { queryKeys } from '../query-keys'
 
 export function useDatabases() {
-  return useSuspenseQuery<DatabaseDto[]>({
-    queryKey: queryKeys.databases,
-    queryFn: () => apiClient.getDatabases()
-  })
+  const { databases } = useCollections()
+
+  return useLiveSuspenseQuery(
+    (query) => query.from({ database: databases }),
+    [databases]
+  )
 }
 
 export function useWorksheets() {
