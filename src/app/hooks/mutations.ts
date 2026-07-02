@@ -79,6 +79,18 @@ export function useCreateQuery() {
   })
 }
 
+export function useCancelQuery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (queryId: string) => apiClient.cancelQuery(queryId),
+    onSuccess: (_result, queryId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.query(queryId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queries })
+    }
+  })
+}
+
 export function useCreateWorksheet() {
   const queryClient = useQueryClient()
 

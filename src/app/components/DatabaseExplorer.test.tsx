@@ -96,7 +96,11 @@ describe('DatabaseExplorer', () => {
   it('shows a message when there are no databases', () => {
     renderWithProviders(<DatabaseExplorer />, { databases: [] })
 
-    expect(screen.getByText('No databases found.')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Connect a database to browse its tables and columns here.'
+      )
+    ).toBeInTheDocument()
   })
 
   it('filters databases by the search query', async () => {

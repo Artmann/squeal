@@ -94,6 +94,27 @@ describe('DatabaseForm', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
   })
 
+  describe('connection string paste', () => {
+    it('fills fields from a pasted connection string', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      await user.click(screen.getByRole('button', { name: /paste it/i }))
+      await user.type(
+        screen.getByPlaceholderText(/postgresql:\/\//),
+        'postgresql://alice:secret@db.example.com:6543/analytics'
+      )
+      await user.click(screen.getByRole('button', { name: 'Fill in' }))
+
+      expect(screen.getByLabelText('Host')).toHaveValue('db.example.com')
+      expect(screen.getByLabelText('Port')).toHaveValue(6543)
+      expect(screen.getByLabelText('Database')).toHaveValue('analytics')
+      expect(screen.getByLabelText('Username')).toHaveValue('alice')
+      expect(screen.getByLabelText('Password')).toHaveValue('secret')
+    })
+  })
+
   it('calls onCancel when cancel button is clicked', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()
@@ -286,8 +307,12 @@ describe('DatabaseForm', () => {
   })
 
   describe('SSL section', () => {
-    it('renders SSL mode dropdown for postgres', () => {
+    it('renders SSL mode dropdown for postgres', async () => {
+      const user = userEvent.setup()
+
       renderDatabaseForm()
+
+      await user.click(screen.getByRole('button', { name: /advanced/i }))
 
       expect(screen.getByText('SSL')).toBeInTheDocument()
       expect(
@@ -308,6 +333,7 @@ describe('DatabaseForm', () => {
 
       renderDatabaseForm()
 
+      await user.click(screen.getByRole('button', { name: /advanced/i }))
       await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
       await user.click(screen.getByRole('option', { name: 'Verify Full' }))
 
@@ -319,6 +345,7 @@ describe('DatabaseForm', () => {
 
       renderDatabaseForm()
 
+      await user.click(screen.getByRole('button', { name: /advanced/i }))
       await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
       await user.click(screen.getByRole('option', { name: 'Verify Full' }))
 
@@ -352,6 +379,7 @@ describe('DatabaseForm', () => {
       renderDatabaseForm({ onSuccess })
 
       await fillForm(user)
+      await user.click(screen.getByRole('button', { name: /advanced/i }))
       await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
       await user.click(screen.getByRole('option', { name: 'Verify Full' }))
       await user.type(screen.getByLabelText('SSL Root Certificate'), 'system')

@@ -23,7 +23,7 @@ export function TitleBar(): ReactElement {
       <div className="flex-1 drag-region h-full" />
 
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <span className="text-[11px] font-semibold tracking-wider text-subtext-0 select-none">
+        <span className="font-display text-[13px] font-semibold tracking-tight text-subtext-0 select-none">
           Squeal
         </span>
       </div>

@@ -1,9 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   CheckCircle2Icon,
+  ChevronRightIcon,
   FolderOpenIcon,
   Loader2Icon,
-  LoaderCircleIcon,
   XCircleIcon
 } from 'lucide-react'
 import { ReactElement, ReactNode, useCallback, useMemo, useState } from 'react'
@@ -107,6 +107,55 @@ export function DatabaseForm({
     CreateConnectionTestResponse | undefined
   >()
   const [isTestingConnection, setIsTestingConnection] = useState(false)
+  const [showConnectionString, setShowConnectionString] = useState(false)
+  const [connectionString, setConnectionString] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(() =>
+    Boolean(
+      (defaultValues?.connectionInfo as { sslMode?: string } | undefined)
+        ?.sslMode
+    )
+  )
+
+  const handleApplyConnectionString = useCallback(() => {
+    const parsed = parseConnectionString(connectionString)
+
+    if (!parsed) {
+      toast.error('Could not read that connection string', {
+        description: 'Expected something like postgresql://user:pass@host/db'
+      })
+
+      return
+    }
+
+    if (parsed.host !== undefined) {
+      form.setValue('connectionInfo.host', parsed.host)
+    }
+
+    if (parsed.port !== undefined) {
+      form.setValue('connectionInfo.port', parsed.port)
+    }
+
+    if (parsed.database !== undefined) {
+      form.setValue('connectionInfo.database', parsed.database)
+    }
+
+    if (parsed.username !== undefined) {
+      form.setValue('connectionInfo.username', parsed.username)
+    }
+
+    if (parsed.password !== undefined) {
+      form.setValue('connectionInfo.password', parsed.password)
+    }
+
+    if (parsed.sslMode) {
+      form.setValue('connectionInfo.sslMode', parsed.sslMode)
+      setShowAdvanced(true)
+    }
+
+    setConnectionString('')
+    setShowConnectionString(false)
+    toast.success('Connection details filled in')
+  }, [connectionString, form])
 
   const isSaving = createDatabase.isPending || updateDatabase.isPending
 
@@ -256,13 +305,13 @@ export function DatabaseForm({
 
   const connectionTestIcon = useMemo(() => {
     if (isTestingConnection) {
-      return <LoaderCircleIcon className="animate-spin" />
+      return <Loader2Icon className="animate-spin" />
     }
 
     if (connectTestResult?.success === true) {
       return (
         <CheckCircle2Icon
-          className="text-green-500"
+          className="text-green motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
           data-testid="connection-success-icon"
         />
       )
@@ -271,7 +320,7 @@ export function DatabaseForm({
     if (connectTestResult?.success === false) {
       return (
         <XCircleIcon
-          className="text-destructive"
+          className="text-red motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
           data-testid="connection-error-icon"
         />
       )
@@ -286,6 +335,48 @@ export function DatabaseForm({
         className="flex flex-col gap-8"
         onSubmit={form.handleSubmit(handleSubmit)}
       >
+        {databaseType !== 'sqlite' &&
+          (showConnectionString ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-subtext-0">
+                Paste a connection string to fill in the fields below.
+              </p>
+
+              <div className="flex gap-2">
+                <Input
+                  autoFocus
+                  className="flex-1 font-mono text-xs"
+                  placeholder="postgresql://user:password@host:5432/database"
+                  value={connectionString}
+                  onChange={(event) => setConnectionString(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      handleApplyConnectionString()
+                    }
+                  }}
+                />
+
+                <Button
+                  disabled={!connectionString.trim()}
+                  size="sm"
+                  type="button"
+                  onClick={handleApplyConnectionString}
+                >
+                  Fill in
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="self-start text-xs text-blue underline-offset-4 hover:underline"
+              type="button"
+              onClick={() => setShowConnectionString(true)}
+            >
+              Have a connection string? Paste it
+            </button>
+          ))}
+
         <ConnectionDetailsSection
           databaseType={databaseType}
           form={form}
@@ -295,7 +386,19 @@ export function DatabaseForm({
 
         {databaseType !== 'sqlite' && <AuthenticationSection form={form} />}
 
-        {databaseType !== 'sqlite' && <SslSection form={form} />}
+        {databaseType !== 'sqlite' &&
+          (showAdvanced ? (
+            <SslSection form={form} />
+          ) : (
+            <button
+              className="flex items-center gap-1 self-start text-xs text-subtext-0 hover:text-text"
+              type="button"
+              onClick={() => setShowAdvanced(true)}
+            >
+              <ChevronRightIcon className="size-3" />
+              Advanced (SSL)
+            </button>
+          ))}
 
         <DatabaseFormActions
           connectionTestIcon={connectionTestIcon}
@@ -677,6 +780,51 @@ function FormSectionHeaderActions({
   children: ReactNode
 }): ReactElement {
   return <div className="flex items-center gap-2">{children}</div>
+}
+
+interface ParsedConnectionString {
+  database?: string
+  host?: string
+  password?: string
+  port?: number
+  sslMode?: SslMode
+  username?: string
+}
+
+function parseConnectionString(value: string): ParsedConnectionString | null {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return null
+  }
+
+  try {
+    const url = new URL(trimmed)
+    const database = decodeURIComponent(url.pathname.replace(/^\//, ''))
+    const sslModeParameter =
+      url.searchParams.get('sslmode') ?? url.searchParams.get('ssl')
+
+    let sslMode: SslMode | undefined
+
+    if (sslModeParameter === 'disable') {
+      sslMode = 'disable'
+    } else if (sslModeParameter === 'require') {
+      sslMode = 'require'
+    } else if (sslModeParameter === 'verify-full') {
+      sslMode = 'verify-full'
+    }
+
+    return {
+      database: database || undefined,
+      host: url.hostname || undefined,
+      password: url.password ? decodeURIComponent(url.password) : undefined,
+      port: url.port ? Number(url.port) : undefined,
+      sslMode,
+      username: url.username ? decodeURIComponent(url.username) : undefined
+    }
+  } catch {
+    return null
+  }
 }
 
 type FieldErrors = Record<string, { message: string }>

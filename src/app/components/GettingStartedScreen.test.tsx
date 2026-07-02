@@ -11,9 +11,7 @@ describe('GettingStartedScreen', () => {
     renderWithProviders(<GettingStartedScreen />)
 
     expect(screen.getByText('Connect a database')).toBeInTheDocument()
-    expect(
-      screen.getByText('Add your first database connection to get started.')
-    ).toBeInTheDocument()
+    expect(screen.getByText(/built for humans/)).toBeInTheDocument()
   })
 
   it('renders the database form fields', () => {

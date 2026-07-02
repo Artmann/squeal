@@ -38,4 +38,9 @@ export interface DatabaseAdapter {
   getSchema(): Promise<SchemaInfo>
   runQuery(query: string): Promise<QueryResult>
   testConnection(): Promise<void>
+
+  // Best-effort cancellation of the query currently running through this
+  // adapter instance. Adapters that cannot abort a query in flight may leave
+  // this undefined.
+  cancel?(): Promise<void>
 }

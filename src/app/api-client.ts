@@ -136,6 +136,14 @@ export const apiClient = {
     return handleResponse<CreateQueryResponse>(response)
   },
 
+  async cancelQuery(queryId: string): Promise<void> {
+    const response = await fetch(`${baseUrl}/queries/${queryId}/cancel`, {
+      method: 'POST'
+    })
+
+    await handleResponse<{ success: boolean }>(response)
+  },
+
   async getQueries(): Promise<QueryDto[]> {
     const response = await fetch(`${baseUrl}/queries`)
     const data = await handleResponse<GetQueriesResponse>(response)

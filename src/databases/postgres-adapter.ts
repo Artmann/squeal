@@ -17,8 +17,37 @@ import type { PostgresConnectionInfo } from './schemas'
 export class PostgresAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: PostgresConnectionInfo
 
+  private activeClient: Client | null = null
+
   constructor(connectionInfo: PostgresConnectionInfo) {
     this.connectionInfo = connectionInfo
+  }
+
+  async cancel(): Promise<void> {
+    // node-postgres exposes the backend process id at runtime, but it is not
+    // present on the published Client type.
+    const backendProcessId = this.activeClient
+      ? (this.activeClient as unknown as { processID?: number | null }).processID
+      : undefined
+
+    if (!backendProcessId) {
+      return
+    }
+
+    // Postgres cancellation must be issued over a separate connection — the
+    // one running the query is busy — so we open a throwaway client and ask
+    // the server to cancel the running backend.
+    const cancelClient = new Client(createClientConfig(this.connectionInfo))
+
+    try {
+      await cancelClient.connect()
+
+      await cancelClient.query('SELECT pg_cancel_backend($1)', [
+        backendProcessId
+      ])
+    } finally {
+      await cancelClient.end()
+    }
   }
 
   async getSchema(): Promise<SchemaInfo> {
@@ -38,6 +67,8 @@ export class PostgresAdapter implements DatabaseAdapter {
 
     try {
       await client.connect()
+
+      this.activeClient = client
 
       console.log('Connected to database')
 
@@ -67,6 +98,8 @@ export class PostgresAdapter implements DatabaseAdapter {
         return await this.executeQuery(client, rewritten)
       }
     } finally {
+      this.activeClient = null
+
       await client.end()
     }
   }

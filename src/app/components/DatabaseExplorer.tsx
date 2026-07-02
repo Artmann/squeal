@@ -78,19 +78,24 @@ export function DatabaseExplorer(): ReactElement {
           />
         ))}
 
-        {filteredDatabases.length === 0 && (
-          <div className="text-xs text-muted-foreground mt-2">
-            <p>No databases found.</p>
+        {filteredDatabases.length === 0 &&
+          (databaseSearchQuery ? (
+            <p className="text-xs text-muted-foreground mt-2 px-1">
+              No databases match “{databaseSearchQuery}”.
+            </p>
+          ) : (
+            <div className="text-xs text-muted-foreground mt-2 px-1 leading-relaxed">
+              <p>Connect a database to browse its tables and columns here.</p>
 
-            <Button
-              className="mt-2 h-auto p-0 text-xs"
-              variant="link"
-              onClick={handleCreateDatabase}
-            >
-              Add a database
-            </Button>
-          </div>
-        )}
+              <Button
+                className="mt-2 h-auto p-0 text-xs"
+                variant="link"
+                onClick={handleCreateDatabase}
+              >
+                Add a database
+              </Button>
+            </div>
+          ))}
       </div>
     </div>
   )
