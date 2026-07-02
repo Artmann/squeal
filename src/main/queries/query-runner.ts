@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { database } from '@/database'
 import { databasesTable, queriesTable } from '@/database/schema'
+import { canceledQueryMessage } from '@/glue/queries'
 import type { DatabaseAdapter } from '@/databases/adapter'
 import { MysqlAdapter } from '@/databases/mysql-adapter'
 import { PostgresAdapter } from '@/databases/postgres-adapter'
@@ -28,7 +29,7 @@ export const createQuerySchema = z.object({
 
 export type CreateQueryInput = z.infer<typeof createQuerySchema>
 
-export const canceledQueryMessage = 'Query canceled.'
+export { canceledQueryMessage }
 
 class QueryRunner {
   private readonly runningAdapters = new Map<string, DatabaseAdapter>()
