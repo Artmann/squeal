@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient } from '../api-client'
-import { queryKeys } from './queries'
+import { queryKeys } from '../query-keys'
 import { CreateDatabaseRequest } from '@/databases/schemas'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
