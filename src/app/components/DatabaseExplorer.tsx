@@ -1,8 +1,21 @@
-import { ChevronRight, Database, Pencil, Plus, Table2Icon } from 'lucide-react'
+import {
+  ChevronRight,
+  Database,
+  Pencil,
+  Plus,
+  SearchIcon,
+  Table2Icon
+} from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
+import { toast } from 'sonner'
 
+import { useCollections } from '../collections-context'
 import { useDatabases, useDatabaseSchema } from '../hooks/queries'
-import { databaseSearchQueryUpdated } from '../store/editor-slice'
+import { useCreateWorksheet } from '../hooks/mutations'
+import {
+  databaseSearchQueryUpdated,
+  worksheetSelected
+} from '../store/editor-slice'
 import { uiActions } from '../store/ui-slice'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
@@ -118,7 +131,45 @@ function DatabaseRow({
   )
   const schema = useDatabaseSchema(isExpanded ? database.id : undefined)
 
+  const createWorksheet = useCreateWorksheet()
+  const { worksheets: worksheetsCollection } = useCollections()
+
   const tables = schema.data?.tables ?? []
+
+  const handleQueryTable = useCallback(
+    (tableName: string) => {
+      createWorksheet.mutate(
+        {
+          content: `SELECT * FROM ${tableName} LIMIT 100`,
+          databaseId: database.id,
+          name: tableName
+        },
+        {
+          onSuccess: (worksheet) => {
+            dispatch(worksheetSelected(worksheet.id))
+
+            if (worksheetsCollection.status === 'ready') {
+              const transaction = worksheetsCollection.update(
+                worksheet.id,
+                (draft) => {
+                  draft.lastOpenedAt = Date.now()
+                }
+              )
+
+              void transaction.isPersisted.promise.catch((): void => undefined)
+            }
+          },
+          onError: (error) => {
+            const message =
+              error instanceof Error ? error.message : 'Unknown error'
+
+            toast.error('Failed to create worksheet', { description: message })
+          }
+        }
+      )
+    },
+    [createWorksheet, database.id, dispatch, worksheetsCollection]
+  )
 
   return (
     <div>
@@ -163,21 +214,35 @@ function DatabaseRow({
                 key={tableKey}
                 className="border-l border-surface-0"
               >
-                <Button
-                  className="flex items-center gap-1 px-0 py-0 cursor-default h-5 font-normal"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => dispatch(expandTable(tableKey))}
-                >
-                  <ChevronRight
-                    className={cn(
-                      'size-3 transition-transform duration-150',
-                      isTableExpanded ? 'rotate-90' : ''
-                    )}
-                  />
-                  <Table2Icon className="size-3" />
-                  <span>{table.tableName}</span>
-                </Button>
+                <ContextMenu>
+                  <ContextMenuTrigger>
+                    <Button
+                      className="flex items-center gap-1 px-0 py-0 cursor-default h-5 font-normal"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => dispatch(expandTable(tableKey))}
+                    >
+                      <ChevronRight
+                        className={cn(
+                          'size-3 transition-transform duration-150',
+                          isTableExpanded ? 'rotate-90' : ''
+                        )}
+                      />
+                      <Table2Icon className="size-3" />
+                      <span>{table.tableName}</span>
+                    </Button>
+                  </ContextMenuTrigger>
+
+                  <ContextMenuContent>
+                    <ContextMenuItem
+                      className="flex items-center gap-2 min-w-32 text-xs"
+                      onClick={() => handleQueryTable(table.tableName)}
+                    >
+                      <SearchIcon className="size-3" />
+                      Query Table
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
 
                 {isTableExpanded && (
                   <div className="flex flex-col pl-4">

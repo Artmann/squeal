@@ -75,20 +75,24 @@ export function WorksheetExplorer(): ReactElement {
     const name =
       untitledCount === 0 ? 'Untitled' : `Untitled ${untitledCount + 1}`
 
-    createWorksheet.mutate(name, {
-      onSuccess: (worksheet) => {
-        dispatch(worksheetSelected(worksheet.id))
-        touchWorksheet(worksheet.id)
+    createWorksheet.mutate(
+      { name },
+      {
+        onSuccess: (worksheet) => {
+          dispatch(worksheetSelected(worksheet.id))
+          touchWorksheet(worksheet.id)
 
-        setEditingWorksheetId(worksheet.id)
-        setEditingName(worksheet.name)
-      },
-      onError: (error) => {
-        const message = error instanceof Error ? error.message : 'Unknown error'
+          setEditingWorksheetId(worksheet.id)
+          setEditingName(worksheet.name)
+        },
+        onError: (error) => {
+          const message =
+            error instanceof Error ? error.message : 'Unknown error'
 
-        toast.error('Failed to create worksheet', { description: message })
+          toast.error('Failed to create worksheet', { description: message })
+        }
       }
-    })
+    )
   }, [createWorksheet, dispatch, touchWorksheet, worksheets.data])
 
   const handleDoubleClick = useCallback((worksheet: WorksheetDto) => {

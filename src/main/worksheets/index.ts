@@ -23,6 +23,8 @@ export interface ListWorksheetsResponse {
 }
 
 const createWorksheetSchema = z.object({
+  content: z.string().optional(),
+  databaseId: z.string().optional(),
   name: z.string()
 })
 
@@ -37,8 +39,9 @@ worksheetRouter.get('/', async (context) => {
   let worksheets = await worksheetService.listWorksheets()
 
   if (worksheets.length === 0) {
-    const defaultWorksheet =
-      await worksheetService.createWorksheet('My First Worksheet')
+    const defaultWorksheet = await worksheetService.createWorksheet({
+      name: 'My First Worksheet'
+    })
 
     worksheets = [defaultWorksheet]
   }
@@ -58,7 +61,7 @@ worksheetRouter.post('/', async (context) => {
     throw new ValidationError(result.error)
   }
 
-  const worksheet = await worksheetService.createWorksheet(result.data.name)
+  const worksheet = await worksheetService.createWorksheet(result.data)
 
   const response: CreateWorksheetResponse = {
     worksheet

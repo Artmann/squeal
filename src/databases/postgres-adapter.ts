@@ -27,7 +27,8 @@ export class PostgresAdapter implements DatabaseAdapter {
     // node-postgres exposes the backend process id at runtime, but it is not
     // present on the published Client type.
     const backendProcessId = this.activeClient
-      ? (this.activeClient as unknown as { processID?: number | null }).processID
+      ? (this.activeClient as unknown as { processID?: number | null })
+          .processID
       : undefined
 
     if (!backendProcessId) {

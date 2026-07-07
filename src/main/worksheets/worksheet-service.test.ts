@@ -70,17 +70,33 @@ describe('WorksheetService', () => {
     it('should insert a worksheet with the provided name', async () => {
       const service = new WorksheetService()
 
-      await service.createWorksheet('My Worksheet')
+      await service.createWorksheet({ name: 'My Worksheet' })
 
       expect(mockInsert).toHaveBeenCalled()
       expect(mockValues).toHaveBeenCalledWith({ name: 'My Worksheet' })
       expect(mockReturning).toHaveBeenCalled()
     })
 
+    it('should insert a worksheet with initial content and database', async () => {
+      const service = new WorksheetService()
+
+      await service.createWorksheet({
+        content: 'SELECT * FROM users LIMIT 100',
+        databaseId: 'db-123',
+        name: 'users'
+      })
+
+      expect(mockValues).toHaveBeenCalledWith({
+        content: 'SELECT * FROM users LIMIT 100',
+        databaseId: 'db-123',
+        name: 'users'
+      })
+    })
+
     it('should return a transformed WorksheetDto', async () => {
       const service = new WorksheetService()
 
-      const result = await service.createWorksheet('My Worksheet')
+      const result = await service.createWorksheet({ name: 'My Worksheet' })
 
       expect(result).toEqual({
         content: undefined,

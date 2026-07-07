@@ -1,13 +1,15 @@
 import { database } from '@/database'
 import { worksheetsTable } from '@/database/schema'
-import { WorksheetDto } from '@/glue/worksheets'
+import { CreateWorksheetRequest, WorksheetDto } from '@/glue/worksheets'
 import { eq, isNull } from 'drizzle-orm'
 
 export class WorksheetService {
-  async createWorksheet(name: string): Promise<WorksheetDto> {
+  async createWorksheet(
+    request: CreateWorksheetRequest
+  ): Promise<WorksheetDto> {
     const [worksheet] = await database
       .insert(worksheetsTable)
-      .values({ name })
+      .values(request)
       .returning()
 
     return transformWorksheet(worksheet)

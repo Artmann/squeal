@@ -1,12 +1,25 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
+import { WorksheetDto } from '@/glue/worksheets'
 
 import { renderWithProviders } from '../test-utils'
 import { DatabaseExplorer } from './DatabaseExplorer'
+
+vi.mock('../api-client', () => ({
+  apiClient: {
+    createWorksheet: vi.fn(),
+    getDatabases: vi.fn(async () => []),
+    getQueries: vi.fn(async () => []),
+    getWorksheets: vi.fn(async () => []),
+    updateWorksheet: vi.fn()
+  }
+}))
+
+import { apiClient } from '../api-client'
 
 // Radix UI primitives use DOM APIs not available in jsdom.
 beforeAll(() => {
@@ -178,6 +191,43 @@ describe('DatabaseExplorer', () => {
     await user.click(screen.getByText('Test Database'))
 
     expect(screen.queryByText('users')).not.toBeInTheDocument()
+  })
+
+  it('creates a worksheet with a select query from the table context menu', async () => {
+    const user = userEvent.setup()
+    const createdWorksheet: WorksheetDto = {
+      content: 'SELECT * FROM users LIMIT 100',
+      createdAt: 1704067200000,
+      databaseId: 'db-123',
+      id: 'ws-users',
+      lastOpenedAt: null,
+      name: 'users'
+    }
+
+    vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)
+
+    const { store } = renderWithProviders(<DatabaseExplorer />, {
+      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema },
+      worksheets: []
+    })
+
+    fireEvent.contextMenu(screen.getByText('users'))
+
+    await user.click(await screen.findByText('Query Table'))
+
+    await waitFor(() => {
+      expect(apiClient.createWorksheet).toHaveBeenCalledWith({
+        content: 'SELECT * FROM users LIMIT 100',
+        databaseId: 'db-123',
+        name: 'users'
+      })
+    })
+
+    await waitFor(() => {
+      expect(store.getState().editor.openWorksheetId).toEqual('ws-users')
+    })
   })
 
   it('opens the create database screen from the add button', async () => {

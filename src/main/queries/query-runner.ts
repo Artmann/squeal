@@ -136,7 +136,9 @@ class QueryRunner {
 function isCancellationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
 
-  return message.toLowerCase().includes('canceling statement due to user request')
+  return message
+    .toLowerCase()
+    .includes('canceling statement due to user request')
 }
 
 function createAdapter(

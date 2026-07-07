@@ -7,7 +7,7 @@ import {
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
-import { WorksheetDto } from '@/glue/worksheets'
+import { CreateWorksheetRequest, WorksheetDto } from '@/glue/worksheets'
 import {
   CreateQueryResponse,
   GetQueriesResponse,
@@ -75,9 +75,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 export const apiClient = {
-  async createWorksheet(name: string): Promise<WorksheetDto> {
+  async createWorksheet(
+    request: CreateWorksheetRequest
+  ): Promise<WorksheetDto> {
     const response = await fetch(`${baseUrl}/worksheets`, {
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(request),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST'
     })

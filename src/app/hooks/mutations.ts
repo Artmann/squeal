@@ -8,6 +8,7 @@ import { queryPollInterval } from './queries'
 import { queryKeys } from '../query-keys'
 import { CreateDatabaseRequest } from '@/databases/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
+import { CreateWorksheetRequest } from '@/glue/worksheets'
 import { QueryDto } from '@/main/queries'
 
 const cancelPollAttempts = 20
@@ -79,7 +80,8 @@ export function useCreateWorksheet() {
   const { worksheets } = useCollections()
 
   return useMutation({
-    mutationFn: (name: string) => apiClient.createWorksheet(name),
+    mutationFn: (request: CreateWorksheetRequest) =>
+      apiClient.createWorksheet(request),
     onSuccess: (worksheet) => {
       if (worksheets.status === 'ready') {
         worksheets.utils.writeInsert(worksheet)

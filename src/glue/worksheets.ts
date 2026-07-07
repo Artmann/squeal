@@ -1,3 +1,9 @@
+export interface CreateWorksheetRequest {
+  content?: string
+  databaseId?: string
+  name: string
+}
+
 export interface WorksheetDto {
   content: string
   createdAt: number
