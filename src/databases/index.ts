@@ -19,8 +19,6 @@ import {
 import { ApiError, ValidationError } from '@/errors'
 import { DatabaseService } from '@/main/databases/database-service'
 
-export const supportedDatabases = ['mysql', 'postgres', 'sqlite'] as const
-
 export const connectionTestRouter = new Hono()
 export const databaseRouter = new Hono()
 

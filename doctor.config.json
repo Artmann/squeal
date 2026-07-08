@@ -1,0 +1,28 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "overrides": [
+      // Electron entry points wired up via forge.config.ts, not imports.
+      {
+        "files": ["src/preload.ts", "vite.renderer.config.mjs"],
+        "rules": ["deslop/unused-file"]
+      },
+      // These mutations reconcile the cache with TanStack DB collection
+      // writes in onSuccess instead of query invalidation.
+      {
+        "files": ["src/app/hooks/mutations.ts"],
+        "rules": ["react-doctor/query-mutation-missing-invalidation"]
+      },
+      // Both modules only load through React.lazy(() => import(...)) in
+      // App.tsx, so the CodeMirror packages already sit in an on-demand
+      // chunk. The rule is per-file and cannot see the dynamic import chain.
+      {
+        "files": [
+          "src/app/components/WorksheetEditor.tsx",
+          "src/app/components/codemirror-theme.ts"
+        ],
+        "rules": ["react-doctor/prefer-dynamic-import"]
+      }
+    ]
+  }
+}

@@ -109,12 +109,16 @@ export function DatabaseForm({
   const createDatabase = useCreateDatabase()
   const updateDatabase = useUpdateDatabase()
 
-  const [connectTestResult, setConnectTestResult] = useState<
-    CreateConnectionTestResponse | undefined
-  >()
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
-  const [showConnectionString, setShowConnectionString] = useState(false)
-  const [connectionString, setConnectionString] = useState('')
+  const databaseType = form.watch('type')
+  const connectionInfo = form.watch('connectionInfo')
+
+  const {
+    connectionTestIcon,
+    handleTestConnection,
+    isTestingConnection,
+    resetConnectionTest
+  } = useConnectionTest({ connectionInfo, databaseId, databaseType, form })
+
   const [showAdvanced, setShowAdvanced] = useState(() =>
     Boolean(
       (defaultValues?.connectionInfo as { sslMode?: string } | undefined)
@@ -122,51 +126,7 @@ export function DatabaseForm({
     )
   )
 
-  const handleApplyConnectionString = useCallback(() => {
-    const parsed = parseConnectionString(connectionString)
-
-    if (!parsed) {
-      toast.error('Could not read that connection string', {
-        description: 'Expected something like postgresql://user:pass@host/db'
-      })
-
-      return
-    }
-
-    if (parsed.host !== undefined) {
-      form.setValue('connectionInfo.host', parsed.host)
-    }
-
-    if (parsed.port !== undefined) {
-      form.setValue('connectionInfo.port', parsed.port)
-    }
-
-    if (parsed.database !== undefined) {
-      form.setValue('connectionInfo.database', parsed.database)
-    }
-
-    if (parsed.username !== undefined) {
-      form.setValue('connectionInfo.username', parsed.username)
-    }
-
-    if (parsed.password !== undefined) {
-      form.setValue('connectionInfo.password', parsed.password)
-    }
-
-    if (parsed.sslMode) {
-      form.setValue('connectionInfo.sslMode', parsed.sslMode)
-      setShowAdvanced(true)
-    }
-
-    setConnectionString('')
-    setShowConnectionString(false)
-    toast.success('Connection details filled in')
-  }, [connectionString, form])
-
   const isSaving = createDatabase.isPending || updateDatabase.isPending
-
-  const databaseType = form.watch('type')
-  const connectionInfo = form.watch('connectionInfo')
 
   const handleTypeChange = useCallback(
     (newType: string) => {
@@ -177,9 +137,9 @@ export function DatabaseForm({
         'connectionInfo',
         getDefaultConnectionInfo(validatedType, undefined)
       )
-      setConnectTestResult(undefined)
+      resetConnectionTest()
     },
-    [form]
+    [form, resetConnectionTest]
   )
 
   const handleBrowseFile = useCallback(async () => {
@@ -246,6 +206,85 @@ export function DatabaseForm({
     [createDatabase, databaseId, form, isEditMode, onSuccess, updateDatabase]
   )
 
+  const isLoading = isSaving || isTestingConnection
+
+  return (
+    <Form {...form}>
+      <form
+        className="flex flex-col gap-8"
+        onSubmit={form.handleSubmit(handleSubmit)}
+      >
+        {databaseType !== 'sqlite' && (
+          <ConnectionStringSection
+            form={form}
+            onSslModeApplied={() => setShowAdvanced(true)}
+          />
+        )}
+
+        <ConnectionDetailsSection
+          databaseType={databaseType}
+          form={form}
+          onBrowseFile={handleBrowseFile}
+          onTypeChange={handleTypeChange}
+        />
+
+        {databaseType !== 'sqlite' && (
+          <AuthenticationSection
+            form={form}
+            isEditMode={isEditMode}
+          />
+        )}
+
+        {databaseType !== 'sqlite' &&
+          (showAdvanced ? (
+            <SslSection form={form} />
+          ) : (
+            <button
+              className="flex items-center gap-1 self-start text-xs text-subtext-0 hover:text-text"
+              type="button"
+              onClick={() => setShowAdvanced(true)}
+            >
+              <ChevronRightIcon className="size-3" />
+              Advanced (SSL)
+            </button>
+          ))}
+
+        <DatabaseFormActions
+          connectionTestIcon={connectionTestIcon}
+          isLoading={isLoading}
+          isSaving={isSaving}
+          onCancel={onCancel}
+          onTestConnection={handleTestConnection}
+        />
+      </form>
+    </Form>
+  )
+}
+
+type DatabaseFormApi = UseFormReturn<FormInput, unknown, FormOutput>
+
+interface UseConnectionTestOptions {
+  connectionInfo: FormInput['connectionInfo']
+  databaseId?: string
+  databaseType: DatabaseType
+  form: DatabaseFormApi
+}
+
+function useConnectionTest({
+  connectionInfo,
+  databaseId,
+  databaseType,
+  form
+}: UseConnectionTestOptions) {
+  const [connectTestResult, setConnectTestResult] = useState<
+    CreateConnectionTestResponse | undefined
+  >()
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
+
+  const resetConnectionTest = useCallback(() => {
+    setConnectTestResult(undefined)
+  }, [])
+
   const handleTestConnection = useCallback(
     (event: React.FormEvent) => {
       event.preventDefault()
@@ -306,10 +345,8 @@ export function DatabaseForm({
           setIsTestingConnection(false)
         })
     },
-    [connectionInfo, databaseType, form]
+    [connectionInfo, databaseId, databaseType, form]
   )
-
-  const isLoading = isSaving || isTestingConnection
 
   const connectionTestIcon = useMemo(() => {
     if (isTestingConnection) {
@@ -337,95 +374,112 @@ export function DatabaseForm({
     return null
   }, [isTestingConnection, connectTestResult])
 
-  return (
-    <Form {...form}>
-      <form
-        className="flex flex-col gap-8"
-        onSubmit={form.handleSubmit(handleSubmit)}
-      >
-        {databaseType !== 'sqlite' &&
-          (showConnectionString ? (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs text-subtext-0">
-                Paste a connection string to fill in the fields below.
-              </p>
-
-              <div className="flex gap-2">
-                <Input
-                  autoFocus
-                  className="flex-1 font-mono text-xs"
-                  placeholder="postgresql://user:password@host:5432/database"
-                  value={connectionString}
-                  onChange={(event) => setConnectionString(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      handleApplyConnectionString()
-                    }
-                  }}
-                />
-
-                <Button
-                  disabled={!connectionString.trim()}
-                  size="sm"
-                  type="button"
-                  onClick={handleApplyConnectionString}
-                >
-                  Fill in
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <button
-              className="self-start text-xs text-blue underline-offset-4 hover:underline"
-              type="button"
-              onClick={() => setShowConnectionString(true)}
-            >
-              Have a connection string? Paste it
-            </button>
-          ))}
-
-        <ConnectionDetailsSection
-          databaseType={databaseType}
-          form={form}
-          onBrowseFile={handleBrowseFile}
-          onTypeChange={handleTypeChange}
-        />
-
-        {databaseType !== 'sqlite' && (
-          <AuthenticationSection
-            form={form}
-            isEditMode={isEditMode}
-          />
-        )}
-
-        {databaseType !== 'sqlite' &&
-          (showAdvanced ? (
-            <SslSection form={form} />
-          ) : (
-            <button
-              className="flex items-center gap-1 self-start text-xs text-subtext-0 hover:text-text"
-              type="button"
-              onClick={() => setShowAdvanced(true)}
-            >
-              <ChevronRightIcon className="size-3" />
-              Advanced (SSL)
-            </button>
-          ))}
-
-        <DatabaseFormActions
-          connectionTestIcon={connectionTestIcon}
-          isLoading={isLoading}
-          isSaving={isSaving}
-          onCancel={onCancel}
-          onTestConnection={handleTestConnection}
-        />
-      </form>
-    </Form>
-  )
+  return {
+    connectionTestIcon,
+    handleTestConnection,
+    isTestingConnection,
+    resetConnectionTest
+  }
 }
 
-type DatabaseFormApi = UseFormReturn<FormInput, unknown, FormOutput>
+interface ConnectionStringSectionProps {
+  form: DatabaseFormApi
+  onSslModeApplied: () => void
+}
+
+function ConnectionStringSection({
+  form,
+  onSslModeApplied
+}: ConnectionStringSectionProps): ReactElement {
+  const [connectionString, setConnectionString] = useState('')
+  const [showConnectionString, setShowConnectionString] = useState(false)
+
+  const handleApplyConnectionString = useCallback(() => {
+    const parsed = parseConnectionString(connectionString)
+
+    if (!parsed) {
+      toast.error('Could not read that connection string', {
+        description: 'Expected something like postgresql://user:pass@host/db'
+      })
+
+      return
+    }
+
+    if (parsed.host !== undefined) {
+      form.setValue('connectionInfo.host', parsed.host)
+    }
+
+    if (parsed.port !== undefined) {
+      form.setValue('connectionInfo.port', parsed.port)
+    }
+
+    if (parsed.database !== undefined) {
+      form.setValue('connectionInfo.database', parsed.database)
+    }
+
+    if (parsed.username !== undefined) {
+      form.setValue('connectionInfo.username', parsed.username)
+    }
+
+    if (parsed.password !== undefined) {
+      form.setValue('connectionInfo.password', parsed.password)
+    }
+
+    if (parsed.sslMode) {
+      form.setValue('connectionInfo.sslMode', parsed.sslMode)
+      onSslModeApplied()
+    }
+
+    setConnectionString('')
+    setShowConnectionString(false)
+    toast.success('Connection details filled in')
+  }, [connectionString, form, onSslModeApplied])
+
+  if (!showConnectionString) {
+    return (
+      <button
+        className="self-start text-xs text-blue underline-offset-4 hover:underline"
+        type="button"
+        onClick={() => setShowConnectionString(true)}
+      >
+        Have a connection string? Paste it
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-subtext-0">
+        Paste a connection string to fill in the fields below.
+      </p>
+
+      <div className="flex gap-2">
+        <Input
+          autoFocus
+          className="flex-1 font-mono text-xs"
+          placeholder="postgresql://user:password@host:5432/database"
+          value={connectionString}
+          onChange={(event) => setConnectionString(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              handleApplyConnectionString()
+            }
+          }}
+        />
+
+        <Button
+          disabled={!connectionString.trim()}
+          size="sm"
+          type="button"
+          onClick={handleApplyConnectionString}
+        >
+          Fill in
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 interface ConnectionDetailsSectionProps {
   databaseType: DatabaseType

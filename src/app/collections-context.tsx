@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from 'react'
+import { createContext, ReactNode, use } from 'react'
 import invariant from 'tiny-invariant'
 
 import { Collections } from './collections'
@@ -22,7 +22,7 @@ export function CollectionsProvider({
 }
 
 export function useCollections(): Collections {
-  const collections = useContext(CollectionsContext)
+  const collections = use(CollectionsContext)
 
   invariant(
     collections,

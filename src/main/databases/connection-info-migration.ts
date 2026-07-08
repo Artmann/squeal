@@ -23,26 +23,28 @@ export async function migrateConnectionInfoEncryption(
     })
     .from(databasesTable)
 
-  let migratedCount = 0
+  const migrationResults = await Promise.all(
+    records.map(async (record) => {
+      if (isEncrypted(record.connectionInfo)) {
+        return false
+      }
 
-  for (const record of records) {
-    if (isEncrypted(record.connectionInfo)) {
-      continue
-    }
+      const encrypted = secretStorage.encrypt(record.connectionInfo)
 
-    const encrypted = secretStorage.encrypt(record.connectionInfo)
+      if (encrypted === record.connectionInfo) {
+        return false
+      }
 
-    if (encrypted === record.connectionInfo) {
-      continue
-    }
+      await database
+        .update(databasesTable)
+        .set({ connectionInfo: encrypted })
+        .where(eq(databasesTable.id, record.id))
 
-    await database
-      .update(databasesTable)
-      .set({ connectionInfo: encrypted })
-      .where(eq(databasesTable.id, record.id))
+      return true
+    })
+  )
 
-    migratedCount += 1
-  }
+  const migratedCount = migrationResults.filter(Boolean).length
 
   if (migratedCount > 0) {
     log.info(`Encrypted connection info for ${migratedCount} database(s).`)
