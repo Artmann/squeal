@@ -31,7 +31,7 @@ at the code to change.
       `~/.../squeal.sqlite3`. Encrypt secrets with Electron `safeStorage`
       (OS-keychain backed) before persisting, and never return the password to
       the renderer in `GET /databases`.
-- [ ] **Build the Postgres connection with discrete fields, not string
+- [x] **Build the Postgres connection with discrete fields, not string
       interpolation.** `src/databases/postgres-adapter.ts:169` interpolates
       `postgresql://${username}:${password}@...`; a password containing
       `@ / : # ?` corrupts the URL. Pass a `ClientConfig` object

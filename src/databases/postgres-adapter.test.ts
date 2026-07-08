@@ -177,7 +177,7 @@ describe('PostgresAdapter', () => {
       expect(mockEnd).toHaveBeenCalled()
     })
 
-    it('uses connection string without ssl when sslMode is disable', async () => {
+    it('passes discrete connection fields without ssl when sslMode is disable', async () => {
       mockQuery.mockResolvedValueOnce({ fields: [], rowCount: 0, rows: [] })
 
       const adapter = new PostgresAdapter({
@@ -188,7 +188,69 @@ describe('PostgresAdapter', () => {
       await adapter.runQuery('SELECT 1')
 
       expect(Client).toHaveBeenCalledWith({
-        connectionString: 'postgresql://testuser:secret@localhost:5432/testdb'
+        database: 'testdb',
+        host: 'localhost',
+        password: 'secret',
+        port: 5432,
+        user: 'testuser'
+      })
+    })
+
+    it('passes passwords with special characters verbatim', async () => {
+      mockQuery.mockResolvedValueOnce({ fields: [], rowCount: 0, rows: [] })
+
+      const adapter = new PostgresAdapter({
+        ...connectionInfo,
+        password: 'p@ss:w/rd#?'
+      })
+
+      await adapter.runQuery('SELECT 1')
+
+      expect(Client).toHaveBeenCalledWith({
+        database: 'testdb',
+        host: 'localhost',
+        password: 'p@ss:w/rd#?',
+        port: 5432,
+        user: 'testuser'
+      })
+    })
+
+    it('defaults the port to 5432 when omitted', async () => {
+      mockQuery.mockResolvedValueOnce({ fields: [], rowCount: 0, rows: [] })
+
+      const adapter = new PostgresAdapter({
+        ...connectionInfo,
+        port: undefined
+      })
+
+      await adapter.runQuery('SELECT 1')
+
+      expect(Client).toHaveBeenCalledWith({
+        database: 'testdb',
+        host: 'localhost',
+        password: 'secret',
+        port: 5432,
+        user: 'testuser'
+      })
+    })
+
+    it('disables certificate verification when sslMode is require', async () => {
+      mockQuery.mockResolvedValueOnce({ fields: [], rowCount: 0, rows: [] })
+
+      const adapter = new PostgresAdapter({
+        ...connectionInfo,
+        sslMode: 'require'
+      })
+
+      await adapter.runQuery('SELECT 1')
+
+      expect(Client).toHaveBeenCalledWith({
+        database: 'testdb',
+        host: 'localhost',
+        password: 'secret',
+        port: 5432,
+        ssl: { rejectUnauthorized: false },
+        user: 'testuser'
       })
     })
   })

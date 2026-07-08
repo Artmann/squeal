@@ -157,30 +157,29 @@ export class PostgresAdapter implements DatabaseAdapter {
 }
 
 function createClientConfig(info: PostgresConnectionInfo): ClientConfig {
-  const {
-    username,
-    password,
-    host,
-    port = 5432,
-    database,
-    sslMode,
-    sslRootCert
-  } = info
+  const { database, host, password, port, sslMode, sslRootCert, username } =
+    info
 
-  const connectionString = `postgresql://${username}:${password}@${host}:${port}/${database}`
+  const base: ClientConfig = {
+    database,
+    host,
+    password,
+    port: port ?? 5432,
+    user: username
+  }
 
   if (!sslMode || sslMode === 'disable') {
-    return { connectionString }
+    return base
   }
 
   if (sslMode === 'require') {
-    return { connectionString, ssl: { rejectUnauthorized: false } }
+    return { ...base, ssl: { rejectUnauthorized: false } }
   }
 
   // verify-full
   if (sslRootCert && sslRootCert !== 'system') {
     return {
-      connectionString,
+      ...base,
       ssl: {
         ca: fs.readFileSync(sslRootCert).toString(),
         rejectUnauthorized: true
@@ -188,5 +187,5 @@ function createClientConfig(info: PostgresConnectionInfo): ClientConfig {
     }
   }
 
-  return { connectionString, ssl: { rejectUnauthorized: true } }
+  return { ...base, ssl: { rejectUnauthorized: true } }
 }
