@@ -1,6 +1,8 @@
 import { createClient } from '@libsql/client'
+import Database from 'libsql'
 import { pathToFileURL } from 'url'
 
+import { maxResultRows } from './adapter'
 import type {
   ColumnInfo,
   DatabaseAdapter,
@@ -54,38 +56,43 @@ export class SqliteAdapter implements DatabaseAdapter {
   }
 
   async runQuery(query: string): Promise<QueryResult> {
-    const client = createClient({ url: this.getConnectionUrl() })
+    const database = new Database(this.connectionInfo.path)
 
     try {
       console.log('Connected to SQLite database')
       console.log(`Running query:\n${query}\n`)
 
-      const result = await client.execute(query)
+      const statement = database.prepare(query)
+
+      if (!statement.reader) {
+        const info = statement.run()
+
+        console.log(`  ✓ Query executed successfully\n`)
+
+        return { fields: [], rowCount: info.changes, rows: [], truncated: false }
+      }
+
+      const fields = statement.columns().map((column) => ({ name: column.name }))
+      const rows: Record<string, unknown>[] = []
+      let truncated = false
+
+      // iterate() pulls rows from the native layer lazily, so memory stays
+      // bounded no matter how large the result set is.
+      for (const row of statement.iterate()) {
+        if (rows.length === maxResultRows) {
+          truncated = true
+
+          break
+        }
+
+        rows.push(row as Record<string, unknown>)
+      }
 
       console.log(`  ✓ Query executed successfully\n`)
 
-      const fields = result.columns.map((name) => ({ name }))
-      const rows = result.rows.map((row) => {
-        const record: Record<string, unknown> = {}
-
-        for (let i = 0; i < result.columns.length; i++) {
-          record[result.columns[i]] = row[i]
-        }
-
-        return record
-      })
-
-      const maxRows = 10_000
-      const truncated = rows.length > maxRows
-
-      return {
-        fields,
-        rowCount: result.rows.length,
-        rows: truncated ? rows.slice(0, maxRows) : rows,
-        truncated
-      }
+      return { fields, rowCount: rows.length, rows, truncated }
     } finally {
-      client.close()
+      database.close()
     }
   }
 

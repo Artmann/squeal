@@ -9,8 +9,10 @@ export default defineConfig({
         '@libsql/client',
         '@libsql/win32-x64-msvc',
         /^@libsql(\/.*)?$/,
+        /^libsql(\/.*)?$/,
         /^mysql2(\/.*)?$/,
-        /^pg(\/.*)?$/
+        /^pg(\/.*)?$/,
+        /^pg-cursor(\/.*)?$/
       ]
     }
   },
@@ -20,9 +22,11 @@ export default defineConfig({
       '@libsql/client',
       '@libsql/win32-x64-msvc',
       '@libsql',
+      'libsql',
       'mysql2',
       'mysql2/promise',
-      'pg'
+      'pg',
+      'pg-cursor'
     ]
   },
   resolve: {

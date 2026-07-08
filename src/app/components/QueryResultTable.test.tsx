@@ -95,6 +95,21 @@ describe('QueryResultTable', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument()
   })
 
+  it('shows how many rows are displayed when the result is truncated', () => {
+    const truncatedResult = {
+      fields: [{ name: 'id' }],
+      rows: Array.from({ length: 150 }, (_, index) => ({ id: index })),
+      rowCount: 150,
+      truncated: true
+    }
+
+    render(<QueryResultTable result={truncatedResult} />)
+
+    expect(
+      screen.getByText('Showing first 150 rows (result was truncated)')
+    ).toBeInTheDocument()
+  })
+
   it('shows context menu on right-click', async () => {
     const user = userEvent.setup()
     render(<QueryResultTable result={result} />)

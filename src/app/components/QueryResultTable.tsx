@@ -153,7 +153,7 @@ export const QueryResultTable = memo(function QueryResultTable({
       <div className="flex items-center justify-between border-t border-surface-0 px-3 py-1.5 text-xs text-subtext-0">
         <span>
           {result.truncated
-            ? `Showing first 10,000 rows (result was truncated)`
+            ? `Showing first ${Intl.NumberFormat().format(result.rows.length)} rows (result was truncated)`
             : `Rows ${firstRow}–${lastRow} of ${totalRows}`}
         </span>
 

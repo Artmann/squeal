@@ -1,6 +1,15 @@
+// Adapters never buffer more than this many rows; larger result sets are cut
+// off at the driver and flagged as truncated.
+export const maxResultRows = 10_000
+
 export interface QueryResult {
   fields: { name: string }[]
+
+  // Number of rows returned (at most maxResultRows) for row-returning
+  // statements, or the driver-reported affected-row count for DML. When
+  // truncated is true the true total is unknown.
   rowCount: number
+
   rows: Record<string, unknown>[]
   truncated: boolean
 }

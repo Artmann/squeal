@@ -96,7 +96,8 @@ export function ResultSheet({
         <div className="flex items-center gap-3">
           {isSuccessful ? (
             <span className="text-mauve font-medium">
-              {Intl.NumberFormat().format(query.result.rowCount)}{' '}
+              {Intl.NumberFormat().format(query.result.rowCount)}
+              {query.result.truncated ? '+' : ''}{' '}
               {query.result.rowCount === 1 ? 'row' : 'rows'}
             </span>
           ) : (
