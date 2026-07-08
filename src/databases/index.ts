@@ -2,18 +2,13 @@ import { Hono } from 'hono'
 import invariant from 'tiny-invariant'
 import { log } from 'tiny-typescript-logger'
 
-import { MysqlAdapter } from './mysql-adapter'
-import { PostgresAdapter } from './postgres-adapter'
-import { SqliteAdapter } from './sqlite-adapter'
+import { createAdapter } from './create-adapter'
 import {
   connectionTestSchema,
   createDatabaseSchema,
   updateDatabaseSchema,
   type ConnectionInfo,
   type DatabaseType,
-  type MysqlConnectionInfo,
-  type PostgresConnectionInfo,
-  type SqliteConnectionInfo,
   type UpdateConnectionInfo
 } from './schemas'
 import { ApiError, ValidationError } from '@/errors'
@@ -25,19 +20,6 @@ export const databaseRouter = new Hono()
 export interface CreateConnectionTestResponse {
   message?: string
   success: boolean
-}
-
-function createAdapter(type: DatabaseType, connectionInfo: ConnectionInfo) {
-  switch (type) {
-    case 'mysql':
-      return new MysqlAdapter(connectionInfo as MysqlConnectionInfo)
-    case 'postgres':
-      return new PostgresAdapter(connectionInfo as PostgresConnectionInfo)
-    case 'sqlite':
-      return new SqliteAdapter(connectionInfo as SqliteConnectionInfo)
-    default:
-      throw new Error(`Unsupported database type: ${type}`)
-  }
 }
 
 // A test without a password uses the stored one — the renderer never sees

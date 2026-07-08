@@ -29,7 +29,7 @@ export interface RenderOptions {
   worksheets?: WorksheetDto[]
 }
 
-export function createTestQueryClient(): QueryClient {
+function createTestQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       mutations: { retry: false },

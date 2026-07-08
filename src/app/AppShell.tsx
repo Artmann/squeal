@@ -14,6 +14,7 @@ import { Button } from './components/ui/button'
 import { useQueriesList, useWorksheets } from './hooks/queries'
 import { useAppDispatch, useAppSelector } from './store'
 import { editorSlice } from './store/editor-slice'
+import { pickWorksheetToOpen } from './worksheet-selection'
 
 function FullScreenSpinner(): ReactNode {
   return (
@@ -86,27 +87,7 @@ function AppDataLoader({ children }: { children: ReactNode }): ReactNode {
   )
 
   useEffect(() => {
-    if (openWorksheetId) {
-      const stillExists = worksheets.data.some(
-        (worksheet) => worksheet.id === openWorksheetId
-      )
-
-      if (stillExists) {
-        return
-      }
-    }
-
-    let pick: string | undefined
-    let max = 0
-
-    for (const worksheet of worksheets.data) {
-      if (worksheet.lastOpenedAt && worksheet.lastOpenedAt > max) {
-        max = worksheet.lastOpenedAt
-        pick = worksheet.id
-      }
-    }
-
-    pick = pick ?? worksheets.data[0]?.id
+    const pick = pickWorksheetToOpen(worksheets.data, openWorksheetId)
 
     if (pick) {
       dispatch(editorSlice.actions.worksheetSelected(pick))

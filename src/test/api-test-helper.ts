@@ -1,7 +1,7 @@
 import { drizzle, LibSQLDatabase } from 'drizzle-orm/libsql'
-import { sql } from 'drizzle-orm'
 import { vi } from 'vitest'
 
+import { createTables } from '@/database/tables'
 import type { QueryResult, SchemaInfo } from '@/databases/adapter'
 
 // The test database instance that will be used by tests.
@@ -59,55 +59,38 @@ export function setupApiMocks() {
 
   // Mock the database adapters.
   vi.mock('@/databases/postgres-adapter', () => ({
-    PostgresAdapter: class {
-      constructor(connectionInfo: unknown) {
-        mockAdapterConfig.lastConnectionInfo = connectionInfo
-      }
-      async getSchema() {
-        return mockAdapterConfig.getSchema()
-      }
-      async runQuery() {
-        return mockAdapterConfig.runQuery()
-      }
-      async testConnection() {
-        return mockAdapterConfig.testConnection()
-      }
-    }
+    PostgresAdapter: createMockAdapterClass()
   }))
 
   vi.mock('@/databases/mysql-adapter', () => ({
-    MysqlAdapter: class {
-      constructor(connectionInfo: unknown) {
-        mockAdapterConfig.lastConnectionInfo = connectionInfo
-      }
-      async getSchema() {
-        return mockAdapterConfig.getSchema()
-      }
-      async runQuery() {
-        return mockAdapterConfig.runQuery()
-      }
-      async testConnection() {
-        return mockAdapterConfig.testConnection()
-      }
-    }
+    MysqlAdapter: createMockAdapterClass()
   }))
 
   vi.mock('@/databases/sqlite-adapter', () => ({
-    SqliteAdapter: class {
-      constructor(connectionInfo: unknown) {
-        mockAdapterConfig.lastConnectionInfo = connectionInfo
-      }
-      async getSchema() {
-        return mockAdapterConfig.getSchema()
-      }
-      async runQuery() {
-        return mockAdapterConfig.runQuery()
-      }
-      async testConnection() {
-        return mockAdapterConfig.testConnection()
-      }
-    }
+    SqliteAdapter: createMockAdapterClass()
   }))
+}
+
+// All adapter mocks share the same shape: record the connection info they
+// were constructed with and delegate every method to mockAdapterConfig.
+function createMockAdapterClass() {
+  return class {
+    constructor(connectionInfo: unknown) {
+      mockAdapterConfig.lastConnectionInfo = connectionInfo
+    }
+
+    async getSchema() {
+      return mockAdapterConfig.getSchema()
+    }
+
+    async runQuery() {
+      return mockAdapterConfig.runQuery()
+    }
+
+    async testConnection() {
+      return mockAdapterConfig.testConnection()
+    }
+  }
 }
 
 /**
@@ -151,61 +134,7 @@ export function getTestDatabase(): LibSQLDatabase {
 async function createTestDatabase(): Promise<LibSQLDatabase> {
   const database = drizzle(':memory:')
 
-  await database.run(sql`
-    CREATE TABLE IF NOT EXISTS chats (
-      id TEXT PRIMARY KEY NOT NULL,
-      createdAt INTEGER NOT NULL,
-      updatedAt INTEGER NOT NULL
-    )
-  `)
-
-  await database.run(sql`
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY NOT NULL,
-      chatId TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      toolInvocations TEXT,
-      FOREIGN KEY (chatId) REFERENCES chats(id) ON DELETE CASCADE
-    )
-  `)
-
-  await database.run(sql`
-    CREATE TABLE IF NOT EXISTS databases (
-      id TEXT PRIMARY KEY NOT NULL,
-      connectionInfo TEXT NOT NULL,
-      createdAt INTEGER NOT NULL,
-      deletedAt INTEGER,
-      lastUsedAt INTEGER,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL
-    )
-  `)
-
-  await database.run(sql`
-    CREATE TABLE IF NOT EXISTS queries (
-      id TEXT PRIMARY KEY NOT NULL,
-      content TEXT NOT NULL,
-      databaseId TEXT NOT NULL,
-      error TEXT,
-      finishedAt INTEGER,
-      queriedAt INTEGER NOT NULL,
-      result TEXT,
-      worksheetId TEXT NOT NULL
-    )
-  `)
-
-  await database.run(sql`
-    CREATE TABLE IF NOT EXISTS worksheets (
-      id TEXT PRIMARY KEY NOT NULL,
-      content TEXT NOT NULL DEFAULT '',
-      createdAt INTEGER NOT NULL,
-      databaseId TEXT,
-      deletedAt INTEGER,
-      lastOpenedAt INTEGER,
-      name TEXT NOT NULL DEFAULT 'Untitled Worksheet'
-    )
-  `)
+  await createTables(database)
 
   return database
 }

@@ -90,11 +90,7 @@ export class DatabaseService {
   }
 
   async getDatabase(id: string): Promise<DatabaseDto | null> {
-    const [record] = await database
-      .select()
-      .from(databasesTable)
-      .where(and(eq(databasesTable.id, id), isNull(databasesTable.deletedAt)))
-      .limit(1)
+    const record = await this.findActiveRecord(id)
 
     if (!record) {
       return null
@@ -108,11 +104,7 @@ export class DatabaseService {
   async getDatabaseWithSecrets(
     id: string
   ): Promise<DatabaseWithSecrets | null> {
-    const [record] = await database
-      .select()
-      .from(databasesTable)
-      .where(and(eq(databasesTable.id, id), isNull(databasesTable.deletedAt)))
-      .limit(1)
+    const record = await this.findActiveRecord(id)
 
     if (!record) {
       return null
@@ -160,6 +152,16 @@ export class DatabaseService {
       .returning()
 
     return this.transformDatabase(record)
+  }
+
+  private async findActiveRecord(id: string) {
+    const [record] = await database
+      .select()
+      .from(databasesTable)
+      .where(and(eq(databasesTable.id, id), isNull(databasesTable.deletedAt)))
+      .limit(1)
+
+    return record ?? null
   }
 
   private parseConnectionInfo(value: string): ConnectionInfo {

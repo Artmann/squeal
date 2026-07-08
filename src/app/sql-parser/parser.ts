@@ -62,6 +62,14 @@ function trimTokens(tokens: Token[]): Token[] {
   return tokens.slice(start, end)
 }
 
+function hasSignificantContent(tokens: Token[]): boolean {
+  return tokens.some((t) => t.type !== 'whitespace' && t.type !== 'comment')
+}
+
+function isPunctuation(token: Token, value: string): boolean {
+  return token.type === 'punctuation' && token.value === value
+}
+
 function createStatement(tokens: Token[], sql: string): Statement | null {
   const trimmed = trimTokens(tokens)
 
@@ -69,11 +77,7 @@ function createStatement(tokens: Token[], sql: string): Statement | null {
     return null
   }
 
-  const hasSignificantContent = trimmed.some(
-    (t) => t.type !== 'whitespace' && t.type !== 'comment'
-  )
-
-  if (!hasSignificantContent) {
+  if (!hasSignificantContent(trimmed)) {
     return null
   }
 
@@ -88,62 +92,72 @@ function createStatement(tokens: Token[], sql: string): Statement | null {
   }
 }
 
-export function createAstFromSql(sql: string): Script {
-  const tokens = tokenize(sql)
-  const statements: Statement[] = []
-  let currentTokens: Token[] = []
-  let parenDepth = 0
+interface ParserState {
+  currentTokens: Token[]
+  parenDepth: number
+  statements: Statement[]
+}
 
-  for (const token of tokens) {
-    if (token.type === 'punctuation' && token.value === '(') {
-      parenDepth++
-      currentTokens.push(token)
-      continue
-    }
-
-    if (token.type === 'punctuation' && token.value === ')') {
-      parenDepth = Math.max(0, parenDepth - 1)
-      currentTokens.push(token)
-      continue
-    }
-
-    if (token.type === 'punctuation' && token.value === ';') {
-      currentTokens.push(token)
-      const statement = createStatement(currentTokens, sql)
-
-      if (statement) {
-        statements.push(statement)
-      }
-
-      currentTokens = []
-      parenDepth = 0
-      continue
-    }
-
-    if (parenDepth === 0 && isStatementKeyword(token)) {
-      const hasContent = currentTokens.some(
-        (t) => t.type !== 'whitespace' && t.type !== 'comment'
-      )
-
-      if (hasContent) {
-        const statement = createStatement(currentTokens, sql)
-
-        if (statement) {
-          statements.push(statement)
-        }
-
-        currentTokens = []
-      }
-    }
-
-    currentTokens.push(token)
-  }
-
-  const statement = createStatement(currentTokens, sql)
+// Closes the statement collected so far and starts a new one.
+function finishStatement(state: ParserState, sql: string): void {
+  const statement = createStatement(state.currentTokens, sql)
 
   if (statement) {
-    statements.push(statement)
+    state.statements.push(statement)
   }
 
-  return { statements }
+  state.currentTokens = []
+}
+
+// Statements are split on semicolons and on top-level statement keywords
+// (SELECT/INSERT/UPDATE/DELETE outside parentheses).
+function consumeToken(state: ParserState, token: Token, sql: string): void {
+  if (isPunctuation(token, '(')) {
+    state.parenDepth++
+    state.currentTokens.push(token)
+
+    return
+  }
+
+  if (isPunctuation(token, ')')) {
+    state.parenDepth = Math.max(0, state.parenDepth - 1)
+    state.currentTokens.push(token)
+
+    return
+  }
+
+  if (isPunctuation(token, ';')) {
+    state.currentTokens.push(token)
+    finishStatement(state, sql)
+    state.parenDepth = 0
+
+    return
+  }
+
+  const startsNewStatement =
+    state.parenDepth === 0 &&
+    isStatementKeyword(token) &&
+    hasSignificantContent(state.currentTokens)
+
+  if (startsNewStatement) {
+    finishStatement(state, sql)
+  }
+
+  state.currentTokens.push(token)
+}
+
+export function createAstFromSql(sql: string): Script {
+  const state: ParserState = {
+    currentTokens: [],
+    parenDepth: 0,
+    statements: []
+  }
+
+  for (const token of tokenize(sql)) {
+    consumeToken(state, token, sql)
+  }
+
+  finishStatement(state, sql)
+
+  return { statements: state.statements }
 }

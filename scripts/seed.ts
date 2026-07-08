@@ -10,6 +10,25 @@ const postgresUrl =
   process.env.POSTGRES_URL ??
   'postgresql://postgres:postgres@localhost:5433/squeal'
 
+async function runSeedFiles(
+  seedDirectory: string,
+  label: string,
+  runFile: (filePath: string) => Promise<void>
+) {
+  const files = await readdir(seedDirectory)
+  const sqlFiles = files.filter((file) => file.endsWith('.sql')).sort()
+
+  console.log(`Found ${sqlFiles.length} ${label} seed files\n`)
+
+  for (const file of sqlFiles) {
+    console.log(`Running: ${file}`)
+
+    await runFile(join(seedDirectory, file))
+
+    console.log(`  ✓ Complete\n`)
+  }
+}
+
 async function seedPostgres() {
   const client = new Client({ connectionString: postgresUrl })
 
@@ -23,21 +42,15 @@ async function seedPostgres() {
     await client.query('CREATE SCHEMA public')
     console.log('  ✓ Schema reset\n')
 
-    const seedDirectory = join(__dirname, '..', 'seed')
-    const files = await readdir(seedDirectory)
-    const sqlFiles = files.filter((file) => file.endsWith('.sql')).sort()
+    await runSeedFiles(
+      join(__dirname, '..', 'seed'),
+      'PostgreSQL',
+      async (filePath) => {
+        const sql = await readFile(filePath, 'utf-8')
 
-    console.log(`Found ${sqlFiles.length} PostgreSQL seed files\n`)
-
-    for (const file of sqlFiles) {
-      console.log(`Running: ${file}`)
-
-      const sql = await readFile(join(seedDirectory, file), 'utf-8')
-
-      await client.query(sql)
-
-      console.log(`  ✓ Complete\n`)
-    }
+        await client.query(sql)
+      }
+    )
 
     console.log('PostgreSQL seeded successfully!\n')
   } finally {
@@ -48,24 +61,16 @@ async function seedPostgres() {
 async function seedMysql() {
   console.log('Connected to MySQL')
 
-  const seedDirectory = join(__dirname, '..', 'seed-mysql')
-  const files = await readdir(seedDirectory)
-  const sqlFiles = files.filter((file) => file.endsWith('.sql')).sort()
-
-  console.log(`Found ${sqlFiles.length} MySQL seed files\n`)
-
-  for (const file of sqlFiles) {
-    console.log(`Running: ${file}`)
-
-    const filePath = join(seedDirectory, file)
-
-    execSync(
-      `cat "${filePath}" | docker exec -i squeal-mysql mysql -uroot -pmysql`,
-      { stdio: 'inherit' }
-    )
-
-    console.log(`  ✓ Complete\n`)
-  }
+  await runSeedFiles(
+    join(__dirname, '..', 'seed-mysql'),
+    'MySQL',
+    async (filePath) => {
+      execSync(
+        `cat "${filePath}" | docker exec -i squeal-mysql mysql -uroot -pmysql`,
+        { stdio: 'inherit' }
+      )
+    }
+  )
 
   console.log('MySQL seeded successfully!\n')
 }
@@ -87,27 +92,21 @@ async function seedSqlite() {
   const client = createClient({ url: pathToFileURL(sqlitePath).toString() })
 
   try {
-    const seedDirectory = join(__dirname, '..', 'seed-sqlite')
-    const files = await readdir(seedDirectory)
-    const sqlFiles = files.filter((file) => file.endsWith('.sql')).sort()
+    await runSeedFiles(
+      join(__dirname, '..', 'seed-sqlite'),
+      'SQLite',
+      async (filePath) => {
+        const sql = await readFile(filePath, 'utf-8')
+        const statements = sql
+          .split(';')
+          .map((statement) => statement.trim())
+          .filter((statement) => statement.length > 0)
 
-    console.log(`Found ${sqlFiles.length} SQLite seed files\n`)
-
-    for (const file of sqlFiles) {
-      console.log(`Running: ${file}`)
-
-      const sql = await readFile(join(seedDirectory, file), 'utf-8')
-      const statements = sql
-        .split(';')
-        .map((statement) => statement.trim())
-        .filter((statement) => statement.length > 0)
-
-      for (const statement of statements) {
-        await client.execute(statement)
+        for (const statement of statements) {
+          await client.execute(statement)
+        }
       }
-
-      console.log(`  ✓ Complete\n`)
-    }
+    )
 
     console.log('SQLite seeded successfully!')
     console.log(`Database created at: ${sqlitePath}\n`)

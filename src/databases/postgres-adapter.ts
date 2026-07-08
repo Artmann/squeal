@@ -1,5 +1,3 @@
-import fs from 'fs'
-
 import { Client, type ClientConfig } from 'pg'
 
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
@@ -13,6 +11,7 @@ import {
   transformToSchemaInfo
 } from './schema-provider'
 import type { PostgresConnectionInfo } from './schemas'
+import { createSslOptions } from './ssl-options'
 
 export class PostgresAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: PostgresConnectionInfo
@@ -157,35 +156,16 @@ export class PostgresAdapter implements DatabaseAdapter {
 }
 
 function createClientConfig(info: PostgresConnectionInfo): ClientConfig {
-  const { database, host, password, port, sslMode, sslRootCert, username } =
-    info
+  const { database, host, password, port, username } = info
 
-  const base: ClientConfig = {
+  const ssl = createSslOptions(info)
+
+  return {
     database,
     host,
     password,
     port: port ?? 5432,
-    user: username
+    user: username,
+    ...(ssl ? { ssl } : {})
   }
-
-  if (!sslMode || sslMode === 'disable') {
-    return base
-  }
-
-  if (sslMode === 'require') {
-    return { ...base, ssl: { rejectUnauthorized: false } }
-  }
-
-  // verify-full
-  if (sslRootCert && sslRootCert !== 'system') {
-    return {
-      ...base,
-      ssl: {
-        ca: fs.readFileSync(sslRootCert).toString(),
-        rejectUnauthorized: true
-      }
-    }
-  }
-
-  return { ...base, ssl: { rejectUnauthorized: true } }
 }

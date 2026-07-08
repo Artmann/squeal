@@ -14,11 +14,12 @@ const portSchema = z
     return typeof value === 'number' ? value : Number(value)
   })
 
-export const sslModeSchema = z.enum(['disable', 'require', 'verify-full'])
+const sslModeSchema = z.enum(['disable', 'require', 'verify-full'])
 
 export type SslMode = z.infer<typeof sslModeSchema>
 
-export const postgresConnectionInfoSchema = z.object({
+// MySQL and PostgreSQL connections share the same shape.
+const serverConnectionInfoSchema = z.object({
   database: z.string().min(1, 'Database name is required.'),
   host: z.string().min(1, 'Host is required.'),
   password: z.string().min(1, 'Password is required.'),
@@ -28,23 +29,10 @@ export const postgresConnectionInfoSchema = z.object({
   username: z.string().min(1, 'Username is required.')
 })
 
-export type PostgresConnectionInfo = z.infer<
-  typeof postgresConnectionInfoSchema
->
+export type MysqlConnectionInfo = z.infer<typeof serverConnectionInfoSchema>
+export type PostgresConnectionInfo = z.infer<typeof serverConnectionInfoSchema>
 
-export const mysqlConnectionInfoSchema = z.object({
-  database: z.string().min(1, 'Database name is required.'),
-  host: z.string().min(1, 'Host is required.'),
-  password: z.string().min(1, 'Password is required.'),
-  port: portSchema,
-  sslMode: sslModeSchema.optional(),
-  sslRootCert: z.string().optional(),
-  username: z.string().min(1, 'Username is required.')
-})
-
-export type MysqlConnectionInfo = z.infer<typeof mysqlConnectionInfoSchema>
-
-export const sqliteConnectionInfoSchema = z.object({
+const sqliteConnectionInfoSchema = z.object({
   path: z.string().min(1, 'File path is required.')
 })
 
@@ -61,28 +49,19 @@ export type PublicConnectionInfo =
   | Omit<PostgresConnectionInfo, 'password'>
   | SqliteConnectionInfo
 
-export const connectionInfoSchema = z.union([
-  mysqlConnectionInfoSchema,
-  postgresConnectionInfoSchema,
+const connectionInfoSchema = z.union([
+  serverConnectionInfoSchema,
   sqliteConnectionInfoSchema
 ])
 
 // Updates and connection tests may omit the password to mean "use the stored
 // one" — the main process merges it back in server-side.
-export const updateMysqlConnectionInfoSchema = mysqlConnectionInfoSchema.extend(
-  {
-    password: z.string().optional()
-  }
-)
+const updateServerConnectionInfoSchema = serverConnectionInfoSchema.extend({
+  password: z.string().optional()
+})
 
-export const updatePostgresConnectionInfoSchema =
-  postgresConnectionInfoSchema.extend({
-    password: z.string().optional()
-  })
-
-export const updateConnectionInfoSchema = z.union([
-  updateMysqlConnectionInfoSchema,
-  updatePostgresConnectionInfoSchema,
+const updateConnectionInfoSchema = z.union([
+  updateServerConnectionInfoSchema,
   sqliteConnectionInfoSchema
 ])
 

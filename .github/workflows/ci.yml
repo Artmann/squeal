@@ -7,6 +7,26 @@ on:
     branches: [main]
 
 jobs:
+  fallow:
+    name: Fallow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fallow's health analysis reads git history for churn and hotspots.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Fallow
+        run: npx --yes fallow@3.2.0
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest

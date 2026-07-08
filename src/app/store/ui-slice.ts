@@ -11,7 +11,7 @@ export interface UiState {
 
 const initialState: UiState = {}
 
-export const uiSlice = createSlice({
+const uiSlice = createSlice({
   name: 'ui',
   initialState,
   reducers: {

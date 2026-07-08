@@ -5,16 +5,7 @@ import { database } from '@/database'
 import { databasesTable, queriesTable } from '@/database/schema'
 import { canceledQueryMessage } from '@/glue/queries'
 import type { DatabaseAdapter } from '@/databases/adapter'
-import { MysqlAdapter } from '@/databases/mysql-adapter'
-import { PostgresAdapter } from '@/databases/postgres-adapter'
-import { SqliteAdapter } from '@/databases/sqlite-adapter'
-import type {
-  ConnectionInfo,
-  DatabaseType,
-  MysqlConnectionInfo,
-  PostgresConnectionInfo,
-  SqliteConnectionInfo
-} from '@/databases/schemas'
+import { createAdapter } from '@/databases/create-adapter'
 import { DatabaseService } from '@/main/databases/database-service'
 
 export const createQuerySchema = z.object({
@@ -130,22 +121,6 @@ function isCancellationError(error: unknown): boolean {
   return message
     .toLowerCase()
     .includes('canceling statement due to user request')
-}
-
-function createAdapter(
-  type: DatabaseType,
-  connectionInfo: ConnectionInfo
-): DatabaseAdapter {
-  switch (type) {
-    case 'mysql':
-      return new MysqlAdapter(connectionInfo as MysqlConnectionInfo)
-    case 'postgres':
-      return new PostgresAdapter(connectionInfo as PostgresConnectionInfo)
-    case 'sqlite':
-      return new SqliteAdapter(connectionInfo as SqliteConnectionInfo)
-    default:
-      throw new Error(`Unsupported database type: ${type}`)
-  }
 }
 
 function extractErrorMessage(error: unknown): string {

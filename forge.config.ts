@@ -13,6 +13,19 @@ import { join, resolve } from 'path'
 // Root external packages (Vite externals that need runtime resolution).
 const rootExternalPackages = ['@libsql/client', 'pg']
 
+function readPackageDependencyNames(packageJsonPath: string): string[] {
+  if (!existsSync(packageJsonPath)) {
+    return []
+  }
+
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
+
+  return [
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.optionalDependencies ?? {})
+  ]
+}
+
 // Recursively find all dependencies of a package.
 function getPackageDependencies(
   nodeModulesPath: string,
@@ -26,25 +39,43 @@ function getPackageDependencies(
 
   const packagePath = join(nodeModulesPath, ...packageName.split('/'))
   const packageJsonPath = join(packagePath, 'package.json')
-
-  if (!existsSync(packageJsonPath)) {
-    return []
-  }
-
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
-  const deps = [
-    ...Object.keys(packageJson.dependencies ?? {}),
-    ...Object.keys(packageJson.optionalDependencies ?? {})
-  ]
-
   const allDeps: string[] = []
 
-  for (const dep of deps) {
+  for (const dep of readPackageDependencyNames(packageJsonPath)) {
     allDeps.push(dep)
     allDeps.push(...getPackageDependencies(nodeModulesPath, dep, visited))
   }
 
   return allDeps
+}
+
+// Collect the externalized packages and their transitive dependencies.
+function collectPackagesToCopy(sourceNodeModules: string): Set<string> {
+  const allPackages = new Set<string>()
+
+  for (const rootPackage of rootExternalPackages) {
+    allPackages.add(rootPackage)
+
+    for (const dep of getPackageDependencies(sourceNodeModules, rootPackage)) {
+      allPackages.add(dep)
+    }
+  }
+
+  return allPackages
+}
+
+function copyPackage(
+  sourceNodeModules: string,
+  destNodeModules: string,
+  packageName: string
+): void {
+  const sourcePath = join(sourceNodeModules, ...packageName.split('/'))
+  const destPath = join(destNodeModules, ...packageName.split('/'))
+
+  if (existsSync(sourcePath)) {
+    mkdirSync(join(destPath, '..'), { recursive: true })
+    cpSync(sourcePath, destPath, { recursive: true })
+  }
 }
 
 const config: ForgeConfig = {
@@ -102,29 +133,8 @@ const config: ForgeConfig = {
       const sourceNodeModules = resolve(import.meta.dirname, 'node_modules')
       const destNodeModules = join(buildPath, 'node_modules')
 
-      // Collect all packages and their transitive dependencies.
-      const allPackages = new Set<string>()
-
-      for (const rootPackage of rootExternalPackages) {
-        allPackages.add(rootPackage)
-
-        for (const dep of getPackageDependencies(
-          sourceNodeModules,
-          rootPackage
-        )) {
-          allPackages.add(dep)
-        }
-      }
-
-      // Copy each package to the build directory.
-      for (const packageName of allPackages) {
-        const sourcePath = join(sourceNodeModules, ...packageName.split('/'))
-        const destPath = join(destNodeModules, ...packageName.split('/'))
-
-        if (existsSync(sourcePath)) {
-          mkdirSync(join(destPath, '..'), { recursive: true })
-          cpSync(sourcePath, destPath, { recursive: true })
-        }
+      for (const packageName of collectPackagesToCopy(sourceNodeModules)) {
+        copyPackage(sourceNodeModules, destNodeModules, packageName)
       }
     }
   },
