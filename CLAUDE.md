@@ -6,7 +6,8 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
 
 - **Main process** (`src/main.ts`): Electron app + Hono API server on port 7847
 - **Renderer process** (`src/app/`): React frontend
-- **API routes**: `src/main/queries/`, `src/main/auth/`, `src/main/chat/`
+- **API routes**: `src/databases/`, `src/main/chat/`, `src/main/queries/`,
+  `src/main/worksheets/`
 - **Database**: SQLite via Drizzle for app state, PostgreSQL for user queries
 
 ## Key Files
@@ -14,7 +15,7 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
 - `src/api.ts` - Hono server setup, mounts all routers
 - `src/database/schema.ts` - Drizzle schema definitions
 - `src/main/queries/query-runner.ts` - Executes queries against PostgreSQL
-- `src/main/queries/postgres-adapter.ts` - PostgreSQL connection handling
+- `src/databases/postgres-adapter.ts` - PostgreSQL connection handling
 - `src/app/App.tsx` - Main React component
 
 ## Commands
@@ -27,7 +28,12 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
 ## Notes
 
 - Native packages (`pg`, `@libsql`) are externalized in `vite.main.config.ts`
-- API base URL in frontend: `http://localhost:7847`
+- API base URL in frontend: `http://127.0.0.1:7847` (the server binds loopback
+  only)
+- The API requires a per-session bearer token on every route except `/health`.
+  The renderer gets it via `window.electron.getApiToken()`; in development the
+  token is printed at startup, so test with
+  `curl -H "Authorization: Bearer <token>" http://127.0.0.1:7847/databases`
 - Query execution is async: POST creates query, poll GET `/queries/:id` for
   results
 - Refer to @CODE_STYLE.md
