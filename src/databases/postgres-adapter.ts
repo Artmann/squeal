@@ -1,5 +1,11 @@
-import { Client, type ClientConfig } from 'pg'
+import {
+  Client,
+  type ClientConfig,
+  type QueryResult as DriverQueryResult
+} from 'pg'
+import Cursor from 'pg-cursor'
 
+import { maxResultRows } from './adapter'
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
   extractMissingRelation,
@@ -110,18 +116,46 @@ export class PostgresAdapter implements DatabaseAdapter {
   ): Promise<QueryResult> {
     console.log(`Running query:\n${query}\n`)
 
-    const result = await client.query(query)
+    const cursor = client.query(new Cursor<Record<string, unknown>>(query))
+    const rows: Record<string, unknown>[] = []
+    let lastResult: DriverQueryResult | undefined
+
+    try {
+      // Read in batches and stop one row past the cap, so huge result sets
+      // never materialize in memory.
+      while (rows.length <= maxResultRows) {
+        const batchSize = Math.min(1_000, maxResultRows + 1 - rows.length)
+        const batch = await readBatch(cursor, batchSize)
+
+        lastResult = batch.result
+
+        if (batch.rows.length === 0) {
+          break
+        }
+
+        rows.push(...batch.rows)
+      }
+    } finally {
+      try {
+        // The client must be back at ready-for-query before it is reused for
+        // the identifier-rewrite retry or ended.
+        await cursor.close()
+      } catch {
+        // Closing is best-effort; the original error matters more.
+      }
+    }
 
     console.log(`  ✓ Query executed successfully\n`)
 
-    const maxRows = 10_000
-    const allRows = result.rows as Record<string, unknown>[]
-    const truncated = allRows.length > maxRows
+    const truncated = rows.length > maxResultRows
+    const returnedRows = truncated ? rows.slice(0, maxResultRows) : rows
 
     return {
-      fields: result.fields.map((f) => ({ name: f.name })),
-      rowCount: result.rowCount ?? 0,
-      rows: truncated ? allRows.slice(0, maxRows) : allRows,
+      fields: (lastResult?.fields ?? []).map((field) => ({ name: field.name })),
+      // When truncated, the statement never completes, so the driver has no
+      // total and we report the number of rows returned instead.
+      rowCount: lastResult?.rowCount ?? returnedRows.length,
+      rows: returnedRows,
       truncated
     }
   }
@@ -153,6 +187,25 @@ export class PostgresAdapter implements DatabaseAdapter {
       await client.end()
     }
   }
+}
+
+// The callback form of cursor.read is the only one that exposes the driver
+// result carrying the fields metadata and the affected-row count.
+function readBatch(
+  cursor: Cursor<Record<string, unknown>>,
+  count: number
+): Promise<{ result: DriverQueryResult; rows: Record<string, unknown>[] }> {
+  return new Promise((resolve, reject) => {
+    cursor.read(count, (error, rows, result) => {
+      if (error) {
+        reject(error)
+
+        return
+      }
+
+      resolve({ result, rows })
+    })
+  })
 }
 
 function createClientConfig(info: PostgresConnectionInfo): ClientConfig {

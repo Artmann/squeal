@@ -38,6 +38,25 @@ describe('ResultSheet', () => {
     expect(screen.getByText('content')).toBeInTheDocument()
   })
 
+  it('marks the row count as a floor when the result is truncated', () => {
+    const truncatedQuery: QueryDto = {
+      ...successfulQuery,
+      result: { fields: [], rowCount: 10_000, rows: [], truncated: true },
+      truncated: true
+    }
+
+    render(
+      <ResultSheet
+        isOpen
+        query={truncatedQuery}
+      >
+        <div>content</div>
+      </ResultSheet>
+    )
+
+    expect(screen.getByText('10,000+ rows')).toBeInTheDocument()
+  })
+
   it('falls back to a generic header for a failed query', () => {
     render(
       <ResultSheet

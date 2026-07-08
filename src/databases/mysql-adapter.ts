@@ -1,5 +1,7 @@
+import { createConnection, type FieldPacket } from 'mysql2'
 import mysql from 'mysql2/promise'
 
+import { maxResultRows } from './adapter'
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
   type ColumnRow,
@@ -36,33 +38,92 @@ export class MysqlAdapter implements DatabaseAdapter {
   }
 
   async runQuery(query: string): Promise<QueryResult> {
-    const connection = await mysql.createConnection(this.getConnectionConfig())
+    // The callback API is the only one that emits per-row events, which lets
+    // us stop reading once the row cap is reached instead of buffering the
+    // whole result set.
+    const connection = createConnection(this.getConnectionConfig())
+    let destroyed = false
+
+    console.log(`Running query:\n${query}\n`)
 
     try {
-      console.log('Connected to database')
+      return await new Promise<QueryResult>((resolve, reject) => {
+        const rows: Record<string, unknown>[] = []
+        let affectedRows: number | undefined
+        let fields: { name: string }[] = []
+        let settled = false
 
-      console.log(`Running query:\n${query}\n`)
+        const statement = connection.query(query)
 
-      const [rows, fields] = await connection.query(query)
+        // The published typing claims a single FieldPacket, but at runtime
+        // mysql2 emits the whole array (or undefined for DML results).
+        statement.on('fields', (packet: FieldPacket[] | undefined) => {
+          fields = (packet ?? []).map((field) => ({ name: field.name }))
+        })
 
-      console.log(`  ✓ Query executed successfully\n`)
+        statement.on('result', (row) => {
+          if (settled) {
+            return
+          }
 
-      const maxRows = 10_000
-      const allRows = Array.isArray(rows)
-        ? (rows as Record<string, unknown>[])
-        : []
-      const truncated = allRows.length > maxRows
+          if ('affectedRows' in row) {
+            affectedRows = row.affectedRows
 
-      return {
-        fields: Array.isArray(fields)
-          ? fields.map((f) => ({ name: f.name }))
-          : [],
-        rowCount: Array.isArray(rows) ? rows.length : 0,
-        rows: truncated ? allRows.slice(0, maxRows) : allRows,
-        truncated
-      }
+            return
+          }
+
+          if (rows.length === maxResultRows) {
+            settled = true
+            destroyed = true
+
+            // Destroying the socket is the only way to stop mysql2 in the
+            // middle of a result set; safe because the connection is scoped
+            // to this query and never pooled.
+            connection.destroy()
+
+            console.log(`  ✓ Query executed successfully\n`)
+
+            resolve({ fields, rowCount: rows.length, rows, truncated: true })
+
+            return
+          }
+
+          rows.push(row as unknown as Record<string, unknown>)
+        })
+
+        // mysql2 emits end after error, so the settled guard prevents double
+        // settlement.
+        statement.on('error', (error) => {
+          if (settled) {
+            return
+          }
+
+          settled = true
+
+          reject(error)
+        })
+
+        statement.on('end', () => {
+          if (settled) {
+            return
+          }
+
+          settled = true
+
+          console.log(`  ✓ Query executed successfully\n`)
+
+          resolve({
+            fields,
+            rowCount: affectedRows ?? rows.length,
+            rows,
+            truncated: false
+          })
+        })
+      })
     } finally {
-      await connection.end()
+      if (!destroyed) {
+        connection.end()
+      }
     }
   }
 
