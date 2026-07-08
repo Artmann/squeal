@@ -1,7 +1,7 @@
-import { ConnectionInfo, DatabaseType } from '@/databases/schemas'
+import { DatabaseType, PublicConnectionInfo } from '@/databases/schemas'
 
 export interface DatabaseDto {
-  connectionInfo: ConnectionInfo
+  connectionInfo: PublicConnectionInfo
   createdAt: number
   id: string
   name: string

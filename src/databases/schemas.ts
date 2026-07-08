@@ -55,11 +55,38 @@ export type ConnectionInfo =
   | PostgresConnectionInfo
   | SqliteConnectionInfo
 
+// The renderer never receives stored passwords — API responses use this shape.
+export type PublicConnectionInfo =
+  | Omit<MysqlConnectionInfo, 'password'>
+  | Omit<PostgresConnectionInfo, 'password'>
+  | SqliteConnectionInfo
+
 export const connectionInfoSchema = z.union([
   mysqlConnectionInfoSchema,
   postgresConnectionInfoSchema,
   sqliteConnectionInfoSchema
 ])
+
+// Updates and connection tests may omit the password to mean "use the stored
+// one" — the main process merges it back in server-side.
+export const updateMysqlConnectionInfoSchema = mysqlConnectionInfoSchema.extend(
+  {
+    password: z.string().optional()
+  }
+)
+
+export const updatePostgresConnectionInfoSchema =
+  postgresConnectionInfoSchema.extend({
+    password: z.string().optional()
+  })
+
+export const updateConnectionInfoSchema = z.union([
+  updateMysqlConnectionInfoSchema,
+  updatePostgresConnectionInfoSchema,
+  sqliteConnectionInfoSchema
+])
+
+export type UpdateConnectionInfo = z.infer<typeof updateConnectionInfoSchema>
 
 export const createDatabaseSchema = z.object({
   connectionInfo: connectionInfoSchema,
@@ -69,7 +96,16 @@ export const createDatabaseSchema = z.object({
 
 export type CreateDatabaseRequest = z.infer<typeof createDatabaseSchema>
 
+export const updateDatabaseSchema = z.object({
+  connectionInfo: updateConnectionInfoSchema,
+  name: z.string().min(1, 'Name is required.'),
+  type: databaseTypeSchema
+})
+
+export type UpdateDatabaseRequest = z.infer<typeof updateDatabaseSchema>
+
 export const connectionTestSchema = z.object({
-  connectionInfo: connectionInfoSchema,
+  connectionInfo: updateConnectionInfoSchema,
+  databaseId: z.string().optional(),
   type: databaseTypeSchema
 })

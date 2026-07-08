@@ -169,6 +169,78 @@ describe('DatabaseForm', () => {
     })
   })
 
+  describe('edit mode', () => {
+    const editProps = {
+      databaseId: 'db-123',
+      defaultValues: {
+        connectionInfo: {
+          database: 'mydb',
+          host: 'localhost',
+          port: 5432,
+          username: 'postgres'
+        },
+        name: 'My Database',
+        type: 'postgres' as const
+      }
+    }
+
+    it('sends the databaseId when testing a connection without a password', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: () => Promise.resolve({ success: true }),
+        ok: true
+      } as Response)
+
+      renderDatabaseForm(editProps)
+
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('connection-success-icon')
+        ).toBeInTheDocument()
+      })
+
+      const [, requestOptions] = vi.mocked(fetch).mock.calls[0]
+      const body = JSON.parse(String(requestOptions?.body))
+
+      expect(body.databaseId).toEqual('db-123')
+      expect(body.connectionInfo.password).toEqual('')
+    })
+
+    it('submits without a password', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            database: {
+              connectionInfo: editProps.defaultValues.connectionInfo,
+              createdAt: 1704067200000,
+              id: 'db-123',
+              name: 'My Database',
+              type: 'postgres'
+            }
+          }),
+        ok: true
+      } as Response)
+
+      renderDatabaseForm(editProps)
+
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalled()
+      })
+
+      const [url, requestOptions] = vi.mocked(fetch).mock.calls[0]
+
+      expect(String(url)).toContain('/databases/db-123')
+      expect(requestOptions?.method).toEqual('PATCH')
+    })
+  })
+
   it('calls onSuccess with database and worksheet when save succeeds', async () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()

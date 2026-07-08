@@ -24,7 +24,6 @@ const testDatabase: DatabaseDto = {
   connectionInfo: {
     database: 'testdb',
     host: 'localhost',
-    password: 'secret',
     port: 5432,
     username: 'admin'
   },
@@ -61,8 +60,15 @@ describe('EditorScreen', () => {
       expect(screen.getByLabelText('Host')).toHaveValue('localhost')
       expect(screen.getByLabelText('Port')).toHaveValue(5432)
       expect(screen.getByLabelText('Username')).toHaveValue('admin')
-      expect(screen.getByLabelText('Password')).toHaveValue('secret')
       expect(screen.getByLabelText('Database')).toHaveValue('testdb')
+
+      // Passwords are never returned to the renderer — the field starts
+      // empty and hints that leaving it blank keeps the stored one.
+      expect(screen.getByLabelText('Password')).toHaveValue('')
+      expect(screen.getByLabelText('Password')).toHaveAttribute(
+        'placeholder',
+        'Leave blank to keep current password'
+      )
     })
 
     it('shows a not-found message for an unknown database id', () => {

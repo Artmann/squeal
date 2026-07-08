@@ -1,9 +1,10 @@
 import { CreateConnectionTestResponse } from '@/databases'
 import { SchemaInfo } from '@/databases/adapter'
 import {
-  ConnectionInfo,
   CreateDatabaseRequest,
-  DatabaseType
+  DatabaseType,
+  UpdateConnectionInfo,
+  UpdateDatabaseRequest
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
@@ -178,18 +179,19 @@ export const apiClient = {
   },
 
   async testConnection(
-    connectionInfo: ConnectionInfo,
-    type: DatabaseType
+    connectionInfo: UpdateConnectionInfo,
+    type: DatabaseType,
+    databaseId?: string
   ): Promise<CreateConnectionTestResponse> {
     return apiRequest<CreateConnectionTestResponse>('/connection-tests', {
-      body: { connectionInfo, type },
+      body: { connectionInfo, databaseId, type },
       method: 'POST'
     })
   },
 
   async updateDatabase(
     databaseId: string,
-    request: CreateDatabaseRequest
+    request: UpdateDatabaseRequest
   ): Promise<UpdateDatabaseResponse> {
     return apiRequest<UpdateDatabaseResponse>(`/databases/${databaseId}`, {
       body: request,

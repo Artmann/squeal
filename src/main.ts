@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import path from 'node:path'
 import started from 'electron-squirrel-startup'
 
 import { apiPort, startServer } from './api'
 import { initializeDatabase } from './database'
+import { migrateConnectionInfoEncryption } from './main/databases/connection-info-migration'
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -58,9 +59,32 @@ const createWindow = async () => {
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 12, y: 8 },
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
+      sandbox: true
     },
     width: 1300
+  })
+
+  // The renderer only ever shows the app itself — deny every navigation away
+  // from it and every attempt to open a child window.
+  const allowedOrigin = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin
+    : 'file://'
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith(allowedOrigin)) {
+      event.preventDefault()
+    }
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) {
+      void shell.openExternal(url)
+    }
+
+    return { action: 'deny' }
   })
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -74,6 +98,9 @@ const createWindow = async () => {
 
 app.on('ready', async () => {
   await initializeDatabase()
+
+  // safeStorage is only reliable once the app is ready.
+  await migrateConnectionInfoEncryption()
 
   const allowedOrigins = ['null']
 

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { database } from '@/database'
@@ -15,6 +15,7 @@ import type {
   PostgresConnectionInfo,
   SqliteConnectionInfo
 } from '@/databases/schemas'
+import { DatabaseService } from '@/main/databases/database-service'
 
 export const createQuerySchema = z.object({
   content: z.string(),
@@ -81,28 +82,18 @@ class QueryRunner {
 
   private async runQueryInBackground(query: any): Promise<void> {
     try {
-      const [databaseRecord] = await database
-        .select()
-        .from(databasesTable)
-        .where(
-          and(
-            eq(databasesTable.id, query.databaseId),
-            isNull(databasesTable.deletedAt)
-          )
-        )
-        .limit(1)
+      const service = new DatabaseService()
+      const databaseRecord = await service.getDatabaseWithSecrets(
+        query.databaseId
+      )
 
       if (!databaseRecord) {
         throw new Error(`Database not found: ${query.databaseId}`)
       }
 
-      const connectionInfo: ConnectionInfo = JSON.parse(
-        databaseRecord.connectionInfo
-      )
-
       const adapter = createAdapter(
-        databaseRecord.type as DatabaseType,
-        connectionInfo
+        databaseRecord.type,
+        databaseRecord.connectionInfo
       )
 
       this.runningAdapters.set(query.id, adapter)

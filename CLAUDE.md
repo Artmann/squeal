@@ -36,6 +36,12 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
   `curl -H "Authorization: Bearer <token>" http://127.0.0.1:7847/databases`
 - Query execution is async: POST creates query, poll GET `/queries/:id` for
   results
+- Database `connectionInfo` is encrypted at rest with Electron `safeStorage`
+  (`enc:v1:` prefix in the `databases` table; see
+  `src/main/databases/secret-storage.ts`). API responses never include
+  passwords — internal callers use `getDatabaseWithSecrets()`, updates with a
+  blank password keep the stored one, and connection tests can pass a
+  `databaseId` to borrow it.
 - Refer to @CODE_STYLE.md
 - Don't include the Claude footer in commits
 

@@ -38,7 +38,6 @@ const testDatabase: DatabaseDto = {
   connectionInfo: {
     database: 'testdb',
     host: 'localhost',
-    password: 'secret',
     port: 5432,
     username: 'admin'
   },

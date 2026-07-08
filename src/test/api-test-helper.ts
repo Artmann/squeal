@@ -13,6 +13,9 @@ export const mockAdapterConfig = {
     databaseName: 'test_db',
     tables: []
   }),
+  // The connectionInfo the most recently constructed adapter received —
+  // lets tests assert on server-side password merging.
+  lastConnectionInfo: undefined as unknown,
   runQuery: async (): Promise<QueryResult> => ({
     fields: [{ name: 'id' }, { name: 'name' }],
     rowCount: 2,
@@ -27,6 +30,8 @@ export const mockAdapterConfig = {
   }
 }
 
+export const testEncryptionPrefix = 'enc:v1:test:'
+
 /**
  * Sets up the test environment with mocks.
  * Call this at the top of your test file, before any imports that use the database.
@@ -39,9 +44,25 @@ export function setupApiMocks() {
     }
   }))
 
+  // Electron's safeStorage is unavailable in vitest — use a transparent
+  // stand-in with a recognizable prefix so tests can assert on stored values.
+  vi.mock('@/main/databases/secret-storage', () => ({
+    isEncrypted: (value: string) => value.startsWith('enc:v1:test:'),
+    safeStorageSecretStorage: {
+      decrypt: (value: string) =>
+        value.startsWith('enc:v1:test:')
+          ? value.slice('enc:v1:test:'.length)
+          : value,
+      encrypt: (value: string) => `enc:v1:test:${value}`
+    }
+  }))
+
   // Mock the database adapters.
   vi.mock('@/databases/postgres-adapter', () => ({
     PostgresAdapter: class {
+      constructor(connectionInfo: unknown) {
+        mockAdapterConfig.lastConnectionInfo = connectionInfo
+      }
       async getSchema() {
         return mockAdapterConfig.getSchema()
       }
@@ -56,6 +77,9 @@ export function setupApiMocks() {
 
   vi.mock('@/databases/mysql-adapter', () => ({
     MysqlAdapter: class {
+      constructor(connectionInfo: unknown) {
+        mockAdapterConfig.lastConnectionInfo = connectionInfo
+      }
       async getSchema() {
         return mockAdapterConfig.getSchema()
       }
@@ -70,6 +94,9 @@ export function setupApiMocks() {
 
   vi.mock('@/databases/sqlite-adapter', () => ({
     SqliteAdapter: class {
+      constructor(connectionInfo: unknown) {
+        mockAdapterConfig.lastConnectionInfo = connectionInfo
+      }
       async getSchema() {
         return mockAdapterConfig.getSchema()
       }
@@ -91,6 +118,7 @@ export async function resetTestDatabase(): Promise<void> {
   testDatabase = await createTestDatabase()
 
   // Reset mock adapter config to defaults.
+  mockAdapterConfig.lastConnectionInfo = undefined
   mockAdapterConfig.getSchema = async () => ({
     databaseName: 'test_db',
     tables: []

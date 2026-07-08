@@ -6,7 +6,10 @@ import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
 import { queryPollInterval } from './queries'
 import { queryKeys } from '../query-keys'
-import { CreateDatabaseRequest } from '@/databases/schemas'
+import {
+  CreateDatabaseRequest,
+  UpdateDatabaseRequest
+} from '@/databases/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
 import { CreateWorksheetRequest } from '@/glue/worksheets'
 import { QueryDto } from '@/main/queries'
@@ -121,7 +124,7 @@ export function useUpdateDatabase() {
       request
     }: {
       id: string
-      request: CreateDatabaseRequest
+      request: UpdateDatabaseRequest
     }) => apiClient.updateDatabase(id, request),
     onSuccess: (response) => {
       if (databases.status === 'ready') {
