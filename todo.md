@@ -37,11 +37,11 @@ at the code to change.
       `@ / : # ?` corrupts the URL. Pass a `ClientConfig` object
       (`{ user, password, host, port, database }`) like `mysql-adapter.ts:89`
       already does.
-- [ ] **Harden `BrowserWindow`.** `src/main.ts:56-58` sets only `preload`. Set
+- [x] **Harden `BrowserWindow`.** `src/main.ts:56-58` sets only `preload`. Set
       `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
       explicitly, add a `will-navigate` / `setWindowOpenHandler` deny handler,
       and ship a Content-Security-Policy on the renderer.
-- [ ] **Confirm CDP debug port 9222 can never ship.** `src/main.ts:8-10` guards
+- [x] **Confirm CDP debug port 9222 can never ship.** `src/main.ts:8-10` guards
       it behind `!app.isPackaged` (correct) — just verify no build path leaves
       `isPackaged` false in a released artifact.
 
