@@ -7,6 +7,17 @@ import { cn } from '../lib/utils'
 const defaultHeight = 400
 const minHeight = 80
 
+function formatRowCountLabel(result: {
+  rowCount: number
+  truncated: boolean
+}): string {
+  const count = Intl.NumberFormat().format(result.rowCount)
+  const suffix = result.truncated ? '+' : ''
+  const noun = result.rowCount === 1 ? 'row' : 'rows'
+
+  return `${count}${suffix} ${noun}`
+}
+
 export function ResultSheet({
   children,
   isOpen,
@@ -96,9 +107,7 @@ export function ResultSheet({
         <div className="flex items-center gap-3">
           {isSuccessful ? (
             <span className="text-mauve font-medium">
-              {Intl.NumberFormat().format(query.result.rowCount)}
-              {query.result.truncated ? '+' : ''}{' '}
-              {query.result.rowCount === 1 ? 'row' : 'rows'}
+              {formatRowCountLabel(query.result)}
             </span>
           ) : (
             <span>Results</span>
