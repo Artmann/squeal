@@ -1,9 +1,10 @@
 import { CreateConnectionTestResponse } from '@/databases'
 import { SchemaInfo } from '@/databases/adapter'
 import {
-  ConnectionInfo,
   CreateDatabaseRequest,
-  DatabaseType
+  DatabaseType,
+  UpdateConnectionInfo,
+  UpdateDatabaseRequest
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
@@ -161,11 +162,12 @@ export const apiClient = {
   },
 
   async testConnection(
-    connectionInfo: ConnectionInfo,
-    type: DatabaseType
+    connectionInfo: UpdateConnectionInfo,
+    type: DatabaseType,
+    databaseId?: string
   ): Promise<CreateConnectionTestResponse> {
     const response = await fetch(`${baseUrl}/connection-tests`, {
-      body: JSON.stringify({ connectionInfo, type }),
+      body: JSON.stringify({ connectionInfo, databaseId, type }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST'
     })
@@ -175,7 +177,7 @@ export const apiClient = {
 
   async updateDatabase(
     databaseId: string,
-    request: CreateDatabaseRequest
+    request: UpdateDatabaseRequest
   ): Promise<UpdateDatabaseResponse> {
     const response = await fetch(`${baseUrl}/databases/${databaseId}`, {
       body: JSON.stringify(request),

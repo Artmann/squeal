@@ -7,17 +7,19 @@ import {
   XCircleIcon
 } from 'lucide-react'
 import { ReactElement, ReactNode, useCallback, useMemo, useState } from 'react'
-import { useForm, type UseFormReturn } from 'react-hook-form'
+import { useForm, type Resolver, type UseFormReturn } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { CreateConnectionTestResponse } from '@/databases'
 import {
-  ConnectionInfo,
+  CreateDatabaseRequest,
   createDatabaseSchema,
   DatabaseType,
   databaseTypeSchema,
-  SslMode
+  SslMode,
+  UpdateConnectionInfo,
+  updateDatabaseSchema
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
@@ -43,8 +45,10 @@ import {
 } from './ui/select'
 import { Separator } from './ui/separator'
 
-type FormInput = z.input<typeof createDatabaseSchema>
-type FormOutput = z.output<typeof createDatabaseSchema>
+// The form is typed off the update schema (optional password); create mode
+// swaps in the create resolver so the password is still required there.
+type FormInput = z.input<typeof updateDatabaseSchema>
+type FormOutput = z.output<typeof updateDatabaseSchema>
 
 export interface DatabaseFormResult {
   database: DatabaseDto
@@ -97,7 +101,9 @@ export function DatabaseForm({
       name: defaultValues?.name ?? '',
       type: defaultType
     },
-    resolver: zodResolver(createDatabaseSchema)
+    resolver: zodResolver(
+      isEditMode ? updateDatabaseSchema : createDatabaseSchema
+    ) as Resolver<FormInput, unknown, FormOutput>
   })
 
   const createDatabase = useCreateDatabase()
@@ -230,7 +236,8 @@ export function DatabaseForm({
           }
         )
       } else {
-        createDatabase.mutate(values, {
+        // The create resolver validated the password, so the cast is safe.
+        createDatabase.mutate(values as CreateDatabaseRequest, {
           onSuccess: handleSuccess,
           onError: handleFailure
         })
@@ -264,8 +271,9 @@ export function DatabaseForm({
 
       Promise.all([
         apiClient.testConnection(
-          normalizedConnectionInfo as ConnectionInfo,
-          databaseType
+          normalizedConnectionInfo as UpdateConnectionInfo,
+          databaseType,
+          databaseId
         ),
         minDelay
       ])
@@ -384,7 +392,12 @@ export function DatabaseForm({
           onTypeChange={handleTypeChange}
         />
 
-        {databaseType !== 'sqlite' && <AuthenticationSection form={form} />}
+        {databaseType !== 'sqlite' && (
+          <AuthenticationSection
+            form={form}
+            isEditMode={isEditMode}
+          />
+        )}
 
         {databaseType !== 'sqlite' &&
           (showAdvanced ? (
@@ -584,9 +597,11 @@ function ConnectionDetailsSection({
 }
 
 function AuthenticationSection({
-  form
+  form,
+  isEditMode
 }: {
   form: DatabaseFormApi
+  isEditMode: boolean
 }): ReactElement {
   return (
     <FormSection>
@@ -624,7 +639,11 @@ function AuthenticationSection({
               <FormLabel>Password</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="password"
+                  placeholder={
+                    isEditMode
+                      ? 'Leave blank to keep current password'
+                      : 'password'
+                  }
                   type="password"
                   {...field}
                   value={field.value ?? ''}

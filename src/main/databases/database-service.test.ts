@@ -66,6 +66,17 @@ vi.mock('drizzle-orm', () => ({
   isNull: vi.fn((column) => ({ type: 'isNull', column }))
 }))
 
+vi.mock('./secret-storage', () => ({
+  isEncrypted: (value: string) => value.startsWith('enc:v1:test:'),
+  safeStorageSecretStorage: {
+    decrypt: (value: string) =>
+      value.startsWith('enc:v1:test:')
+        ? value.slice('enc:v1:test:'.length)
+        : value,
+    encrypt: (value: string) => `enc:v1:test:${value}`
+  }
+}))
+
 import { DatabaseService } from './database-service'
 
 describe('DatabaseService', () => {
@@ -74,7 +85,7 @@ describe('DatabaseService', () => {
   })
 
   describe('createDatabase', () => {
-    it('should insert a database with serialized connection info', async () => {
+    it('should insert a database with encrypted connection info', async () => {
       const service = new DatabaseService()
       const connectionInfo = {
         database: 'mydb',
@@ -88,14 +99,14 @@ describe('DatabaseService', () => {
 
       expect(mockInsert).toHaveBeenCalled()
       expect(mockValues).toHaveBeenCalledWith({
-        connectionInfo: JSON.stringify(connectionInfo),
+        connectionInfo: `enc:v1:test:${JSON.stringify(connectionInfo)}`,
         name: 'My Database',
         type: 'postgres'
       })
       expect(mockReturning).toHaveBeenCalled()
     })
 
-    it('should return a transformed DatabaseDto', async () => {
+    it('should return a DatabaseDto without the password', async () => {
       const service = new DatabaseService()
       const connectionInfo = {
         database: 'mydb',
@@ -116,7 +127,6 @@ describe('DatabaseService', () => {
           connectionInfo: {
             database: 'testdb',
             host: 'localhost',
-            password: 'secret',
             port: 5432,
             username: 'user'
           },

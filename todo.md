@@ -25,7 +25,7 @@ at the code to change.
       the app origin, add an `Origin`/`Host` allow-list (DNS-rebinding defense),
       bind explicitly to `127.0.0.1`, and require a per-session token handed to
       the renderer via `preload.ts`.
-- [ ] **Stop storing database passwords in plaintext.**
+- [x] **Stop storing database passwords in plaintext.**
       `src/main/databases/database-service.ts:22,102` writes the full
       `connectionInfo` (including `password`) as plaintext JSON into
       `~/.../squeal.sqlite3`. Encrypt secrets with Electron `safeStorage`
