@@ -21,7 +21,7 @@ import {
   UpdateWorksheetResponse
 } from '@/main/worksheets'
 
-const baseUrl = 'http://localhost:7847'
+const baseUrl = 'http://127.0.0.1:7847'
 
 interface CreateDatabaseResponse {
   database: DatabaseDto
@@ -46,6 +46,19 @@ interface ApiErrorResponse {
     message: string
     status: number
   }
+}
+
+interface RequestOptions {
+  body?: unknown
+  method?: string
+}
+
+let apiTokenPromise: Promise<string> | undefined
+
+function getApiToken(): Promise<string> {
+  apiTokenPromise ??= window.electron.getApiToken()
+
+  return apiTokenPromise
 }
 
 function isApiErrorResponse(data: unknown): data is ApiErrorResponse {
@@ -75,17 +88,32 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return data as T
 }
 
+async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {}
+): Promise<T> {
+  const token = await getApiToken()
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    method: options.method ?? 'GET'
+  })
+
+  return handleResponse<T>(response)
+}
+
 export const apiClient = {
   async createWorksheet(
     request: CreateWorksheetRequest
   ): Promise<WorksheetDto> {
-    const response = await fetch(`${baseUrl}/worksheets`, {
-      body: JSON.stringify(request),
-      headers: { 'Content-Type': 'application/json' },
+    const data = await apiRequest<CreateWorksheetResponse>('/worksheets', {
+      body: request,
       method: 'POST'
     })
-
-    const data = await handleResponse<CreateWorksheetResponse>(response)
 
     return data.worksheet
   },
@@ -93,32 +121,28 @@ export const apiClient = {
   async createDatabase(
     request: CreateDatabaseRequest
   ): Promise<CreateDatabaseResponse> {
-    const response = await fetch(`${baseUrl}/databases`, {
-      body: JSON.stringify(request),
-      headers: { 'Content-Type': 'application/json' },
+    return apiRequest<CreateDatabaseResponse>('/databases', {
+      body: request,
       method: 'POST'
     })
-
-    return handleResponse<CreateDatabaseResponse>(response)
   },
 
   async getDatabases(): Promise<DatabaseDto[]> {
-    const response = await fetch(`${baseUrl}/databases`)
-    const data = await handleResponse<GetDatabasesResponse>(response)
+    const data = await apiRequest<GetDatabasesResponse>('/databases')
 
     return data.databases
   },
 
   async getWorksheets(): Promise<WorksheetDto[]> {
-    const response = await fetch(`${baseUrl}/worksheets`)
-    const data = await handleResponse<ListWorksheetsResponse>(response)
+    const data = await apiRequest<ListWorksheetsResponse>('/worksheets')
 
     return data.worksheets
   },
 
   async getDatabaseSchema(databaseId: string): Promise<SchemaInfo> {
-    const response = await fetch(`${baseUrl}/databases/${databaseId}/schema`)
-    const data = await handleResponse<GetSchemaResponse>(response)
+    const data = await apiRequest<GetSchemaResponse>(
+      `/databases/${databaseId}/schema`
+    )
 
     return data.schema
   },
@@ -130,33 +154,26 @@ export const apiClient = {
     queriedAt: number
     worksheetId: string
   }): Promise<CreateQueryResponse> {
-    const response = await fetch(`${baseUrl}/queries`, {
-      body: JSON.stringify(request),
-      headers: { 'Content-Type': 'application/json' },
+    return apiRequest<CreateQueryResponse>('/queries', {
+      body: request,
       method: 'POST'
     })
-
-    return handleResponse<CreateQueryResponse>(response)
   },
 
   async cancelQuery(queryId: string): Promise<void> {
-    const response = await fetch(`${baseUrl}/queries/${queryId}/cancel`, {
+    await apiRequest<{ success: boolean }>(`/queries/${queryId}/cancel`, {
       method: 'POST'
     })
-
-    await handleResponse<{ success: boolean }>(response)
   },
 
   async getQueries(): Promise<QueryDto[]> {
-    const response = await fetch(`${baseUrl}/queries`)
-    const data = await handleResponse<GetQueriesResponse>(response)
+    const data = await apiRequest<GetQueriesResponse>('/queries')
 
     return data.queries
   },
 
   async getQuery(queryId: string): Promise<QueryDto> {
-    const response = await fetch(`${baseUrl}/queries/${queryId}`)
-    const data = await handleResponse<GetQueryResponse>(response)
+    const data = await apiRequest<GetQueryResponse>(`/queries/${queryId}`)
 
     return data.query
   },
@@ -166,26 +183,20 @@ export const apiClient = {
     type: DatabaseType,
     databaseId?: string
   ): Promise<CreateConnectionTestResponse> {
-    const response = await fetch(`${baseUrl}/connection-tests`, {
-      body: JSON.stringify({ connectionInfo, databaseId, type }),
-      headers: { 'Content-Type': 'application/json' },
+    return apiRequest<CreateConnectionTestResponse>('/connection-tests', {
+      body: { connectionInfo, databaseId, type },
       method: 'POST'
     })
-
-    return handleResponse<CreateConnectionTestResponse>(response)
   },
 
   async updateDatabase(
     databaseId: string,
     request: UpdateDatabaseRequest
   ): Promise<UpdateDatabaseResponse> {
-    const response = await fetch(`${baseUrl}/databases/${databaseId}`, {
-      body: JSON.stringify(request),
-      headers: { 'Content-Type': 'application/json' },
+    return apiRequest<UpdateDatabaseResponse>(`/databases/${databaseId}`, {
+      body: request,
       method: 'PATCH'
     })
-
-    return handleResponse<UpdateDatabaseResponse>(response)
   },
 
   async updateWorksheet(
@@ -197,13 +208,13 @@ export const apiClient = {
       name?: string
     }
   ): Promise<WorksheetDto> {
-    const response = await fetch(`${baseUrl}/worksheets/${worksheetId}`, {
-      body: JSON.stringify(updates),
-      headers: { 'Content-Type': 'application/json' },
-      method: 'PATCH'
-    })
-
-    const data = await handleResponse<UpdateWorksheetResponse>(response)
+    const data = await apiRequest<UpdateWorksheetResponse>(
+      `/worksheets/${worksheetId}`,
+      {
+        body: updates,
+        method: 'PATCH'
+      }
+    )
 
     return data.worksheet
   }

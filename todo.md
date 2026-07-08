@@ -17,7 +17,7 @@ at the code to change.
 
 ## 🔴 Security (do first)
 
-- [ ] **Lock down the localhost API (CORS + auth).** `src/api.ts:32` uses
+- [x] **Lock down the localhost API (CORS + auth).** `src/api.ts:32` uses
       `app.use('*', cors())` — wildcard origin, no auth — on a server that runs
       arbitrary user SQL (`POST /queries`) and returns stored DB credentials
       (`GET /databases`). Any web page the user visits can `fetch` connection
