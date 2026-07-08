@@ -9,6 +9,10 @@ if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
 
+let apiToken = ''
+
+ipcMain.handle('get-api-token', () => apiToken)
+
 ipcMain.handle('window-minimize', () => {
   mainWindow?.minimize()
 })
@@ -71,7 +75,19 @@ const createWindow = async () => {
 app.on('ready', async () => {
   await initializeDatabase()
 
-  startServer(apiPort)
+  const allowedOrigins = ['null']
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    allowedOrigins.push(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
+  }
+
+  const { token } = startServer(apiPort, { allowedOrigins })
+
+  apiToken = token
+
+  if (!app.isPackaged) {
+    console.log(`API token: ${apiToken}`)
+  }
 
   createWindow()
 })

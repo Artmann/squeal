@@ -61,10 +61,13 @@ describe('apiClient', () => {
       await apiClient.createDatabase(request)
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:7847/databases',
+        'http://127.0.0.1:7847/databases',
         {
           body: JSON.stringify(request),
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: 'Bearer test-token',
+            'Content-Type': 'application/json'
+          },
           method: 'POST'
         }
       )
@@ -133,7 +136,14 @@ describe('apiClient', () => {
       await apiClient.getDatabaseSchema(databaseId)
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:7847/databases/db-123/schema'
+        'http://127.0.0.1:7847/databases/db-123/schema',
+        {
+          headers: {
+            Authorization: 'Bearer test-token',
+            'Content-Type': 'application/json'
+          },
+          method: 'GET'
+        }
       )
     })
 
@@ -209,9 +219,12 @@ describe('apiClient', () => {
 
       await apiClient.createQuery(request)
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:7847/queries', {
+      expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:7847/queries', {
         body: JSON.stringify(request),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json'
+        },
         method: 'POST'
       })
     })
@@ -259,7 +272,14 @@ describe('apiClient', () => {
       await apiClient.getQuery(queryId)
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:7847/queries/query-123'
+        'http://127.0.0.1:7847/queries/query-123',
+        {
+          headers: {
+            Authorization: 'Bearer test-token',
+            'Content-Type': 'application/json'
+          },
+          method: 'GET'
+        }
       )
     })
 
@@ -315,10 +335,13 @@ describe('apiClient', () => {
       await apiClient.testConnection(connectionInfo, 'postgres')
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:7847/connection-tests',
+        'http://127.0.0.1:7847/connection-tests',
         {
           body: JSON.stringify({ connectionInfo, type: 'postgres' }),
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: 'Bearer test-token',
+            'Content-Type': 'application/json'
+          },
           method: 'POST'
         }
       )
@@ -370,10 +393,13 @@ describe('apiClient', () => {
       await apiClient.updateWorksheet(worksheetId, updates)
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:7847/worksheets/ws-123',
+        'http://127.0.0.1:7847/worksheets/ws-123',
         {
           body: JSON.stringify(updates),
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: 'Bearer test-token',
+            'Content-Type': 'application/json'
+          },
           method: 'PATCH'
         }
       )
@@ -410,10 +436,13 @@ describe('apiClient', () => {
       const result = await apiClient.updateWorksheet(worksheetId, nameUpdate)
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:7847/worksheets/ws-123',
+        'http://127.0.0.1:7847/worksheets/ws-123',
         {
           body: JSON.stringify(nameUpdate),
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: 'Bearer test-token',
+            'Content-Type': 'application/json'
+          },
           method: 'PATCH'
         }
       )
