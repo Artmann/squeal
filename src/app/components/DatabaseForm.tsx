@@ -62,24 +62,30 @@ export interface DatabaseFormProps {
   onSuccess?: (result: DatabaseFormResult) => void
 }
 
+function stringOrEmpty(value: unknown): string {
+  return (value as string) ?? ''
+}
+
 function getDefaultConnectionInfo(
   type: DatabaseType,
   connectionInfo?: Record<string, unknown>
 ) {
+  const info = connectionInfo ?? {}
+
   if (type === 'sqlite') {
     return {
-      path: (connectionInfo?.path as string) ?? ''
+      path: stringOrEmpty(info.path)
     }
   }
 
   return {
-    database: (connectionInfo?.database as string) ?? '',
-    host: (connectionInfo?.host as string) ?? '',
-    password: (connectionInfo?.password as string) ?? '',
-    port: connectionInfo?.port as number | undefined,
-    sslMode: (connectionInfo?.sslMode as SslMode) ?? undefined,
-    sslRootCert: (connectionInfo?.sslRootCert as string) ?? '',
-    username: (connectionInfo?.username as string) ?? ''
+    database: stringOrEmpty(info.database),
+    host: stringOrEmpty(info.host),
+    password: stringOrEmpty(info.password),
+    port: info.port as number | undefined,
+    sslMode: (info.sslMode as SslMode) ?? undefined,
+    sslRootCert: stringOrEmpty(info.sslRootCert),
+    username: stringOrEmpty(info.username)
   }
 }
 
@@ -106,9 +112,6 @@ export function DatabaseForm({
     ) as Resolver<FormInput, unknown, FormOutput>
   })
 
-  const createDatabase = useCreateDatabase()
-  const updateDatabase = useUpdateDatabase()
-
   const databaseType = form.watch('type')
   const connectionInfo = form.watch('connectionInfo')
 
@@ -119,14 +122,19 @@ export function DatabaseForm({
     resetConnectionTest
   } = useConnectionTest({ connectionInfo, databaseId, databaseType, form })
 
+  const { handleSubmit, isSaving } = useSaveDatabase({
+    databaseId,
+    form,
+    isEditMode,
+    onSuccess
+  })
+
   const [showAdvanced, setShowAdvanced] = useState(() =>
     Boolean(
       (defaultValues?.connectionInfo as { sslMode?: string } | undefined)
         ?.sslMode
     )
   )
-
-  const isSaving = createDatabase.isPending || updateDatabase.isPending
 
   const handleTypeChange = useCallback(
     (newType: string) => {
@@ -149,62 +157,6 @@ export function DatabaseForm({
       form.setValue('connectionInfo.path', filePath)
     }
   }, [form])
-
-  const handleSubmit = useCallback(
-    (values: FormOutput) => {
-      form.clearErrors()
-
-      const handleSuccess = (result: DatabaseFormResult) => {
-        toast.success(isEditMode ? 'Database updated!' : 'Database saved!', {
-          description: isEditMode
-            ? `${result.database.name} has been updated.`
-            : `${result.database.name} has been added.`
-        })
-
-        onSuccess?.(result)
-      }
-
-      const handleFailure = (error: unknown) => {
-        console.error('Save database error:', error)
-
-        const message = error instanceof Error ? error.message : 'Unknown error'
-
-        toast.error('Failed to save database', { description: message })
-
-        form.setError('root', { message })
-
-        if (error instanceof ApiError && error.details) {
-          const fieldErrors = errorDetailsToFormFieldErrors(error.details)
-
-          for (const [field, { message: fieldMessage }] of Object.entries(
-            fieldErrors
-          )) {
-            form.setError(field as keyof FormInput, {
-              message: fieldMessage,
-              type: 'server'
-            })
-          }
-        }
-      }
-
-      if (isEditMode && databaseId) {
-        updateDatabase.mutate(
-          { id: databaseId, request: values },
-          {
-            onSuccess: handleSuccess,
-            onError: handleFailure
-          }
-        )
-      } else {
-        // The create resolver validated the password, so the cast is safe.
-        createDatabase.mutate(values as CreateDatabaseRequest, {
-          onSuccess: handleSuccess,
-          onError: handleFailure
-        })
-      }
-    },
-    [createDatabase, databaseId, form, isEditMode, onSuccess, updateDatabase]
-  )
 
   const isLoading = isSaving || isTestingConnection
 
@@ -262,6 +214,72 @@ export function DatabaseForm({
 }
 
 type DatabaseFormApi = UseFormReturn<FormInput, unknown, FormOutput>
+
+interface UseSaveDatabaseOptions {
+  databaseId?: string
+  form: DatabaseFormApi
+  isEditMode: boolean
+  onSuccess?: (result: DatabaseFormResult) => void
+}
+
+function useSaveDatabase({
+  databaseId,
+  form,
+  isEditMode,
+  onSuccess
+}: UseSaveDatabaseOptions) {
+  const createDatabase = useCreateDatabase()
+  const updateDatabase = useUpdateDatabase()
+
+  const handleSubmit = useCallback(
+    (values: FormOutput) => {
+      form.clearErrors()
+
+      const handleSuccess = (result: DatabaseFormResult) => {
+        toast.success(isEditMode ? 'Database updated!' : 'Database saved!', {
+          description: isEditMode
+            ? `${result.database.name} has been updated.`
+            : `${result.database.name} has been added.`
+        })
+
+        onSuccess?.(result)
+      }
+
+      const handleFailure = (error: unknown) => {
+        console.error('Save database error:', error)
+
+        const message = error instanceof Error ? error.message : 'Unknown error'
+
+        toast.error('Failed to save database', { description: message })
+
+        form.setError('root', { message })
+        applyServerFieldErrors(form, error)
+      }
+
+      if (isEditMode && databaseId) {
+        updateDatabase.mutate(
+          { id: databaseId, request: values },
+          {
+            onSuccess: handleSuccess,
+            onError: handleFailure
+          }
+        )
+      } else {
+        // The create resolver validated the password, so the cast is safe.
+        createDatabase.mutate(values as CreateDatabaseRequest, {
+          onSuccess: handleSuccess,
+          onError: handleFailure
+        })
+      }
+    },
+    [createDatabase, databaseId, form, isEditMode, onSuccess, updateDatabase]
+  )
+
+  return {
+    handleSubmit,
+    isSaving: createDatabase.isPending || updateDatabase.isPending
+  }
+}
 
 interface UseConnectionTestOptions {
   connectionInfo: FormInput['connectionInfo']
@@ -329,17 +347,7 @@ function useConnectionTest({
           toast.error('Connection test failed', { description: error.message })
 
           form.setError('root', { message: error.message })
-
-          if (error instanceof ApiError && error.details) {
-            const fieldErrors = errorDetailsToFormFieldErrors(error.details)
-
-            for (const [field, { message }] of Object.entries(fieldErrors)) {
-              form.setError(field as keyof FormInput, {
-                message,
-                type: 'server'
-              })
-            }
-          }
+          applyServerFieldErrors(form, error)
         })
         .finally(() => {
           setIsTestingConnection(false)
@@ -874,29 +882,42 @@ function parseConnectionString(value: string): ParsedConnectionString | null {
   try {
     const url = new URL(trimmed)
     const database = decodeURIComponent(url.pathname.replace(/^\//, ''))
-    const sslModeParameter =
-      url.searchParams.get('sslmode') ?? url.searchParams.get('ssl')
-
-    let sslMode: SslMode | undefined
-
-    if (sslModeParameter === 'disable') {
-      sslMode = 'disable'
-    } else if (sslModeParameter === 'require') {
-      sslMode = 'require'
-    } else if (sslModeParameter === 'verify-full') {
-      sslMode = 'verify-full'
-    }
 
     return {
       database: database || undefined,
       host: url.hostname || undefined,
       password: url.password ? decodeURIComponent(url.password) : undefined,
       port: url.port ? Number(url.port) : undefined,
-      sslMode,
+      sslMode: parseSslMode(url),
       username: url.username ? decodeURIComponent(url.username) : undefined
     }
   } catch {
     return null
+  }
+}
+
+function parseSslMode(url: URL): SslMode | undefined {
+  const value = url.searchParams.get('sslmode') ?? url.searchParams.get('ssl')
+
+  if (value === 'disable' || value === 'require' || value === 'verify-full') {
+    return value
+  }
+
+  return undefined
+}
+
+function applyServerFieldErrors(form: DatabaseFormApi, error: unknown): void {
+  if (!(error instanceof ApiError) || !error.details) {
+    return
+  }
+
+  const fieldErrors = errorDetailsToFormFieldErrors(error.details)
+
+  for (const [field, { message }] of Object.entries(fieldErrors)) {
+    form.setError(field as keyof FormInput, {
+      message,
+      type: 'server'
+    })
   }
 }
 

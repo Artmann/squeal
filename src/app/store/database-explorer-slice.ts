@@ -10,7 +10,7 @@ const initialState: DatabaseExplorerState = {
   expandedTables: {}
 }
 
-export const databaseExplorerSlice = createSlice({
+const databaseExplorerSlice = createSlice({
   name: 'databaseExplorer',
   initialState,
   reducers: {

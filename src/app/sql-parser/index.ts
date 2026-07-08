@@ -1,1 +1,1 @@
-export { createAstFromSql, type Script, type Statement } from './parser'
+export { createAstFromSql, type Statement } from './parser'

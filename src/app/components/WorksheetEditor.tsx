@@ -13,6 +13,7 @@ import { ReactElement, useCallback, useMemo, useRef } from 'react'
 
 import { type Statement } from '../sql-parser'
 import { catppuccinHighlighting, catppuccinTheme } from './codemirror-theme'
+import { findGutterMarkerPositions } from './worksheet-editor-lines'
 
 export interface WorksheetEditorProps {
   activeStatementIndex: number | null
@@ -90,46 +91,13 @@ export function WorksheetEditor({
         return builder.finish()
       }
 
-      const content = state.doc.toString()
-      const lines = content.split('\n')
+      const positions = findGutterMarkerPositions(
+        state.doc.toString(),
+        activeStatement
+      )
 
-      // Convert character positions to line positions.
-      let lineStart = 0
-      let startLine = -1
-      let endLine = -1
-
-      for (let i = 0; i < lines.length; i++) {
-        const lineEnd = lineStart + lines[i].length
-
-        if (startLine === -1 && activeStatement.start <= lineEnd) {
-          startLine = i
-        }
-
-        if (activeStatement.end <= lineEnd + 1) {
-          endLine = i
-          break
-        }
-
-        lineStart = lineEnd + 1
-      }
-
-      if (startLine === -1) {
-        return builder.finish()
-      }
-
-      if (endLine === -1) {
-        endLine = lines.length - 1
-      }
-
-      // Build ranges for each line in the active statement.
-      let charPos = 0
-
-      for (let i = 0; i < lines.length; i++) {
-        if (i >= startLine && i <= endLine) {
-          builder.add(charPos, charPos, activeStatementMarker)
-        }
-
-        charPos += lines[i].length + 1
+      for (const position of positions) {
+        builder.add(position, position, activeStatementMarker)
       }
 
       return builder.finish()

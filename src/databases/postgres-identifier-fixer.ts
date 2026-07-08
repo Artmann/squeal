@@ -15,71 +15,33 @@ interface TableMatch {
   tableName: string
 }
 
+interface Replacement {
+  end: number
+  start: number
+  text: string
+}
+
 export function rewriteWithQuotedIdentifiers(
   sql: string,
   schema: SchemaInfo,
   missingRelation: string
 ): string | null {
-  const tableLookup = new Map<string, TableMatch>()
-
-  for (const table of schema.tables) {
-    const qualifiedName = `"${table.tableSchema}"."${table.tableName}"`
-
-    tableLookup.set(table.tableName.toLowerCase(), {
-      qualifiedName,
-      tableName: table.tableName
-    })
-  }
-
-  const match = tableLookup.get(missingRelation.toLowerCase())
+  const match = findTableMatch(schema, missingRelation)
 
   if (!match) {
     return null
   }
 
-  const tokens = tokenize(sql)
-  const replacements: { end: number; start: number; text: string }[] = []
-
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]
-
-    if (token.type !== 'identifier') {
-      continue
-    }
-
-    if (token.value.startsWith('"') || token.value.startsWith('`')) {
-      continue
-    }
-
-    if (token.value.toLowerCase() !== missingRelation.toLowerCase()) {
-      continue
-    }
-
-    const isAlreadySchemaQualified =
-      i >= 2 &&
-      tokens[i - 1].type === 'punctuation' &&
-      tokens[i - 1].value === '.' &&
-      tokens[i - 2].type === 'identifier'
-
-    if (isAlreadySchemaQualified) {
-      replacements.push({
-        end: token.end,
-        start: token.start,
-        text: `"${match.tableName}"`
-      })
-    } else {
-      replacements.push({
-        end: token.end,
-        start: token.start,
-        text: match.qualifiedName
-      })
-    }
-  }
+  const replacements = findReplacements(sql, missingRelation, match)
 
   if (replacements.length === 0) {
     return null
   }
 
+  return applyReplacements(sql, replacements)
+}
+
+function applyReplacements(sql: string, replacements: Replacement[]): string {
   let result = sql
 
   for (let i = replacements.length - 1; i >= 0; i--) {
@@ -91,4 +53,68 @@ export function rewriteWithQuotedIdentifiers(
   }
 
   return result
+}
+
+function findReplacements(
+  sql: string,
+  missingRelation: string,
+  match: TableMatch
+): Replacement[] {
+  const tokens = tokenize(sql)
+  const replacements: Replacement[] = []
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+
+    if (!isUnquotedIdentifierFor(token, missingRelation)) {
+      continue
+    }
+
+    const isAlreadySchemaQualified =
+      i >= 2 &&
+      tokens[i - 1].type === 'punctuation' &&
+      tokens[i - 1].value === '.' &&
+      tokens[i - 2].type === 'identifier'
+
+    replacements.push({
+      end: token.end,
+      start: token.start,
+      text: isAlreadySchemaQualified
+        ? `"${match.tableName}"`
+        : match.qualifiedName
+    })
+  }
+
+  return replacements
+}
+
+function findTableMatch(
+  schema: SchemaInfo,
+  missingRelation: string
+): TableMatch | undefined {
+  const tableLookup = new Map<string, TableMatch>()
+
+  for (const table of schema.tables) {
+    tableLookup.set(table.tableName.toLowerCase(), {
+      qualifiedName: `"${table.tableSchema}"."${table.tableName}"`,
+      tableName: table.tableName
+    })
+  }
+
+  return tableLookup.get(missingRelation.toLowerCase())
+}
+
+function isUnquotedIdentifierFor(
+  token: ReturnType<typeof tokenize>[number],
+  missingRelation: string
+): boolean {
+  if (token.type !== 'identifier') {
+    return false
+  }
+
+  if (token.value.startsWith('"') || token.value.startsWith('`')) {
+    return false
+  }
+
+  return token.value.toLowerCase() === missingRelation.toLowerCase()
 }

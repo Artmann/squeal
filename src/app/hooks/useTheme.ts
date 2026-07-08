@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export type ThemeMode = 'dark' | 'light' | 'system'
-export type ThemeName = 'catppuccin'
+type ThemeMode = 'dark' | 'light' | 'system'
+type ThemeName = 'catppuccin'
 
 interface ThemeState {
   mode: ThemeMode

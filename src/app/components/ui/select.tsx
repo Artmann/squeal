@@ -15,17 +15,6 @@ function Select({
   )
 }
 
-function SelectGroup({
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Group>) {
-  return (
-    <SelectPrimitive.Group
-      data-slot="select-group"
-      {...props}
-    />
-  )
-}
-
 function SelectValue({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Value>) {
@@ -126,39 +115,4 @@ function SelectItem({
   )
 }
 
-function SelectLabel({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Label>) {
-  return (
-    <SelectPrimitive.Label
-      data-slot="select-label"
-      className={cn('py-1.5 pl-8 pr-2 text-sm font-semibold', className)}
-      {...props}
-    />
-  )
-}
-
-function SelectSeparator({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Separator>) {
-  return (
-    <SelectPrimitive.Separator
-      data-slot="select-separator"
-      className={cn('-mx-1 my-1 h-px bg-surface-1', className)}
-      {...props}
-    />
-  )
-}
-
-export {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue
-}
+export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue }

@@ -1,0 +1,16 @@
+{
+  "entry": [
+    "forge.config.ts",
+    "src/preload.ts",
+    "vite.main.config.ts",
+    "vite.preload.config.ts",
+    "vite.renderer.config.mjs"
+  ],
+  "ignoreDependencies": ["png-to-ico", "tailwindcss"],
+  "usedClassMembers": [
+    {
+      "implements": "DatabaseAdapter",
+      "members": ["cancel", "getSchema"]
+    }
+  ]
+}

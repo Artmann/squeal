@@ -27,7 +27,8 @@ import { useCancelQuery } from './hooks/mutations'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import { QueryDto } from '@/main/queries'
 import { useAppSelector } from './store'
-import { createAstFromSql } from './sql-parser'
+import { createAstFromSql, type Statement } from './sql-parser'
+import { findActiveStatementIndex } from './sql-parser/active-statement'
 
 const WorksheetEditor = lazy(() =>
   import('./components/WorksheetEditor').then((module) => ({
@@ -35,18 +36,26 @@ const WorksheetEditor = lazy(() =>
   }))
 )
 
-export function App(): ReactElement {
-  const databases = useDatabases()
+function createOptimisticQuery(
+  activeStatement: Statement,
+  databaseId: string | null | undefined,
+  worksheetId: string | null | undefined
+): QueryDto {
+  return {
+    content: activeStatement.text,
+    databaseId: databaseId ?? '',
+    error: null,
+    finishedAt: null,
+    id: v7(),
+    queriedAt: Date.now(),
+    result: null,
+    truncated: false,
+    worksheetId: worksheetId ?? ''
+  }
+}
+
+function useActiveStatement(openWorksheetId: string | undefined) {
   const worksheets = useWorksheets()
-  const queries = useQueriesList()
-
-  const openWorksheetId = useAppSelector(
-    (state) => state.editor.openWorksheetId
-  )
-  const editorScreen = useAppSelector((state) => state.ui.editorScreen)
-
-  const showGettingStartedScreen = databases.data.length === 0
-
   const [cursorPosition, setCursorPosition] = useState<number>(0)
 
   const currentWorksheet = useMemo(
@@ -62,54 +71,24 @@ export function App(): ReactElement {
     return createAstFromSql(currentWorksheet.content).statements
   }, [currentWorksheet?.content])
 
-  const activeStatementIndex = useMemo(() => {
-    if (statements.length === 0) {
-      return null
-    }
+  const activeStatementIndex = useMemo(
+    () => findActiveStatementIndex(statements, cursorPosition),
+    [statements, cursorPosition]
+  )
 
-    for (let i = 0; i < statements.length; i++) {
-      const statement = statements[i]
+  const activeStatement =
+    activeStatementIndex === null ? null : statements[activeStatementIndex]
 
-      if (
-        cursorPosition >= statement.start &&
-        cursorPosition <= statement.end
-      ) {
-        return i
-      }
-    }
+  return {
+    activeStatement,
+    activeStatementIndex,
+    currentWorksheet,
+    setCursorPosition,
+    statements
+  }
+}
 
-    for (let i = statements.length - 1; i >= 0; i--) {
-      const statement = statements[i]
-
-      if (cursorPosition >= statement.end) {
-        return i
-      }
-    }
-
-    return null
-  }, [statements, cursorPosition])
-
-  const activeStatement = useMemo(() => {
-    if (activeStatementIndex === null) {
-      return null
-    }
-
-    return statements[activeStatementIndex]
-  }, [statements, activeStatementIndex])
-
-  const query = useMemo(() => {
-    const sorted = queries.data
-      .filter((q) => q.worksheetId === openWorksheetId)
-      .sort((a, b) => b.queriedAt - a.queriedAt)
-
-    return sorted[0]
-  }, [queries.data, openWorksheetId])
-
-  useQueryResultSync(query)
-
-  const isQueryRunning = Boolean(query && !query.finishedAt)
-
-  const { queries: queriesCollection } = useCollections()
+function useCancelRunningQuery(query: QueryDto | undefined) {
   const cancelQuery = useCancelQuery()
 
   const { cancel: cancelQueryById } = cancelQuery
@@ -120,27 +99,40 @@ export function App(): ReactElement {
     }
   }, [cancelQueryById, query?.id])
 
-  const { handleUpdateContent, saveState } =
-    useWorksheetAutosave(openWorksheetId)
+  return { handleCancelQuery, isCancelPending: cancelQuery.isPending }
+}
 
-  const handleRunQuery = useCallback(() => {
+function useLatestQuery(openWorksheetId: string | undefined) {
+  const queries = useQueriesList()
+
+  return useMemo(() => {
+    const sorted = queries.data
+      .filter((q) => q.worksheetId === openWorksheetId)
+      .sort((a, b) => b.queriedAt - a.queriedAt)
+
+    return sorted[0]
+  }, [queries.data, openWorksheetId])
+}
+
+function useRunQuery(
+  activeStatement: Statement | null,
+  databaseId: string | null | undefined,
+  worksheetId: string | undefined
+) {
+  const { queries: queriesCollection } = useCollections()
+
+  return useCallback(() => {
     if (!activeStatement) {
       console.error('No active statement')
 
       return
     }
 
-    const optimistic: QueryDto = {
-      content: activeStatement.text,
-      databaseId: currentWorksheet?.databaseId ?? '',
-      error: null,
-      finishedAt: null,
-      id: v7(),
-      queriedAt: Date.now(),
-      result: null,
-      truncated: false,
-      worksheetId: openWorksheetId ?? ''
-    }
+    const optimistic = createOptimisticQuery(
+      activeStatement,
+      databaseId,
+      worksheetId
+    )
 
     const transaction = queriesCollection.insert(optimistic)
 
@@ -151,12 +143,43 @@ export function App(): ReactElement {
 
       toast.error('Query failed', { description: message })
     })
-  }, [
+  }, [activeStatement, databaseId, worksheetId, queriesCollection])
+}
+
+export function App(): ReactElement {
+  const databases = useDatabases()
+
+  const openWorksheetId = useAppSelector(
+    (state) => state.editor.openWorksheetId
+  )
+  const editorScreen = useAppSelector((state) => state.ui.editorScreen)
+
+  const showGettingStartedScreen = databases.data.length === 0
+
+  const {
+    activeStatement,
+    activeStatementIndex,
+    currentWorksheet,
+    setCursorPosition,
+    statements
+  } = useActiveStatement(openWorksheetId)
+
+  const query = useLatestQuery(openWorksheetId)
+
+  useQueryResultSync(query)
+
+  const isQueryRunning = Boolean(query && !query.finishedAt)
+
+  const { handleCancelQuery, isCancelPending } = useCancelRunningQuery(query)
+
+  const { handleUpdateContent, saveState } =
+    useWorksheetAutosave(openWorksheetId)
+
+  const handleRunQuery = useRunQuery(
     activeStatement,
     currentWorksheet?.databaseId,
-    openWorksheetId,
-    queriesCollection
-  ])
+    openWorksheetId
+  )
 
   if (!currentWorksheet) {
     return (
@@ -211,7 +234,7 @@ export function App(): ReactElement {
               query={query}
             >
               <QueryResultContent
-                isCancelPending={cancelQuery.isPending}
+                isCancelPending={isCancelPending}
                 isQueryRunning={isQueryRunning}
                 query={query}
                 onCancelQuery={handleCancelQuery}

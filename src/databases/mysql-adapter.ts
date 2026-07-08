@@ -1,5 +1,3 @@
-import fs from 'fs'
-
 import mysql from 'mysql2/promise'
 
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
@@ -11,6 +9,7 @@ import {
   transformToSchemaInfo
 } from './schema-provider'
 import type { MysqlConnectionInfo } from './schemas'
+import { createSslOptions } from './ssl-options'
 
 export class MysqlAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: MysqlConnectionInfo
@@ -83,36 +82,17 @@ export class MysqlAdapter implements DatabaseAdapter {
   }
 
   private getConnectionConfig() {
-    const { database, host, password, port, sslMode, sslRootCert, username } =
-      this.connectionInfo
+    const { database, host, password, port, username } = this.connectionInfo
 
-    const base = {
+    const ssl = createSslOptions(this.connectionInfo)
+
+    return {
       database,
       host,
       password,
       port: port ?? 3306,
-      user: username
+      user: username,
+      ...(ssl ? { ssl } : {})
     }
-
-    if (!sslMode || sslMode === 'disable') {
-      return base
-    }
-
-    if (sslMode === 'require') {
-      return { ...base, ssl: { rejectUnauthorized: false } }
-    }
-
-    // verify-full
-    if (sslRootCert && sslRootCert !== 'system') {
-      return {
-        ...base,
-        ssl: {
-          ca: fs.readFileSync(sslRootCert).toString(),
-          rejectUnauthorized: true
-        }
-      }
-    }
-
-    return { ...base, ssl: { rejectUnauthorized: true } }
   }
 }

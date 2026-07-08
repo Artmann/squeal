@@ -16,17 +16,16 @@ import { Input } from './ui/input'
 import { SearchInput } from './SearchInput'
 import { WorksheetDto } from '@/glue/worksheets'
 
-export function WorksheetExplorer(): ReactElement {
-  const dispatch = useAppDispatch()
-  const worksheets = useWorksheets()
-  const openWorksheetId = useAppSelector(
-    (state) => state.editor.openWorksheetId
-  )
-  const worksheetSearchQuery = useAppSelector(
-    (state) => state.editor.worksheetSearchQuery ?? ''
-  )
+function getNextUntitledName(worksheets: WorksheetDto[]): string {
+  const untitledCount = worksheets.filter(
+    (worksheet) =>
+      worksheet.name === 'Untitled' || /^Untitled \d+$/.test(worksheet.name)
+  ).length
 
-  const createWorksheet = useCreateWorksheet()
+  return untitledCount === 0 ? 'Untitled' : `Untitled ${untitledCount + 1}`
+}
+
+function useWorksheetRename(worksheets: WorksheetDto[]) {
   const { worksheets: worksheetsCollection } = useCollections()
 
   const [editingWorksheetId, setEditingWorksheetId] = useState<string | null>(
@@ -41,6 +40,98 @@ export function WorksheetExplorer(): ReactElement {
       inputRef.current.select()
     }
   }, [editingWorksheetId])
+
+  const startEditing = useCallback((worksheet: WorksheetDto) => {
+    setEditingWorksheetId(worksheet.id)
+    setEditingName(worksheet.name)
+  }, [])
+
+  const handleRenameCancel = useCallback(() => {
+    setEditingWorksheetId(null)
+    setEditingName('')
+  }, [])
+
+  const handleRenameSubmit = useCallback(
+    (worksheetId: string) => {
+      const trimmedName = editingName.trim()
+
+      if (!trimmedName) {
+        handleRenameCancel()
+
+        return
+      }
+
+      const worksheet = worksheets.find((w) => w.id === worksheetId)
+
+      if (!worksheet || worksheet.name === trimmedName) {
+        handleRenameCancel()
+
+        return
+      }
+
+      setEditingWorksheetId(null)
+
+      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
+        draft.name = trimmedName
+      })
+
+      void transaction.isPersisted.promise.catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+
+        toast.error('Failed to rename worksheet', { description: message })
+      })
+
+      setEditingName('')
+    },
+    [editingName, handleRenameCancel, worksheetsCollection, worksheets]
+  )
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent, worksheetId: string) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        handleRenameSubmit(worksheetId)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        handleRenameCancel()
+      }
+    },
+    [handleRenameCancel, handleRenameSubmit]
+  )
+
+  return {
+    editingName,
+    editingWorksheetId,
+    handleKeyDown,
+    handleRenameSubmit,
+    inputRef,
+    setEditingName,
+    startEditing
+  }
+}
+
+export function WorksheetExplorer(): ReactElement {
+  const dispatch = useAppDispatch()
+  const worksheets = useWorksheets()
+  const openWorksheetId = useAppSelector(
+    (state) => state.editor.openWorksheetId
+  )
+  const worksheetSearchQuery = useAppSelector(
+    (state) => state.editor.worksheetSearchQuery ?? ''
+  )
+
+  const createWorksheet = useCreateWorksheet()
+  const { worksheets: worksheetsCollection } = useCollections()
+
+  const {
+    editingName,
+    editingWorksheetId,
+    handleKeyDown,
+    handleRenameSubmit,
+    inputRef,
+    setEditingName,
+    startEditing
+  } = useWorksheetRename(worksheets.data)
 
   const filteredWorksheets = worksheets.data.filter((worksheet) =>
     worksheet.name.toLowerCase().includes(worksheetSearchQuery.toLowerCase())
@@ -69,11 +160,7 @@ export function WorksheetExplorer(): ReactElement {
   )
 
   const handleNewWorksheet = useCallback(() => {
-    const untitledCount = worksheets.data.filter(
-      (w) => w.name === 'Untitled' || /^Untitled \d+$/.test(w.name)
-    ).length
-    const name =
-      untitledCount === 0 ? 'Untitled' : `Untitled ${untitledCount + 1}`
+    const name = getNextUntitledName(worksheets.data)
 
     createWorksheet.mutate(
       { name },
@@ -81,9 +168,7 @@ export function WorksheetExplorer(): ReactElement {
         onSuccess: (worksheet) => {
           dispatch(worksheetSelected(worksheet.id))
           touchWorksheet(worksheet.id)
-
-          setEditingWorksheetId(worksheet.id)
-          setEditingName(worksheet.name)
+          startEditing(worksheet)
         },
         onError: (error) => {
           const message =
@@ -93,65 +178,7 @@ export function WorksheetExplorer(): ReactElement {
         }
       }
     )
-  }, [createWorksheet, dispatch, touchWorksheet, worksheets.data])
-
-  const handleDoubleClick = useCallback((worksheet: WorksheetDto) => {
-    setEditingWorksheetId(worksheet.id)
-    setEditingName(worksheet.name)
-  }, [])
-
-  const handleRenameCancel = useCallback(() => {
-    setEditingWorksheetId(null)
-    setEditingName('')
-  }, [])
-
-  const handleRenameSubmit = useCallback(
-    (worksheetId: string) => {
-      const trimmedName = editingName.trim()
-
-      if (!trimmedName) {
-        handleRenameCancel()
-
-        return
-      }
-
-      const worksheet = worksheets.data.find((w) => w.id === worksheetId)
-
-      if (!worksheet || worksheet.name === trimmedName) {
-        handleRenameCancel()
-
-        return
-      }
-
-      setEditingWorksheetId(null)
-
-      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
-        draft.name = trimmedName
-      })
-
-      void transaction.isPersisted.promise.catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-
-        toast.error('Failed to rename worksheet', { description: message })
-      })
-
-      setEditingName('')
-    },
-    [editingName, handleRenameCancel, worksheetsCollection, worksheets.data]
-  )
-
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent, worksheetId: string) => {
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        handleRenameSubmit(worksheetId)
-      } else if (event.key === 'Escape') {
-        event.preventDefault()
-        handleRenameCancel()
-      }
-    },
-    [handleRenameCancel, handleRenameSubmit]
-  )
+  }, [createWorksheet, dispatch, startEditing, touchWorksheet, worksheets.data])
 
   return (
     <div className="flex flex-col h-full">
@@ -196,40 +223,90 @@ export function WorksheetExplorer(): ReactElement {
 
         {sortedWorksheets.map((worksheet) =>
           editingWorksheetId === worksheet.id ? (
-            <div
+            <WorksheetRenameInput
               key={worksheet.id}
-              className="flex items-center gap-2 px-3 py-0.5"
-            >
-              <FileBracesIcon className="size-4 shrink-0" />
-              <Input
-                ref={inputRef}
-                className="h-5 text-[11px] px-1 py-0"
-                value={editingName}
-                onBlur={() => handleRenameSubmit(worksheet.id)}
-                onChange={(event) => setEditingName(event.target.value)}
-                onKeyDown={(event) => handleKeyDown(event, worksheet.id)}
-              />
-            </div>
+              editingName={editingName}
+              inputRef={inputRef}
+              worksheetId={worksheet.id}
+              onEditingNameChange={setEditingName}
+              onKeyDown={handleKeyDown}
+              onRenameSubmit={handleRenameSubmit}
+            />
           ) : (
-            <Button
+            <WorksheetListItem
               key={worksheet.id}
-              className={cn(
-                'w-full px-3 py-0.5 text-left flex justify-start items-center gap-2 text-xs font-normal',
-                worksheet.id === openWorksheetId
-                  ? 'bg-mauve/10 text-mauve shadow-[inset_2px_0_0_var(--color-mauve)]'
-                  : ''
-              )}
-              size="sm"
-              variant="ghost"
-              onClick={() => handleSelectWorksheet(worksheet.id)}
-              onDoubleClick={() => handleDoubleClick(worksheet)}
-            >
-              <FileBracesIcon />
-              {worksheet.name}
-            </Button>
+              isOpen={worksheet.id === openWorksheetId}
+              worksheet={worksheet}
+              onDoubleClick={startEditing}
+              onSelect={handleSelectWorksheet}
+            />
           )
         )}
       </div>
+    </div>
+  )
+}
+
+interface WorksheetListItemProps {
+  isOpen: boolean
+  worksheet: WorksheetDto
+  onDoubleClick: (worksheet: WorksheetDto) => void
+  onSelect: (worksheetId: string) => void
+}
+
+function WorksheetListItem({
+  isOpen,
+  worksheet,
+  onDoubleClick,
+  onSelect
+}: WorksheetListItemProps): ReactElement {
+  return (
+    <Button
+      className={cn(
+        'w-full px-3 py-0.5 text-left flex justify-start items-center gap-2 text-xs font-normal',
+        isOpen
+          ? 'bg-mauve/10 text-mauve shadow-[inset_2px_0_0_var(--color-mauve)]'
+          : ''
+      )}
+      size="sm"
+      variant="ghost"
+      onClick={() => onSelect(worksheet.id)}
+      onDoubleClick={() => onDoubleClick(worksheet)}
+    >
+      <FileBracesIcon />
+      {worksheet.name}
+    </Button>
+  )
+}
+
+interface WorksheetRenameInputProps {
+  editingName: string
+  inputRef: React.RefObject<HTMLInputElement | null>
+  worksheetId: string
+  onEditingNameChange: (name: string) => void
+  onKeyDown: (event: React.KeyboardEvent, worksheetId: string) => void
+  onRenameSubmit: (worksheetId: string) => void
+}
+
+function WorksheetRenameInput({
+  editingName,
+  inputRef,
+  worksheetId,
+  onEditingNameChange,
+  onKeyDown,
+  onRenameSubmit
+}: WorksheetRenameInputProps): ReactElement {
+  return (
+    <div className="flex items-center gap-2 px-3 py-0.5">
+      <FileBracesIcon className="size-4 shrink-0" />
+      <Input
+        ref={inputRef}
+        className="h-5 text-[11px] px-1 py-0"
+        value={editingName}
+        onBlur={() => onRenameSubmit(worksheetId)}
+        onChange={(event) => onEditingNameChange(event.target.value)}
+        onKeyDown={(event) => onKeyDown(event, worksheetId)}
+      />
     </div>
   )
 }
