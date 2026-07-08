@@ -1,11 +1,12 @@
 - [x] Add Worksheets
-- [ ] Store the editor content in the worksheet
-- [ ] Add a Getting Started screen
-- [ ] Persist the editor state
-- [ ] Support for multiple queries in the editor
-- [ ] List Databases
-- [ ] Add Database
-- [ ] Edit database
+- [x] Store the editor content in the worksheet
+- [x] Add a Getting Started screen
+- [ ] Persist the editor state (the active worksheet is restored on startup;
+      cursor/scroll/selection are not persisted)
+- [x] Support for multiple queries in the editor
+- [x] List Databases
+- [x] Add Database
+- [x] Edit database
 
 ---
 
@@ -47,7 +48,7 @@ at the code to change.
 
 ## 🟠 Correctness & robustness (backend)
 
-- [ ] **Don't materialize whole result sets before truncating.** All three
+- [x] **Don't materialize whole result sets before truncating.** All three
       adapters (`postgres-adapter.ts:117-124`, `mysql-adapter.ts:51-63`,
       `sqlite-adapter.ts:78-84`) buffer _every_ row, then slice to
       `maxRows = 10000`. `SELECT * FROM huge_table` OOMs the main process. Push
