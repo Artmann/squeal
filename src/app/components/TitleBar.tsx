@@ -5,19 +5,19 @@ import { cn } from '@/app/lib/utils'
 
 const isMac = navigator.platform.toLowerCase().includes('mac')
 
+const handleMinimize = () => {
+  window.electron.windowMinimize()
+}
+
+const handleMaximize = () => {
+  window.electron.windowMaximize()
+}
+
+const handleClose = () => {
+  window.electron.windowClose()
+}
+
 export function TitleBar(): ReactElement {
-  const handleMinimize = () => {
-    window.electron.windowMinimize()
-  }
-
-  const handleMaximize = () => {
-    window.electron.windowMaximize()
-  }
-
-  const handleClose = () => {
-    window.electron.windowClose()
-  }
-
   return (
     <div className="title-bar relative h-7 flex items-center justify-between bg-mantle border-b border-surface-0 select-none">
       <div className="flex-1 drag-region h-full" />

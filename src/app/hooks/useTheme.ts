@@ -8,7 +8,8 @@ interface ThemeState {
   name: ThemeName
 }
 
-const storageKey = 'theme'
+const legacyStorageKey = 'theme'
+const storageKey = 'theme:v1'
 
 function getSystemMode(): 'dark' | 'light' {
   if (typeof window === 'undefined') {
@@ -52,7 +53,8 @@ export function useTheme() {
   )
 
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey)
+    const stored =
+      localStorage.getItem(storageKey) ?? localStorage.getItem(legacyStorageKey)
     const initial: ThemeState = stored
       ? JSON.parse(stored)
       : { mode: 'system', name: 'catppuccin' }

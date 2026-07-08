@@ -56,19 +56,22 @@ export function createCollections(queryClient: QueryClient) {
     queryCollectionOptions({
       getKey: (item: QueryDto) => item.id,
       onInsert: async ({ transaction }) => {
-        for (const mutation of transaction.mutations) {
-          const query = mutation.modified
+        await Promise.all(
+          transaction.mutations.map(async (mutation) => {
+            const query = mutation.modified
 
-          const response = await apiClient.createQuery({
-            content: query.content,
-            databaseId: query.databaseId === '' ? undefined : query.databaseId,
-            id: query.id,
-            queriedAt: query.queriedAt,
-            worksheetId: query.worksheetId
+            const response = await apiClient.createQuery({
+              content: query.content,
+              databaseId:
+                query.databaseId === '' ? undefined : query.databaseId,
+              id: query.id,
+              queriedAt: query.queriedAt,
+              worksheetId: query.worksheetId
+            })
+
+            queries.utils.writeUpsert(response.query)
           })
-
-          queries.utils.writeUpsert(response.query)
-        }
+        )
 
         return { refetch: false }
       },
@@ -82,14 +85,16 @@ export function createCollections(queryClient: QueryClient) {
     queryCollectionOptions({
       getKey: (item: WorksheetDto) => item.id,
       onUpdate: async ({ transaction }) => {
-        for (const mutation of transaction.mutations) {
-          const worksheet = await apiClient.updateWorksheet(
-            String(mutation.key),
-            toWorksheetPatch(mutation.changes)
-          )
+        await Promise.all(
+          transaction.mutations.map(async (mutation) => {
+            const worksheet = await apiClient.updateWorksheet(
+              String(mutation.key),
+              toWorksheetPatch(mutation.changes)
+            )
 
-          worksheets.utils.writeUpsert(worksheet)
-        }
+            worksheets.utils.writeUpsert(worksheet)
+          })
+        )
 
         return { refetch: false }
       },

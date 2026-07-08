@@ -1,33 +1,21 @@
-import dayjs from 'dayjs'
-import { BanIcon, Loader2Icon, PlayIcon, XCircleIcon } from 'lucide-react'
 import {
+  lazy,
   ReactElement,
+  Suspense,
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   useState
 } from 'react'
 import { toast } from 'sonner'
-import invariant from 'tiny-invariant'
 import { v7 } from 'uuid'
 
 import { AppSidebar } from './components/AppSidebar'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from './components/ui/tooltip'
-import { DatabaseSelector } from './components/DatabaseSelector'
 import { EditorScreen } from './components/EditorScreen'
 import { GettingStartedScreen } from './components/GettingStartedScreen'
-import { QueryResultTable } from './components/QueryResultTable'
+import { QueryResultContent } from './components/QueryResultContent'
 import { ResultSheet } from './components/ResultSheet'
 import { TitleBar } from './components/TitleBar'
-import { Button } from './components/ui/button'
-import { Separator } from './components/ui/separator'
-
-import { WorksheetEditor } from './components/WorksheetEditor'
+import { WorksheetHeader } from './components/WorksheetHeader'
 import { useCollections } from './collections-context'
 import {
   useDatabases,
@@ -36,18 +24,16 @@ import {
   useWorksheets
 } from './hooks/queries'
 import { useCancelQuery } from './hooks/mutations'
+import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import { QueryDto } from '@/main/queries'
 import { useAppSelector } from './store'
 import { createAstFromSql } from './sql-parser'
-import { canceledQueryMessage } from '@/glue/queries'
 
-const saveDebounceMs = 300
-
-const runShortcut = navigator.platform.toLowerCase().includes('mac')
-  ? '⌘ ↵'
-  : 'Ctrl ↵'
-
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+const WorksheetEditor = lazy(() =>
+  import('./components/WorksheetEditor').then((module) => ({
+    default: module.WorksheetEditor
+  }))
+)
 
 export function App(): ReactElement {
   const databases = useDatabases()
@@ -123,8 +109,7 @@ export function App(): ReactElement {
 
   const isQueryRunning = Boolean(query && !query.finishedAt)
 
-  const { queries: queriesCollection, worksheets: worksheetsCollection } =
-    useCollections()
+  const { queries: queriesCollection } = useCollections()
   const cancelQuery = useCancelQuery()
 
   const { cancel: cancelQueryById } = cancelQuery
@@ -135,64 +120,8 @@ export function App(): ReactElement {
     }
   }, [cancelQueryById, query?.id])
 
-  const saveTimer = useRef<NodeJS.Timeout | undefined>(undefined)
-  const pendingSave = useRef<{ content: string; id: string } | undefined>(
-    undefined
-  )
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-
-  const flushSave = useCallback(() => {
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current)
-      saveTimer.current = undefined
-    }
-
-    const pending = pendingSave.current
-
-    if (!pending) {
-      return
-    }
-
-    pendingSave.current = undefined
-
-    const transaction = worksheetsCollection.update(pending.id, (draft) => {
-      draft.content = pending.content
-    })
-
-    void transaction.isPersisted.promise
-      .then(() => {
-        setSaveState('saved')
-      })
-      .catch(() => {
-        setSaveState('error')
-        toast.error('Failed to save worksheet')
-      })
-  }, [worksheetsCollection])
-
-  useEffect(() => {
-    // Flush any pending save when switching worksheets or unmounting so the
-    // last edits are never dropped inside the debounce window.
-    return () => {
-      flushSave()
-    }
-  }, [flushSave, openWorksheetId])
-
-  const handleUpdateContent = useCallback(
-    (newContent: string) => {
-      invariant(openWorksheetId, 'No worksheet is open')
-
-      pendingSave.current = { content: newContent, id: openWorksheetId }
-
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-      }
-
-      setSaveState('saving')
-
-      saveTimer.current = setTimeout(flushSave, saveDebounceMs)
-    },
-    [flushSave, openWorksheetId]
-  )
+  const { handleUpdateContent, saveState } =
+    useWorksheetAutosave(openWorksheetId)
 
   const handleRunQuery = useCallback(() => {
     if (!activeStatement) {
@@ -258,172 +187,39 @@ export function App(): ReactElement {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col">
-          <header className="w-full p-3 border-b border-surface-0 flex items-center gap-3 justify-between">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button
-                    className="cursor-pointer"
-                    disabled={isQueryRunning || !activeStatement}
-                    size="icon-sm"
-                    onClick={handleRunQuery}
-                  >
-                    {isQueryRunning ? (
-                      <Loader2Icon className="size-3 animate-spin" />
-                    ) : (
-                      <PlayIcon className="size-3" />
-                    )}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-
-              <TooltipContent side="bottom">
-                {isQueryRunning ? (
-                  'Running…'
-                ) : activeStatement ? (
-                  <span className="flex items-center gap-2">
-                    Run statement
-                    <kbd className="font-mono text-[10px] opacity-70">
-                      {runShortcut}
-                    </kbd>
-                  </span>
-                ) : (
-                  'Place your cursor in a statement to run it'
-                )}
-              </TooltipContent>
-            </Tooltip>
-
-            <div className="flex items-center gap-3">
-              <SaveIndicator state={saveState} />
-              <DatabaseSelector />
-            </div>
-          </header>
+          <WorksheetHeader
+            activeStatement={activeStatement}
+            isQueryRunning={isQueryRunning}
+            saveState={saveState}
+            onRunQuery={handleRunQuery}
+          />
 
           <div className="relative flex-1 min-h-0 bg-base">
-            <WorksheetEditor
-              activeStatementIndex={activeStatementIndex}
-              content={currentWorksheet.content}
-              statements={statements}
-              onChange={handleUpdateContent}
-              onCursorPositionChange={setCursorPosition}
-              onRunQuery={handleRunQuery}
-            />
+            <Suspense fallback={null}>
+              <WorksheetEditor
+                activeStatementIndex={activeStatementIndex}
+                content={currentWorksheet.content}
+                statements={statements}
+                onChange={handleUpdateContent}
+                onCursorPositionChange={setCursorPosition}
+                onRunQuery={handleRunQuery}
+              />
+            </Suspense>
 
             <ResultSheet
               isOpen={Boolean(query)}
               query={query}
             >
-              {isQueryRunning && (
-                <div className="w-full h-full flex justify-center items-center">
-                  <div className="w-full max-w-sm flex flex-col gap-3">
-                    <h2 className="flex items-center gap-2 text-lg font-medium">
-                      <Loader2Icon className="size-4 animate-spin text-mauve" />
-                      Running query
-                    </h2>
-
-                    <Separator />
-
-                    <div className="flex flex-col gap-1 text-subtext-0 text-sm">
-                      <div className="flex items-center justify-between">
-                        <div>Elapsed</div>
-                        <div className="text-right font-mono tabular-nums text-text">
-                          {query?.queriedAt && (
-                            <ElapsedTime since={query.queriedAt} />
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div>Started</div>
-                        <div className="text-right">
-                          {query?.queriedAt &&
-                            dayjs(query.queriedAt).format('HH:mm:ss')}
-                        </div>
-                      </div>
-                    </div>
-
-                    <Button
-                      className="self-start"
-                      disabled={cancelQuery.isPending}
-                      size="sm"
-                      variant="outline"
-                      onClick={handleCancelQuery}
-                    >
-                      {cancelQuery.isPending ? 'Canceling…' : 'Cancel query'}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {query?.result && <QueryResultTable result={query.result} />}
-
-              {query?.error &&
-                (query.error === canceledQueryMessage ? (
-                  <div className="w-full h-full flex justify-center items-center p-6">
-                    <div className="flex items-center gap-2 text-subtext-0 text-sm">
-                      <BanIcon className="size-4 shrink-0" />
-                      Query canceled.
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-full h-full flex justify-center items-center p-6">
-                    <div className="w-full max-w-lg flex flex-col gap-3">
-                      <div className="flex items-center gap-2 text-red font-medium text-sm">
-                        <XCircleIcon className="size-4 shrink-0" />
-                        Query failed
-                      </div>
-
-                      <pre className="text-xs text-subtext-0 font-mono whitespace-pre-wrap bg-surface-0 rounded-md p-3 border border-surface-1">
-                        {query.error}
-                      </pre>
-                    </div>
-                  </div>
-                ))}
+              <QueryResultContent
+                isCancelPending={cancelQuery.isPending}
+                isQueryRunning={isQueryRunning}
+                query={query}
+                onCancelQuery={handleCancelQuery}
+              />
             </ResultSheet>
           </div>
         </div>
       </div>
     </main>
-  )
-}
-
-function ElapsedTime({ since }: { since: number }): ReactElement {
-  const [now, setNow] = useState<number>(() => Date.now())
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 250)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  const seconds = Math.max(0, (now - since) / 1000)
-
-  const formatted =
-    seconds < 60
-      ? `${seconds.toFixed(1)}s`
-      : `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)
-          .toString()
-          .padStart(2, '0')}s`
-
-  return <>{formatted}</>
-}
-
-function SaveIndicator({ state }: { state: SaveState }): ReactElement | null {
-  if (state === 'idle') {
-    return null
-  }
-
-  const text =
-    state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : 'Save failed'
-
-  const className =
-    state === 'error' ? 'text-red text-xs' : 'text-subtext-0 text-xs'
-
-  return (
-    <span
-      className={`${className} motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300`}
-    >
-      {text}
-    </span>
   )
 }
