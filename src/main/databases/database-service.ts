@@ -1,16 +1,36 @@
+import { and, eq, isNull } from 'drizzle-orm'
+
 import { database } from '@/database'
 import { databasesTable, worksheetsTable } from '@/database/schema'
-import type { ConnectionInfo, DatabaseType } from '@/databases/schemas'
+import type {
+  ConnectionInfo,
+  DatabaseType,
+  PublicConnectionInfo,
+  UpdateConnectionInfo
+} from '@/databases/schemas'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
-import { and, eq, isNull } from 'drizzle-orm'
+import { safeStorageSecretStorage, type SecretStorage } from './secret-storage'
 
 export interface CreateDatabaseResult {
   database: DatabaseDto
   updatedWorksheet?: WorksheetDto
 }
 
+export interface DatabaseWithSecrets {
+  connectionInfo: ConnectionInfo
+  id: string
+  name: string
+  type: DatabaseType
+}
+
 export class DatabaseService {
+  private readonly secretStorage: SecretStorage
+
+  constructor(secretStorage: SecretStorage = safeStorageSecretStorage) {
+    this.secretStorage = secretStorage
+  }
+
   async createDatabase(
     name: string,
     connectionInfo: ConnectionInfo,
@@ -19,13 +39,15 @@ export class DatabaseService {
     const [record] = await database
       .insert(databasesTable)
       .values({
-        connectionInfo: JSON.stringify(connectionInfo),
+        connectionInfo: this.secretStorage.encrypt(
+          JSON.stringify(connectionInfo)
+        ),
         name,
         type
       })
       .returning()
 
-    const databaseDto = transformDatabase(record)
+    const databaseDto = this.transformDatabase(record)
 
     // If this is the first database and there's a worksheet without a database, connect it.
     const existingDatabases = await database
@@ -78,7 +100,30 @@ export class DatabaseService {
       return null
     }
 
-    return transformDatabase(record)
+    return this.transformDatabase(record)
+  }
+
+  // Returns the decrypted connection info, password included. Main-process
+  // use only (adapter construction) — never send this to the renderer.
+  async getDatabaseWithSecrets(
+    id: string
+  ): Promise<DatabaseWithSecrets | null> {
+    const [record] = await database
+      .select()
+      .from(databasesTable)
+      .where(and(eq(databasesTable.id, id), isNull(databasesTable.deletedAt)))
+      .limit(1)
+
+    if (!record) {
+      return null
+    }
+
+    return {
+      connectionInfo: this.parseConnectionInfo(record.connectionInfo),
+      id: record.id,
+      name: record.name,
+      type: record.type as DatabaseType
+    }
   }
 
   async listDatabases(): Promise<DatabaseDto[]> {
@@ -87,37 +132,87 @@ export class DatabaseService {
       .from(databasesTable)
       .where(isNull(databasesTable.deletedAt))
 
-    return records.map(transformDatabase)
+    return records.map((record) => this.transformDatabase(record))
   }
 
   async updateDatabase(
     id: string,
     name: string,
-    connectionInfo: ConnectionInfo,
+    connectionInfo: UpdateConnectionInfo,
     type: DatabaseType
   ): Promise<DatabaseDto> {
+    const resolvedConnectionInfo = await this.resolveConnectionInfo(
+      id,
+      connectionInfo,
+      type
+    )
+
     const [record] = await database
       .update(databasesTable)
       .set({
-        connectionInfo: JSON.stringify(connectionInfo),
+        connectionInfo: this.secretStorage.encrypt(
+          JSON.stringify(resolvedConnectionInfo)
+        ),
         name,
         type
       })
       .where(eq(databasesTable.id, id))
       .returning()
 
-    return transformDatabase(record)
+    return this.transformDatabase(record)
+  }
+
+  private parseConnectionInfo(value: string): ConnectionInfo {
+    return JSON.parse(this.secretStorage.decrypt(value)) as ConnectionInfo
+  }
+
+  // An update without a password means "keep the stored one" — the renderer
+  // never sees passwords, so edits can't send them back.
+  private async resolveConnectionInfo(
+    id: string,
+    connectionInfo: UpdateConnectionInfo,
+    type: DatabaseType
+  ): Promise<ConnectionInfo> {
+    if (!('username' in connectionInfo) || connectionInfo.password) {
+      return connectionInfo as ConnectionInfo
+    }
+
+    const existing = await this.getDatabaseWithSecrets(id)
+    const storedPassword =
+      existing &&
+      existing.type === type &&
+      'password' in existing.connectionInfo
+        ? existing.connectionInfo.password
+        : ''
+
+    return { ...connectionInfo, password: storedPassword }
+  }
+
+  private transformDatabase(
+    record: typeof databasesTable.$inferSelect
+  ): DatabaseDto {
+    return {
+      connectionInfo: toPublicConnectionInfo(
+        this.parseConnectionInfo(record.connectionInfo)
+      ),
+      createdAt: record.createdAt,
+      id: record.id,
+      name: record.name,
+      type: record.type as DatabaseType
+    }
   }
 }
 
-function transformDatabase(
-  record: typeof databasesTable.$inferSelect
-): DatabaseDto {
-  return {
-    connectionInfo: JSON.parse(record.connectionInfo),
-    createdAt: record.createdAt,
-    id: record.id,
-    name: record.name,
-    type: record.type as DatabaseType
+function toPublicConnectionInfo(
+  connectionInfo: ConnectionInfo
+): PublicConnectionInfo {
+  if (!('password' in connectionInfo)) {
+    return connectionInfo
   }
+
+  const publicInfo: Partial<typeof connectionInfo> = { ...connectionInfo }
+
+  delete publicInfo.password
+
+  return publicInfo as PublicConnectionInfo
 }

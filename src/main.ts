@@ -4,6 +4,7 @@ import started from 'electron-squirrel-startup'
 
 import { apiPort, startServer } from './api'
 import { initializeDatabase } from './database'
+import { migrateConnectionInfoEncryption } from './main/databases/connection-info-migration'
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -93,6 +94,9 @@ const createWindow = async () => {
 
 app.on('ready', async () => {
   await initializeDatabase()
+
+  // safeStorage is only reliable once the app is ready.
+  await migrateConnectionInfoEncryption()
 
   startServer(apiPort)
 

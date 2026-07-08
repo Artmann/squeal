@@ -6,7 +6,8 @@ import {
   getTestDatabase,
   mockAdapterConfig,
   resetTestDatabase,
-  setupApiMocks
+  setupApiMocks,
+  testEncryptionPrefix
 } from '@/test/api-test-helper'
 
 setupApiMocks()
@@ -117,10 +118,10 @@ describe('POST /databases', () => {
         host: 'localhost',
         port: 5432,
         database: 'production',
-        username: 'admin',
-        password: 'secret'
+        username: 'admin'
       }
     })
+    expect(data.database.connectionInfo.password).toBeUndefined()
     expect(data.database.id).toBeDefined()
     expect(data.database.createdAt).toBeDefined()
   })
@@ -151,6 +152,20 @@ describe('POST /databases', () => {
     expect(rows[0]).toMatchObject({
       name: 'Test DB',
       type: 'mysql'
+    })
+
+    const storedConnectionInfo = (rows[0] as { connectionInfo: string })
+      .connectionInfo
+
+    expect(storedConnectionInfo.startsWith(testEncryptionPrefix)).toEqual(true)
+    expect(
+      JSON.parse(storedConnectionInfo.slice(testEncryptionPrefix.length))
+    ).toEqual({
+      host: 'localhost',
+      port: 3306,
+      database: 'test',
+      username: 'root',
+      password: 'password'
     })
   })
 
@@ -364,10 +379,10 @@ describe('PATCH /databases/:id', () => {
         host: 'newhost.example.com',
         port: 5433,
         database: 'updated',
-        username: 'newuser',
-        password: 'newpass'
+        username: 'newuser'
       }
     })
+    expect(data.database.connectionInfo.password).toBeUndefined()
   })
 
   it('should persist updates to storage', async () => {
@@ -415,6 +430,138 @@ describe('PATCH /databases/:id', () => {
     expect(rows[0]).toMatchObject({
       name: 'After Update',
       type: 'postgres'
+    })
+  })
+
+  it('should keep the stored password when the update omits it', async () => {
+    const database = getTestDatabase()
+    const databaseId = crypto.randomUUID()
+
+    await database.run(sql`
+      INSERT INTO databases (id, name, type, connectionInfo, createdAt)
+      VALUES (
+        ${databaseId},
+        'Keep Password',
+        'postgres',
+        ${JSON.stringify({
+          host: 'localhost',
+          port: 5432,
+          database: 'original',
+          username: 'user',
+          password: 'stored-secret'
+        })},
+        ${Date.now()}
+      )
+    `)
+
+    const response = await app.request(`/databases/${databaseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Keep Password',
+        type: 'postgres',
+        connectionInfo: {
+          host: 'newhost.example.com',
+          port: 5432,
+          database: 'original',
+          username: 'user'
+        }
+      })
+    })
+
+    expect(response.status).toEqual(200)
+
+    const rows = await database.all<{ connectionInfo: string }>(
+      sql`SELECT connectionInfo FROM databases WHERE id = ${databaseId}`
+    )
+    const storedConnectionInfo = JSON.parse(
+      rows[0].connectionInfo.slice(testEncryptionPrefix.length)
+    )
+
+    expect(storedConnectionInfo).toEqual({
+      database: 'original',
+      host: 'newhost.example.com',
+      password: 'stored-secret',
+      port: 5432,
+      username: 'user'
+    })
+  })
+})
+
+describe('POST /connection-tests with a stored password', () => {
+  let app: Hono
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    app = createApp({ enableLogging: false })
+  })
+
+  it('should merge the stored password when the request omits it', async () => {
+    const database = getTestDatabase()
+    const databaseId = crypto.randomUUID()
+
+    await database.run(sql`
+      INSERT INTO databases (id, name, type, connectionInfo, createdAt)
+      VALUES (
+        ${databaseId},
+        'Existing DB',
+        'postgres',
+        ${JSON.stringify({
+          host: 'localhost',
+          port: 5432,
+          database: 'testdb',
+          username: 'user',
+          password: 'stored-secret'
+        })},
+        ${Date.now()}
+      )
+    `)
+
+    const response = await app.request('/connection-tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        databaseId,
+        type: 'postgres',
+        connectionInfo: {
+          host: 'localhost',
+          port: 5432,
+          database: 'testdb',
+          username: 'user'
+        }
+      })
+    })
+
+    expect(response.status).toEqual(200)
+    expect(await response.json()).toEqual({ success: true })
+    expect(mockAdapterConfig.lastConnectionInfo).toEqual({
+      database: 'testdb',
+      host: 'localhost',
+      password: 'stored-secret',
+      port: 5432,
+      username: 'user'
+    })
+  })
+
+  it('should fail when the password is omitted without a databaseId', async () => {
+    const response = await app.request('/connection-tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'postgres',
+        connectionInfo: {
+          host: 'localhost',
+          port: 5432,
+          database: 'testdb',
+          username: 'user'
+        }
+      })
+    })
+
+    expect(response.status).toEqual(200)
+    expect(await response.json()).toEqual({
+      message: 'Password is required.',
+      success: false
     })
   })
 })
