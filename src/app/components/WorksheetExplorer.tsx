@@ -1,10 +1,33 @@
+import {
+  closestCenter,
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { arrayMove, SortableContext, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { FileBracesIcon, PlusIcon } from 'lucide-react'
-import { ReactElement, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ReactElement,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState
+} from 'react'
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
 import { useWorksheets } from '../hooks/queries'
-import { useCreateWorksheet } from '../hooks/mutations'
+import { useCreateWorksheet, useReorderWorksheets } from '../hooks/mutations'
+import {
+  staticListStrategy,
+  useDropIndicator,
+  type DropIndicator
+} from '../hooks/use-drop-indicator'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import {
@@ -13,6 +36,7 @@ import {
 } from '../store/editor-slice'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
+import { DropIndicatorLine } from './DropIndicatorLine'
 import { SearchInput } from './SearchInput'
 import { WorksheetDto } from '@/glue/worksheets'
 
@@ -133,11 +157,51 @@ export function WorksheetExplorer(): ReactElement {
     startEditing
   } = useWorksheetRename(worksheets.data)
 
+  // The list order comes from the useWorksheets live query (sortOrder, then
+  // newest first).
   const filteredWorksheets = worksheets.data.filter((worksheet) =>
     worksheet.name.toLowerCase().includes(worksheetSearchQuery.toLowerCase())
   )
-  const sortedWorksheets = filteredWorksheets.sort((a, b) =>
-    a.createdAt > b.createdAt ? -1 : 1
+
+  // Reordering a filtered subset is ambiguous, so dragging only works on the
+  // full list.
+  const isSortingDisabled = worksheetSearchQuery.length > 0
+  const reorderWorksheets = useReorderWorksheets()
+
+  const filteredWorksheetIds = filteredWorksheets.map(
+    (worksheet) => worksheet.id
+  )
+  const {
+    dropIndicatorFor,
+    handleDragOver,
+    handleDragStart,
+    resetDropIndicator
+  } = useDropIndicator(filteredWorksheetIds)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+
+      resetDropIndicator()
+
+      if (!over || active.id === over.id) {
+        return
+      }
+
+      const worksheetIds = worksheets.data.map((worksheet) => worksheet.id)
+      const orderedIds = arrayMove(
+        worksheetIds,
+        worksheetIds.indexOf(String(active.id)),
+        worksheetIds.indexOf(String(over.id))
+      )
+
+      reorderWorksheets.mutate(orderedIds)
+    },
+    [reorderWorksheets, resetDropIndicator, worksheets.data]
   )
 
   const touchWorksheet = useCallback(
@@ -207,7 +271,7 @@ export function WorksheetExplorer(): ReactElement {
       </div>
 
       <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
-        {sortedWorksheets.length === 0 && (
+        {filteredWorksheets.length === 0 && (
           <p className="text-xs text-subtext-0 px-1 mt-1 leading-relaxed">
             Worksheets are where you write and save SQL.{' '}
             <button
@@ -221,28 +285,85 @@ export function WorksheetExplorer(): ReactElement {
           </p>
         )}
 
-        {sortedWorksheets.map((worksheet) =>
-          editingWorksheetId === worksheet.id ? (
-            <WorksheetRenameInput
-              key={worksheet.id}
-              editingName={editingName}
-              inputRef={inputRef}
-              worksheetId={worksheet.id}
-              onEditingNameChange={setEditingName}
-              onKeyDown={handleKeyDown}
-              onRenameSubmit={handleRenameSubmit}
-            />
-          ) : (
-            <WorksheetListItem
-              key={worksheet.id}
-              isOpen={worksheet.id === openWorksheetId}
-              worksheet={worksheet}
-              onDoubleClick={startEditing}
-              onSelect={handleSelectWorksheet}
-            />
-          )
-        )}
+        <DndContext
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          sensors={sensors}
+          onDragCancel={resetDropIndicator}
+          onDragEnd={handleDragEnd}
+          onDragOver={handleDragOver}
+          onDragStart={handleDragStart}
+        >
+          <SortableContext
+            items={filteredWorksheetIds}
+            strategy={staticListStrategy}
+          >
+            {filteredWorksheets.map((worksheet, index) => (
+              <WorksheetRow
+                key={worksheet.id}
+                dropIndicator={dropIndicatorFor(index)}
+                isSortingDisabled={
+                  isSortingDisabled || editingWorksheetId === worksheet.id
+                }
+                worksheetId={worksheet.id}
+              >
+                {editingWorksheetId === worksheet.id ? (
+                  <WorksheetRenameInput
+                    editingName={editingName}
+                    inputRef={inputRef}
+                    worksheetId={worksheet.id}
+                    onEditingNameChange={setEditingName}
+                    onKeyDown={handleKeyDown}
+                    onRenameSubmit={handleRenameSubmit}
+                  />
+                ) : (
+                  <WorksheetListItem
+                    isOpen={worksheet.id === openWorksheetId}
+                    worksheet={worksheet}
+                    onDoubleClick={startEditing}
+                    onSelect={handleSelectWorksheet}
+                  />
+                )}
+              </WorksheetRow>
+            ))}
+          </SortableContext>
+        </DndContext>
       </div>
+    </div>
+  )
+}
+
+interface WorksheetRowProps {
+  children: ReactNode
+  dropIndicator: DropIndicator
+  isSortingDisabled: boolean
+  worksheetId: string
+}
+
+// The whole row is the drag handle. While the row is being renamed its
+// sortable is disabled, so selecting text in the input never starts a drag.
+// The keyboard-sortable attributes are skipped on purpose — only the pointer
+// sensor is wired, and a focusable wrapper would double up the button's tab
+// stop.
+function WorksheetRow({
+  children,
+  dropIndicator,
+  isSortingDisabled,
+  worksheetId
+}: WorksheetRowProps): ReactElement {
+  const { isDragging, listeners, setNodeRef, transform, transition } =
+    useSortable({ disabled: isSortingDisabled, id: worksheetId })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn('relative', isDragging && 'opacity-50')}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...(isSortingDisabled ? {} : listeners)}
+    >
+      {dropIndicator && <DropIndicatorLine position={dropIndicator} />}
+
+      {children}
     </div>
   )
 }

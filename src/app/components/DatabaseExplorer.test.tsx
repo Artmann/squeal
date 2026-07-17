@@ -44,6 +44,7 @@ const testDatabase: DatabaseDto = {
   createdAt: 1704067200000,
   id: 'db-123',
   name: 'Test Database',
+  sortOrder: null,
   type: 'postgres'
 }
 
@@ -200,7 +201,8 @@ describe('DatabaseExplorer', () => {
       databaseId: 'db-123',
       id: 'ws-users',
       lastOpenedAt: null,
-      name: 'users'
+      name: 'users',
+      sortOrder: null
     }
 
     vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)

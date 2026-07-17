@@ -22,10 +22,24 @@ export interface ListWorksheetsResponse {
   worksheets: WorksheetDto[]
 }
 
+export interface ReorderWorksheetsResponse {
+  worksheets: WorksheetDto[]
+}
+
 const createWorksheetSchema = z.object({
   content: z.string().optional(),
   databaseId: z.string().optional(),
   name: z.string()
+})
+
+const reorderWorksheetsSchema = z.object({
+  worksheetIds: z
+    .array(z.string().min(1))
+    .min(1, 'At least one worksheet id is required.')
+    .refine(
+      (ids) => new Set(ids).size === ids.length,
+      'Worksheet ids must be unique.'
+    )
 })
 
 const updateWorksheetSchema = z.object({
@@ -68,6 +82,25 @@ worksheetRouter.post('/', async (context) => {
   }
 
   return context.json(response, 201)
+})
+
+worksheetRouter.put('/order', async (context) => {
+  const body = await context.req.json()
+  const result = await reorderWorksheetsSchema.safeParseAsync(body)
+
+  if (!result.success) {
+    throw new ValidationError(result.error)
+  }
+
+  const worksheets = await worksheetService.reorderWorksheets(
+    result.data.worksheetIds
+  )
+
+  const response: ReorderWorksheetsResponse = {
+    worksheets
+  }
+
+  return context.json(response)
 })
 
 worksheetRouter.patch('/:id', async (context) => {

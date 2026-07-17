@@ -75,6 +75,18 @@ export const createDatabaseSchema = z.object({
 
 export type CreateDatabaseRequest = z.infer<typeof createDatabaseSchema>
 
+export const reorderDatabasesSchema = z.object({
+  databaseIds: z
+    .array(z.string().min(1))
+    .min(1, 'At least one database id is required.')
+    .refine(
+      (ids) => new Set(ids).size === ids.length,
+      'Database ids must be unique.'
+    )
+})
+
+export type ReorderDatabasesRequest = z.infer<typeof reorderDatabasesSchema>
+
 export const updateDatabaseSchema = z.object({
   connectionInfo: updateConnectionInfoSchema,
   name: z.string().min(1, 'Name is required.'),

@@ -1,7 +1,8 @@
 import { database } from '@/database'
 import { worksheetsTable } from '@/database/schema'
+import { ApiError } from '@/errors'
 import { CreateWorksheetRequest, WorksheetDto } from '@/glue/worksheets'
-import { eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 
 export class WorksheetService {
   async createWorksheet(
@@ -16,12 +17,46 @@ export class WorksheetService {
   }
 
   async listWorksheets(): Promise<WorksheetDto[]> {
+    // Unordered worksheets keep the newest-first behavior after the ordered
+    // ones.
     const worksheets = await database
       .select()
       .from(worksheetsTable)
       .where(isNull(worksheetsTable.deletedAt))
+      .orderBy(
+        sql`${worksheetsTable.sortOrder} is null`,
+        asc(worksheetsTable.sortOrder),
+        desc(worksheetsTable.createdAt)
+      )
 
     return worksheets.map(transformWorksheet)
+  }
+
+  // Only writes sortOrder so a reorder can never clobber content edits that
+  // are in flight.
+  async reorderWorksheets(worksheetIds: string[]): Promise<WorksheetDto[]> {
+    const records = await database
+      .select({ id: worksheetsTable.id })
+      .from(worksheetsTable)
+      .where(
+        and(
+          inArray(worksheetsTable.id, worksheetIds),
+          isNull(worksheetsTable.deletedAt)
+        )
+      )
+
+    if (records.length !== worksheetIds.length) {
+      throw new ApiError(400, 'One or more worksheet ids are unknown.')
+    }
+
+    for (const [index, id] of worksheetIds.entries()) {
+      await database
+        .update(worksheetsTable)
+        .set({ sortOrder: index })
+        .where(eq(worksheetsTable.id, id))
+    }
+
+    return this.listWorksheets()
   }
 
   async updateWorksheet(
@@ -52,6 +87,7 @@ function transformWorksheet(
     databaseId: worksheet.databaseId ?? null,
     id: worksheet.id,
     lastOpenedAt: worksheet.lastOpenedAt ?? null,
-    name: worksheet.name
+    name: worksheet.name,
+    sortOrder: worksheet.sortOrder ?? null
   }
 }

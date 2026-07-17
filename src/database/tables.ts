@@ -30,6 +30,7 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
       deletedAt INTEGER,
       lastUsedAt INTEGER,
       name TEXT NOT NULL,
+      sortOrder INTEGER,
       type TEXT NOT NULL
     )
   `)
@@ -55,7 +56,8 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
       databaseId TEXT,
       deletedAt INTEGER,
       lastOpenedAt INTEGER,
-      name TEXT NOT NULL DEFAULT 'Untitled Worksheet'
+      name TEXT NOT NULL DEFAULT 'Untitled Worksheet',
+      sortOrder INTEGER
     )
   `)
 }

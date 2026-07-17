@@ -428,7 +428,8 @@ describe('apiClient', () => {
         databaseId: null,
         id: worksheetId,
         lastOpenedAt: null,
-        name: 'New Name'
+        name: 'New Name',
+        sortOrder: null
       }
 
       mockFetch.mockResolvedValueOnce(createMockResponse({ worksheet }))

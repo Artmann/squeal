@@ -114,6 +114,60 @@ export function useCreateDatabase() {
   })
 }
 
+export function useReorderDatabases() {
+  const { databases } = useCollections()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (databaseIds: string[]) =>
+      apiClient.reorderDatabases(databaseIds),
+    onMutate: (databaseIds) => {
+      // Optimistic partial upsert so the list re-sorts immediately instead of
+      // snapping back while the request is in flight.
+      if (databases.status === 'ready') {
+        databases.utils.writeUpsert(
+          databaseIds.map((id, index) => ({ id, sortOrder: index }))
+        )
+      }
+    },
+    onSuccess: (response) => {
+      if (databases.status === 'ready') {
+        databases.utils.writeUpsert(response.databases)
+      }
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.databases })
+    }
+  })
+}
+
+export function useReorderWorksheets() {
+  const { worksheets } = useCollections()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (worksheetIds: string[]) =>
+      apiClient.reorderWorksheets(worksheetIds),
+    onMutate: (worksheetIds) => {
+      // Optimistic partial upsert so the list re-sorts immediately instead of
+      // snapping back while the request is in flight.
+      if (worksheets.status === 'ready') {
+        worksheets.utils.writeUpsert(
+          worksheetIds.map((id, index) => ({ id, sortOrder: index }))
+        )
+      }
+    },
+    onSuccess: (response) => {
+      if (worksheets.status === 'ready') {
+        worksheets.utils.writeUpsert(response.worksheets)
+      }
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.worksheets })
+    }
+  })
+}
+
 export function useUpdateDatabase() {
   const { databases } = useCollections()
   const queryClient = useQueryClient()

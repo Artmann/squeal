@@ -39,6 +39,7 @@ const testDatabase: DatabaseDto = {
   createdAt: 1704067200000,
   id: 'db-1',
   name: 'Production DB',
+  sortOrder: null,
   type: 'postgres'
 }
 
@@ -54,7 +55,8 @@ const testWorksheet: WorksheetDto = {
   databaseId: 'db-1',
   id: 'ws-123',
   lastOpenedAt: null,
-  name: 'Test Worksheet'
+  name: 'Test Worksheet',
+  sortOrder: null
 }
 
 describe('DatabaseSelector', () => {

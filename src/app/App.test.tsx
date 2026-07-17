@@ -15,6 +15,7 @@ const testDatabase: DatabaseDto = {
   createdAt: 1,
   id: 'database-1',
   name: 'Pagila',
+  sortOrder: null,
   type: 'postgres'
 }
 

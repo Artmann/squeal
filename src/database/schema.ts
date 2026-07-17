@@ -23,6 +23,7 @@ export const databasesTable = sqliteTable('databases', {
   deletedAt: integer(),
   lastUsedAt: integer(),
   name: text().notNull(),
+  sortOrder: integer(),
   type: text().notNull()
 })
 
@@ -62,5 +63,6 @@ export const worksheetsTable = sqliteTable('worksheets', {
   databaseId: text(),
   deletedAt: integer(),
   lastOpenedAt: integer(),
-  name: text().notNull().default('Untitled Worksheet')
+  name: text().notNull().default('Untitled Worksheet'),
+  sortOrder: integer()
 })

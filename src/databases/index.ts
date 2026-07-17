@@ -6,6 +6,7 @@ import { createAdapter } from './create-adapter'
 import {
   connectionTestSchema,
   createDatabaseSchema,
+  reorderDatabasesSchema,
   updateDatabaseSchema,
   type ConnectionInfo,
   type DatabaseType,
@@ -116,6 +117,20 @@ databaseRouter.post('/', async (context) => {
   )
 
   return context.json({ database, updatedWorksheet }, 201)
+})
+
+databaseRouter.put('/order', async (context) => {
+  const body = await context.req.json()
+  const result = await reorderDatabasesSchema.safeParseAsync(body)
+
+  if (!result.success) {
+    throw new ValidationError(result.error)
+  }
+
+  const service = new DatabaseService()
+  const databases = await service.reorderDatabases(result.data.databaseIds)
+
+  return context.json({ databases })
 })
 
 databaseRouter.get('/:id/schema', async (context) => {

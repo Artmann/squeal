@@ -14,7 +14,14 @@ export function useDatabases() {
   const { databases } = useCollections()
 
   return useLiveSuspenseQuery(
-    (builder) => builder.from({ database: databases }),
+    (builder) =>
+      builder
+        .from({ database: databases })
+        .orderBy(({ database }) => database.sortOrder, {
+          direction: 'asc',
+          nulls: 'last'
+        })
+        .orderBy(({ database }) => database.createdAt, 'asc'),
     [databases]
   )
 }
@@ -22,8 +29,17 @@ export function useDatabases() {
 export function useWorksheets() {
   const { worksheets } = useCollections()
 
+  // Unordered worksheets keep the newest-first behavior after the ordered
+  // ones, mirroring the API.
   return useLiveSuspenseQuery(
-    (builder) => builder.from({ worksheet: worksheets }),
+    (builder) =>
+      builder
+        .from({ worksheet: worksheets })
+        .orderBy(({ worksheet }) => worksheet.sortOrder, {
+          direction: 'asc',
+          nulls: 'last'
+        })
+        .orderBy(({ worksheet }) => worksheet.createdAt, 'desc'),
     [worksheets]
   )
 }

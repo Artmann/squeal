@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mockSelect = vi.fn()
 const mockFrom = vi.fn()
 const mockWhere = vi.fn()
+const mockOrderBy = vi.fn()
 const mockInsert = vi.fn()
 const mockValues = vi.fn()
 const mockReturning = vi.fn()
@@ -27,7 +28,8 @@ vi.mock('@/database', () => ({
                   databaseId: null as string | null,
                   deletedAt: null as number | null,
                   lastOpenedAt: null as number | null,
-                  name: 'Test Worksheet'
+                  name: 'Test Worksheet',
+                  sortOrder: null as number | null
                 }
               ]
             }
@@ -43,10 +45,20 @@ vi.mock('@/database', () => ({
           mockFrom()
 
           return {
-            where: (condition: unknown): unknown[] => {
+            // Awaiting the array resolves to it directly, while listWorksheets
+            // can keep chaining orderBy onto the same (empty) result.
+            where: (condition: unknown) => {
               mockWhere(condition)
 
-              return []
+              const results: unknown[] = []
+
+              return Object.assign(results, {
+                orderBy: (...columns: unknown[]) => {
+                  mockOrderBy(...columns)
+
+                  return results
+                }
+              })
             }
           }
         }
@@ -56,7 +68,17 @@ vi.mock('@/database', () => ({
 }))
 
 vi.mock('drizzle-orm', () => ({
-  isNull: vi.fn((column) => ({ type: 'isNull', column }))
+  and: vi.fn((...conditions) => ({ type: 'and', conditions })),
+  asc: vi.fn((column) => ({ type: 'asc', column })),
+  desc: vi.fn((column) => ({ type: 'desc', column })),
+  eq: vi.fn((column, value) => ({ type: 'eq', column, value })),
+  inArray: vi.fn((column, values) => ({ type: 'inArray', column, values })),
+  isNull: vi.fn((column) => ({ type: 'isNull', column })),
+  sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
+    type: 'sql',
+    strings,
+    values
+  }))
 }))
 
 import { WorksheetService } from './worksheet-service'
@@ -104,7 +126,8 @@ describe('WorksheetService', () => {
         databaseId: null,
         id: 'test-worksheet-id',
         lastOpenedAt: null,
-        name: 'Test Worksheet'
+        name: 'Test Worksheet',
+        sortOrder: null
       })
     })
   })

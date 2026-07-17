@@ -18,6 +18,7 @@ import {
 import {
   CreateWorksheetResponse,
   ListWorksheetsResponse,
+  ReorderWorksheetsResponse,
   UpdateWorksheetResponse
 } from '@/main/worksheets'
 
@@ -34,6 +35,10 @@ interface GetDatabasesResponse {
 
 interface GetSchemaResponse {
   schema: SchemaInfo
+}
+
+interface ReorderDatabasesResponse {
+  databases: DatabaseDto[]
 }
 
 interface UpdateDatabaseResponse {
@@ -176,6 +181,24 @@ export const apiClient = {
     const data = await apiRequest<GetQueryResponse>(`/queries/${queryId}`)
 
     return data.query
+  },
+
+  async reorderDatabases(
+    databaseIds: string[]
+  ): Promise<ReorderDatabasesResponse> {
+    return apiRequest<ReorderDatabasesResponse>('/databases/order', {
+      body: { databaseIds },
+      method: 'PUT'
+    })
+  },
+
+  async reorderWorksheets(
+    worksheetIds: string[]
+  ): Promise<ReorderWorksheetsResponse> {
+    return apiRequest<ReorderWorksheetsResponse>('/worksheets/order', {
+      body: { worksheetIds },
+      method: 'PUT'
+    })
   },
 
   async testConnection(

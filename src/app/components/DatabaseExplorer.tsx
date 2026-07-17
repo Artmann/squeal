@@ -1,4 +1,15 @@
 import {
+  closestCenter,
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { arrayMove, SortableContext, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
   ChevronRight,
   Database,
   Pencil,
@@ -11,7 +22,12 @@ import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
 import { useDatabases, useDatabaseSchema } from '../hooks/queries'
-import { useCreateWorksheet } from '../hooks/mutations'
+import { useCreateWorksheet, useReorderDatabases } from '../hooks/mutations'
+import {
+  staticListStrategy,
+  useDropIndicator,
+  type DropIndicator
+} from '../hooks/use-drop-indicator'
 import {
   databaseSearchQueryUpdated,
   worksheetSelected
@@ -29,6 +45,7 @@ import {
   ContextMenuTrigger
 } from './ui/context-menu'
 import { DatabaseDto } from '@/glue/databases'
+import { DropIndicatorLine } from './DropIndicatorLine'
 
 export function DatabaseExplorer(): ReactElement {
   const dispatch = useAppDispatch()
@@ -43,6 +60,45 @@ export function DatabaseExplorer(): ReactElement {
 
   const filteredDatabases = databases.data.filter((database) =>
     database.name.toLowerCase().includes(databaseSearchQuery.toLowerCase())
+  )
+
+  // Reordering a filtered subset is ambiguous, so dragging only works on the
+  // full list.
+  const isSortingDisabled = databaseSearchQuery.length > 0
+  const reorderDatabases = useReorderDatabases()
+
+  const filteredDatabaseIds = filteredDatabases.map((database) => database.id)
+  const {
+    dropIndicatorFor,
+    handleDragOver,
+    handleDragStart,
+    resetDropIndicator
+  } = useDropIndicator(filteredDatabaseIds)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+
+      resetDropIndicator()
+
+      if (!over || active.id === over.id) {
+        return
+      }
+
+      const databaseIds = databases.data.map((database) => database.id)
+      const orderedIds = arrayMove(
+        databaseIds,
+        databaseIds.indexOf(String(active.id)),
+        databaseIds.indexOf(String(over.id))
+      )
+
+      reorderDatabases.mutate(orderedIds)
+    },
+    [databases.data, reorderDatabases, resetDropIndicator]
   )
 
   const handleEditDatabase = useCallback(
@@ -82,14 +138,31 @@ export function DatabaseExplorer(): ReactElement {
       </div>
 
       <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
-        {filteredDatabases.map((database) => (
-          <DatabaseRow
-            key={database.id}
-            database={database}
-            isExpanded={Boolean(expandedDatabases[database.id])}
-            onEdit={handleEditDatabase}
-          />
-        ))}
+        <DndContext
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          sensors={sensors}
+          onDragCancel={resetDropIndicator}
+          onDragEnd={handleDragEnd}
+          onDragOver={handleDragOver}
+          onDragStart={handleDragStart}
+        >
+          <SortableContext
+            items={filteredDatabaseIds}
+            strategy={staticListStrategy}
+          >
+            {filteredDatabases.map((database, index) => (
+              <DatabaseRow
+                key={database.id}
+                database={database}
+                dropIndicator={dropIndicatorFor(index)}
+                isExpanded={Boolean(expandedDatabases[database.id])}
+                isSortingDisabled={isSortingDisabled}
+                onEdit={handleEditDatabase}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
 
         {filteredDatabases.length === 0 &&
           (databaseSearchQuery ? (
@@ -116,13 +189,17 @@ export function DatabaseExplorer(): ReactElement {
 
 interface DatabaseRowProps {
   database: DatabaseDto
+  dropIndicator: DropIndicator
   isExpanded: boolean
+  isSortingDisabled: boolean
   onEdit: (databaseId: string) => void
 }
 
 function DatabaseRow({
   database,
+  dropIndicator,
   isExpanded,
+  isSortingDisabled,
   onEdit
 }: DatabaseRowProps): ReactElement {
   const dispatch = useAppDispatch()
@@ -130,6 +207,15 @@ function DatabaseRow({
     (state) => state.databaseExplorer.expandedTables
   )
   const schema = useDatabaseSchema(isExpanded ? database.id : undefined)
+
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition
+  } = useSortable({ disabled: isSortingDisabled, id: database.id })
 
   const createWorksheet = useCreateWorksheet()
   const { worksheets: worksheetsCollection } = useCollections()
@@ -172,10 +258,22 @@ function DatabaseRow({
   )
 
   return (
-    <div>
+    // The transform lives on the wrapper so an expanded subtree moves with the
+    // row, while only the row button acts as the drag handle.
+    <div
+      ref={setNodeRef}
+      className={cn('relative', isDragging && 'opacity-50')}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      {dropIndicator && <DropIndicatorLine position={dropIndicator} />}
+
       <ContextMenu>
         <ContextMenuTrigger>
           <Button
+            // While filtering only dragging is off, so skip the sortable
+            // props entirely — spreading them would mark the row
+            // aria-disabled even though clicking still works.
+            {...(isSortingDisabled ? {} : { ...attributes, ...listeners })}
             className="flex justify-start items-center gap-1 -ml-2 px-0 py-1 cursor-default h-5 font-normal w-full"
             size="sm"
             variant="ghost"

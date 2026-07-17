@@ -1,7 +1,8 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 
 import { database } from '@/database'
 import { databasesTable, worksheetsTable } from '@/database/schema'
+import { ApiError } from '@/errors'
 import type {
   ConnectionInfo,
   DatabaseType,
@@ -81,7 +82,8 @@ export class DatabaseService {
           databaseId: updated.databaseId ?? null,
           id: updated.id,
           lastOpenedAt: updated.lastOpenedAt ?? null,
-          name: updated.name
+          name: updated.name,
+          sortOrder: updated.sortOrder ?? null
         }
       }
     }
@@ -123,8 +125,40 @@ export class DatabaseService {
       .select()
       .from(databasesTable)
       .where(isNull(databasesTable.deletedAt))
+      .orderBy(
+        sql`${databasesTable.sortOrder} is null`,
+        asc(databasesTable.sortOrder),
+        asc(databasesTable.createdAt)
+      )
 
     return records.map((record) => this.transformDatabase(record))
+  }
+
+  // Only writes sortOrder — reordering must never touch connectionInfo, which
+  // updateDatabase would re-encrypt.
+  async reorderDatabases(databaseIds: string[]): Promise<DatabaseDto[]> {
+    const records = await database
+      .select({ id: databasesTable.id })
+      .from(databasesTable)
+      .where(
+        and(
+          inArray(databasesTable.id, databaseIds),
+          isNull(databasesTable.deletedAt)
+        )
+      )
+
+    if (records.length !== databaseIds.length) {
+      throw new ApiError(400, 'One or more database ids are unknown.')
+    }
+
+    for (const [index, id] of databaseIds.entries()) {
+      await database
+        .update(databasesTable)
+        .set({ sortOrder: index })
+        .where(eq(databasesTable.id, id))
+    }
+
+    return this.listDatabases()
   }
 
   async updateDatabase(
@@ -200,6 +234,7 @@ export class DatabaseService {
       createdAt: record.createdAt,
       id: record.id,
       name: record.name,
+      sortOrder: record.sortOrder ?? null,
       type: record.type as DatabaseType
     }
   }

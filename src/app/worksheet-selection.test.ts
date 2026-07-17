@@ -13,7 +13,8 @@ function createWorksheet(
     databaseId: null,
     id,
     lastOpenedAt,
-    name: id
+    name: id,
+    sortOrder: null
   }
 }
 

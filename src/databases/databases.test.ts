@@ -488,6 +488,202 @@ describe('PATCH /databases/:id', () => {
   })
 })
 
+async function insertDatabase(options: {
+  createdAt?: number
+  deletedAt?: number
+  name: string
+  sortOrder?: number
+}): Promise<string> {
+  const database = getTestDatabase()
+  const databaseId = crypto.randomUUID()
+
+  await database.run(sql`
+    INSERT INTO databases (id, name, type, connectionInfo, createdAt, deletedAt, sortOrder)
+    VALUES (
+      ${databaseId},
+      ${options.name},
+      'postgres',
+      ${JSON.stringify({
+        host: 'localhost',
+        port: 5432,
+        database: 'testdb',
+        username: 'user',
+        password: 'pass'
+      })},
+      ${options.createdAt ?? Date.now()},
+      ${options.deletedAt ?? null},
+      ${options.sortOrder ?? null}
+    )
+  `)
+
+  return databaseId
+}
+
+describe('GET /databases', () => {
+  let app: Hono
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    app = createApp({ enableLogging: false })
+  })
+
+  it('should order databases by sortOrder', async () => {
+    const firstId = await insertDatabase({
+      createdAt: 1000,
+      name: 'First',
+      sortOrder: 1
+    })
+    const secondId = await insertDatabase({
+      createdAt: 2000,
+      name: 'Second',
+      sortOrder: 0
+    })
+
+    const response = await app.request('/databases')
+
+    expect(response.status).toEqual(200)
+
+    const data = await response.json()
+
+    expect(
+      data.databases.map((database: { id: string; sortOrder: number }) => ({
+        id: database.id,
+        sortOrder: database.sortOrder
+      }))
+    ).toEqual([
+      { id: secondId, sortOrder: 0 },
+      { id: firstId, sortOrder: 1 }
+    ])
+  })
+
+  it('should place databases without a sortOrder last, ordered by createdAt', async () => {
+    const orderedId = await insertDatabase({
+      createdAt: 3000,
+      name: 'Ordered',
+      sortOrder: 0
+    })
+    const newerId = await insertDatabase({ createdAt: 2000, name: 'Newer' })
+    const olderId = await insertDatabase({ createdAt: 1000, name: 'Older' })
+
+    const response = await app.request('/databases')
+
+    expect(response.status).toEqual(200)
+
+    const data = await response.json()
+
+    expect(
+      data.databases.map((database: { id: string }) => database.id)
+    ).toEqual([orderedId, olderId, newerId])
+  })
+})
+
+describe('PUT /databases/order', () => {
+  let app: Hono
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    app = createApp({ enableLogging: false })
+  })
+
+  it('should reorder databases and return the full list in the new order', async () => {
+    const firstId = await insertDatabase({ createdAt: 1000, name: 'First' })
+    const secondId = await insertDatabase({ createdAt: 2000, name: 'Second' })
+    const thirdId = await insertDatabase({ createdAt: 3000, name: 'Third' })
+
+    const response = await app.request('/databases/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseIds: [thirdId, firstId, secondId] })
+    })
+
+    expect(response.status).toEqual(200)
+
+    const data = await response.json()
+
+    expect(
+      data.databases.map((database: { id: string; sortOrder: number }) => ({
+        id: database.id,
+        sortOrder: database.sortOrder
+      }))
+    ).toEqual([
+      { id: thirdId, sortOrder: 0 },
+      { id: firstId, sortOrder: 1 },
+      { id: secondId, sortOrder: 2 }
+    ])
+  })
+
+  it('should persist the new order to storage', async () => {
+    const firstId = await insertDatabase({ createdAt: 1000, name: 'First' })
+    const secondId = await insertDatabase({ createdAt: 2000, name: 'Second' })
+
+    await app.request('/databases/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseIds: [secondId, firstId] })
+    })
+
+    const database = getTestDatabase()
+    const rows = await database.all<{ id: string; sortOrder: number }>(
+      sql`SELECT id, sortOrder FROM databases ORDER BY sortOrder`
+    )
+
+    expect(rows).toEqual([
+      { id: secondId, sortOrder: 0 },
+      { id: firstId, sortOrder: 1 }
+    ])
+  })
+
+  it('should reject unknown database ids', async () => {
+    const knownId = await insertDatabase({ name: 'Known' })
+
+    const response = await app.request('/databases/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseIds: [knownId, crypto.randomUUID()] })
+    })
+
+    expect(response.status).toEqual(400)
+  })
+
+  it('should reject soft-deleted database ids', async () => {
+    const activeId = await insertDatabase({ name: 'Active' })
+    const deletedId = await insertDatabase({
+      deletedAt: Date.now(),
+      name: 'Deleted'
+    })
+
+    const response = await app.request('/databases/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseIds: [activeId, deletedId] })
+    })
+
+    expect(response.status).toEqual(400)
+  })
+
+  it('should reject duplicate database ids', async () => {
+    const databaseId = await insertDatabase({ name: 'Duplicated' })
+
+    const response = await app.request('/databases/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseIds: [databaseId, databaseId] })
+    })
+
+    expect(response.status).toEqual(400)
+  })
+
+  it('should reject an empty list', async () => {
+    const response = await app.request('/databases/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseIds: [] })
+    })
+
+    expect(response.status).toEqual(400)
+  })
+})
+
 describe('POST /connection-tests with a stored password', () => {
   let app: Hono
 

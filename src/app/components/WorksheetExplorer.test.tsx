@@ -22,7 +22,8 @@ const testWorksheet: WorksheetDto = {
   databaseId: null,
   id: 'ws-123',
   lastOpenedAt: null,
-  name: 'Test Worksheet'
+  name: 'Test Worksheet',
+  sortOrder: null
 }
 
 describe('WorksheetExplorer', () => {
@@ -63,7 +64,8 @@ describe('WorksheetExplorer', () => {
       databaseId: null,
       id: 'ws-456',
       lastOpenedAt: null,
-      name: 'Second Worksheet'
+      name: 'Second Worksheet',
+      sortOrder: null
     }
 
     renderWithProviders(<WorksheetExplorer />, {
@@ -210,7 +212,8 @@ describe('WorksheetExplorer', () => {
         databaseId: null,
         id: 'real-db-id',
         lastOpenedAt: null,
-        name: 'Worksheet draft'
+        name: 'Worksheet draft',
+        sortOrder: null
       }
 
       vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)

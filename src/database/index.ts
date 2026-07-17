@@ -32,4 +32,26 @@ export async function initializeDatabase() {
     .catch(() => {
       // Column already exists, ignore error.
     })
+
+  // Add sortOrder column for existing databases that don't have it.
+  await database
+    .run(
+      sql`
+    ALTER TABLE databases ADD COLUMN sortOrder INTEGER
+  `
+    )
+    .catch(() => {
+      // Column already exists, ignore error.
+    })
+
+  // Add sortOrder column for existing worksheets that don't have it.
+  await database
+    .run(
+      sql`
+    ALTER TABLE worksheets ADD COLUMN sortOrder INTEGER
+  `
+    )
+    .catch(() => {
+      // Column already exists, ignore error.
+    })
 }

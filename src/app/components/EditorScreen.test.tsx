@@ -30,6 +30,7 @@ const testDatabase: DatabaseDto = {
   createdAt: 1704067200000,
   id: 'db-123',
   name: 'Test Database',
+  sortOrder: null,
   type: 'postgres'
 }
 

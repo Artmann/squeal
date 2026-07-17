@@ -69,10 +69,17 @@ export class SqliteAdapter implements DatabaseAdapter {
 
         console.log(`  ✓ Query executed successfully\n`)
 
-        return { fields: [], rowCount: info.changes, rows: [], truncated: false }
+        return {
+          fields: [],
+          rowCount: info.changes,
+          rows: [],
+          truncated: false
+        }
       }
 
-      const fields = statement.columns().map((column) => ({ name: column.name }))
+      const fields = statement
+        .columns()
+        .map((column) => ({ name: column.name }))
       const rows: Record<string, unknown>[] = []
       let truncated = false
 

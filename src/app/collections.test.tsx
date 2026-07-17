@@ -23,7 +23,8 @@ const testWorksheet: WorksheetDto = {
   databaseId: null,
   id: 'ws-1',
   lastOpenedAt: null,
-  name: 'Smoke Test Worksheet'
+  name: 'Smoke Test Worksheet',
+  sortOrder: null
 }
 
 function WorksheetNames(): ReactElement {

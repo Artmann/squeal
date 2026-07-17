@@ -5,5 +5,6 @@ export interface DatabaseDto {
   createdAt: number
   id: string
   name: string
+  sortOrder: number | null
   type: DatabaseType
 }

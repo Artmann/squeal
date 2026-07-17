@@ -11,4 +11,5 @@ export interface WorksheetDto {
   id: string
   lastOpenedAt: number | null
   name: string
+  sortOrder: number | null
 }
