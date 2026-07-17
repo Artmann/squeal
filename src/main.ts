@@ -97,6 +97,14 @@ const createWindow = async () => {
 }
 
 app.on('ready', async () => {
+  // The packaged app gets its icon from the bundle, but in development macOS
+  // falls back to the Electron dock icon. The dock label still reads
+  // "Electron" — the OS takes the name from the dev binary's Info.plist,
+  // which only packaging can change.
+  if (!app.isPackaged && process.platform === 'darwin') {
+    app.dock?.setIcon(path.join(app.getAppPath(), 'assets/icons/icon.png'))
+  }
+
   await initializeDatabase()
 
   // safeStorage is only reliable once the app is ready.
