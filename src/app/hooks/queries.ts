@@ -1,5 +1,5 @@
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 import { apiClient } from '../api-client'
@@ -65,6 +65,21 @@ export function useDatabaseSchema(databaseId: string | undefined) {
     },
     enabled: Boolean(databaseId),
     staleTime: Infinity
+  })
+}
+
+// Warms every database's schema in the background so search and expansion are
+// instant. Reuses the same query keys as useDatabaseSchema, so a later
+// per-database read is a cache hit rather than a second request. Results line
+// up by index with databaseIds.
+export function useDatabaseSchemas(databaseIds: string[]) {
+  return useQueries({
+    queries: databaseIds.map((databaseId) => ({
+      queryKey: queryKeys.schema(databaseId),
+      queryFn: () => apiClient.getDatabaseSchema(databaseId),
+      enabled: Boolean(databaseId),
+      staleTime: Infinity
+    }))
   })
 }
 

@@ -21,7 +21,11 @@ import { ReactElement, useCallback } from 'react'
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
-import { useDatabases, useDatabaseSchema } from '../hooks/queries'
+import {
+  useDatabases,
+  useDatabaseSchema,
+  useDatabaseSchemas
+} from '../hooks/queries'
 import { useCreateWorksheet, useReorderDatabases } from '../hooks/mutations'
 import {
   staticListStrategy,
@@ -36,6 +40,7 @@ import { uiActions } from '../store/ui-slice'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import { expandDatabase, expandTable } from '../store/database-explorer-slice'
+import { computeDatabaseMatch, DatabaseMatch } from './database-explorer-search'
 import { SearchInput } from './SearchInput'
 import { Button } from './ui/button'
 import {
@@ -58,22 +63,66 @@ export function DatabaseExplorer(): ReactElement {
     (state) => state.editor.databaseSearchQuery ?? ''
   )
 
-  const filteredDatabases = databases.data.filter((database) =>
-    database.name.toLowerCase().includes(databaseSearchQuery.toLowerCase())
+  const isSearching = databaseSearchQuery.trim().length > 0
+
+  // Prefetch every schema in the background so search and expansion are instant,
+  // and reuse those results as the source for matching tables and columns.
+  const schemaResults = useDatabaseSchemas(
+    databases.data.map((database) => database.id)
   )
+
+  const searchMatches = isSearching
+    ? databases.data
+        .map((database, index) =>
+          computeDatabaseMatch(
+            database,
+            schemaResults[index]?.data,
+            databaseSearchQuery
+          )
+        )
+        .filter((match): match is DatabaseMatch => match !== null)
+    : null
+
+  // A table row shows its schema only when its database spans more than one, so
+  // duplicate table names (common across schemas) stay distinguishable without
+  // adding noise to single-schema databases.
+  const multipleSchemasByDatabaseId = new Map<string, boolean>()
+  databases.data.forEach((database, index) => {
+    const schemaTables = schemaResults[index]?.data?.tables ?? []
+    const schemaNames = new Set(schemaTables.map((table) => table.tableSchema))
+
+    multipleSchemasByDatabaseId.set(database.id, schemaNames.size > 1)
+  })
+
+  const baseRows = searchMatches
+    ? searchMatches.map((match) => ({
+        database: match.database,
+        searchMatch: match
+      }))
+    : databases.data.map((database) => ({ database }))
+
+  const renderedRows: RenderedDatabaseRow[] = baseRows.map((row) => ({
+    ...row,
+    hasMultipleSchemas: multipleSchemasByDatabaseId.get(row.database.id) ?? false
+  }))
+
+  // While a search is settling, some schemas may still be loading, so hold off
+  // on the "no matches" message until they have resolved.
+  const isLoadingSchemas =
+    isSearching && schemaResults.some((result) => result.isLoading)
 
   // Reordering a filtered subset is ambiguous, so dragging only works on the
   // full list.
-  const isSortingDisabled = databaseSearchQuery.length > 0
+  const isSortingDisabled = isSearching
   const reorderDatabases = useReorderDatabases()
 
-  const filteredDatabaseIds = filteredDatabases.map((database) => database.id)
+  const renderedDatabaseIds = renderedRows.map((row) => row.database.id)
   const {
     dropIndicatorFor,
     handleDragOver,
     handleDragStart,
     resetDropIndicator
-  } = useDropIndicator(filteredDatabaseIds)
+  } = useDropIndicator(renderedDatabaseIds)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -148,26 +197,29 @@ export function DatabaseExplorer(): ReactElement {
           onDragStart={handleDragStart}
         >
           <SortableContext
-            items={filteredDatabaseIds}
+            items={renderedDatabaseIds}
             strategy={staticListStrategy}
           >
-            {filteredDatabases.map((database, index) => (
+            {renderedRows.map((row, index) => (
               <DatabaseRow
-                key={database.id}
-                database={database}
+                key={row.database.id}
+                database={row.database}
                 dropIndicator={dropIndicatorFor(index)}
-                isExpanded={Boolean(expandedDatabases[database.id])}
+                hasMultipleSchemas={row.hasMultipleSchemas}
+                isExpanded={Boolean(expandedDatabases[row.database.id])}
                 isSortingDisabled={isSortingDisabled}
+                searchMatch={row.searchMatch}
                 onEdit={handleEditDatabase}
               />
             ))}
           </SortableContext>
         </DndContext>
 
-        {filteredDatabases.length === 0 &&
-          (databaseSearchQuery ? (
+        {renderedRows.length === 0 &&
+          !isLoadingSchemas &&
+          (isSearching ? (
             <p className="text-xs text-muted-foreground mt-2 px-1">
-              No databases match “{databaseSearchQuery}”.
+              No matches for “{databaseSearchQuery}”.
             </p>
           ) : (
             <div className="text-xs text-muted-foreground mt-2 px-1 leading-relaxed">
@@ -187,26 +239,45 @@ export function DatabaseExplorer(): ReactElement {
   )
 }
 
+interface RenderedDatabaseRow {
+  database: DatabaseDto
+  hasMultipleSchemas: boolean
+  searchMatch?: DatabaseMatch
+}
+
 interface DatabaseRowProps {
   database: DatabaseDto
   dropIndicator: DropIndicator
+  hasMultipleSchemas: boolean
   isExpanded: boolean
   isSortingDisabled: boolean
   onEdit: (databaseId: string) => void
+  searchMatch?: DatabaseMatch
 }
 
 function DatabaseRow({
   database,
   dropIndicator,
+  hasMultipleSchemas,
   isExpanded,
   isSortingDisabled,
-  onEdit
+  onEdit,
+  searchMatch
 }: DatabaseRowProps): ReactElement {
   const dispatch = useAppDispatch()
   const expandedTables = useAppSelector(
     (state) => state.databaseExplorer.expandedTables
   )
-  const schema = useDatabaseSchema(isExpanded ? database.id : undefined)
+
+  // While searching, the tables come from the precomputed match and the row is
+  // forced open to reveal them, so the lazy per-row fetch is skipped.
+  const schema = useDatabaseSchema(
+    searchMatch ? undefined : isExpanded ? database.id : undefined
+  )
+
+  const isDatabaseExpanded = searchMatch
+    ? searchMatch.expandDatabase || isExpanded
+    : isExpanded
 
   const {
     attributes,
@@ -220,7 +291,9 @@ function DatabaseRow({
   const createWorksheet = useCreateWorksheet()
   const { worksheets: worksheetsCollection } = useCollections()
 
-  const tables = schema.data?.tables ?? []
+  const tableEntries = searchMatch
+    ? searchMatch.tables
+    : schema.data?.tables ?? []
 
   const handleQueryTable = useCallback(
     (tableName: string) => {
@@ -282,7 +355,7 @@ function DatabaseRow({
             <ChevronRight
               className={cn(
                 'size-3 transition-transform duration-150',
-                isExpanded ? 'rotate-90' : ''
+                isDatabaseExpanded ? 'rotate-90' : ''
               )}
             />
             <Database className="size-3" />
@@ -301,10 +374,13 @@ function DatabaseRow({
         </ContextMenuContent>
       </ContextMenu>
 
-      {isExpanded && (
+      {isDatabaseExpanded && (
         <div className="flex flex-col gap-0.5 pl-4 pt-1">
-          {tables.map((table) => {
-            const tableKey = `${database.id}-${table.tableName}`
+          {tableEntries.map((table) => {
+            // Table names repeat across schemas, so the key must include the
+            // schema — otherwise same-named tables collide and expanding one
+            // toggles them all.
+            const tableKey = `${database.id}-${table.tableSchema}-${table.tableName}`
             const isTableExpanded = Boolean(expandedTables[tableKey])
 
             return (
@@ -326,8 +402,14 @@ function DatabaseRow({
                           isTableExpanded ? 'rotate-90' : ''
                         )}
                       />
-                      <Table2Icon className="size-3" />
-                      <span>{table.tableName}</span>
+                      <Table2Icon className="size-3 shrink-0" />
+                      <span className="truncate">{table.tableName}</span>
+
+                      {hasMultipleSchemas && (
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {table.tableSchema}
+                        </span>
+                      )}
                     </Button>
                   </ContextMenuTrigger>
 
