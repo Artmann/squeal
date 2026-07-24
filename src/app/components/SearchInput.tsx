@@ -18,13 +18,13 @@ export const SearchInput = memo(function SearchInput({
   return (
     <div className="relative">
       <Input
-        className={cn('h-7 pl-7 py-0 text-[12px]', className)}
+        className={cn('h-6 pl-6 py-0 text-[11px]', className)}
         placeholder="Search..."
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
 
-      <SearchIcon className="absolute size-3 left-3 top-1/2 -translate-y-1/2" />
+      <SearchIcon className="absolute size-3 left-2 top-1/2 -translate-y-1/2" />
     </div>
   )
 })
