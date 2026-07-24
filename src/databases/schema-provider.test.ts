@@ -150,7 +150,7 @@ describe('transformToSchemaInfo', () => {
     expect(result.tables[0].columns[0].isPrimaryKey).toEqual(true)
   })
 
-  it('sorts tables by schema and name', () => {
+  it('sorts tables by name across schemas', () => {
     const columnRows: ColumnRow[] = [
       {
         column_default: null,
@@ -186,8 +186,41 @@ describe('transformToSchemaInfo', () => {
 
     const result = transformToSchemaInfo('testdb', columnRows, [])
 
-    expect(result.tables.map((t) => `${t.tableSchema}.${t.tableName}`)).toEqual(
-      ['admin.banana', 'public.apple', 'public.zebra']
+    // 'banana' lives in another schema but still slots alphabetically by name
+    // instead of being grouped after its schema.
+    expect(result.tables.map((table) => `${table.tableSchema}.${table.tableName}`)).toEqual(
+      ['public.apple', 'admin.banana', 'public.zebra']
+    )
+  })
+
+  it('falls back to schema order for identically named tables', () => {
+    const columnRows: ColumnRow[] = [
+      {
+        column_default: null,
+        column_name: 'id',
+        data_type: 'integer',
+        is_nullable: 'NO',
+        is_primary_key: true,
+        ordinal_position: 1,
+        table_name: 'orders',
+        table_schema: 'public'
+      },
+      {
+        column_default: null,
+        column_name: 'id',
+        data_type: 'integer',
+        is_nullable: 'NO',
+        is_primary_key: true,
+        ordinal_position: 1,
+        table_name: 'orders',
+        table_schema: 'archive'
+      }
+    ]
+
+    const result = transformToSchemaInfo('testdb', columnRows, [])
+
+    expect(result.tables.map((table) => `${table.tableSchema}.${table.tableName}`)).toEqual(
+      ['archive.orders', 'public.orders']
     )
   })
 

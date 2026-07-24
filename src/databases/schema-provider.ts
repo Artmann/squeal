@@ -153,14 +153,18 @@ export function transformToSchemaInfo(
     }
   }
 
+  // Sort by table name first so the explorer shows one flat alphabetical list.
+  // A database can spread tables across several schemas, and the explorer does
+  // not surface the schema, so grouping by schema would look out of order.
+  // Schema is only the tiebreaker for identically named tables.
   const tables = Array.from(tableMap.values()).sort((a, b) => {
-    const schemaCompare = a.tableSchema.localeCompare(b.tableSchema)
+    const nameCompare = a.tableName.localeCompare(b.tableName)
 
-    if (schemaCompare !== 0) {
-      return schemaCompare
+    if (nameCompare !== 0) {
+      return nameCompare
     }
 
-    return a.tableName.localeCompare(b.tableName)
+    return a.tableSchema.localeCompare(b.tableSchema)
   })
 
   return {
