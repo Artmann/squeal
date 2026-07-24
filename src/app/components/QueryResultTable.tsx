@@ -39,7 +39,12 @@ export const QueryResultTable = memo(function QueryResultTable({
     scrollRef.current?.scrollTo(0, 0)
   }, [page])
 
-  const fieldNames = result.fields.map((field: any) => field.name)
+  // Fall back to the row keys if the adapter returned rows without field
+  // metadata, so a fields/rows desync can never blank out the columns.
+  const fieldNames =
+    result.fields.length > 0
+      ? result.fields.map((field: any) => field.name)
+      : Object.keys(result.rows[0] ?? {})
   const totalRows: number = result.rows.length
   const pageCount = Math.ceil(totalRows / pageSize)
   const pageRows = result.rows.slice(page * pageSize, (page + 1) * pageSize)

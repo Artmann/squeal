@@ -127,7 +127,12 @@ export class PostgresAdapter implements DatabaseAdapter {
         const batchSize = Math.min(1_000, maxResultRows + 1 - rows.length)
         const batch = await readBatch(cursor, batchSize)
 
-        lastResult = batch.result
+        // The terminal read past the last row returns no driver result, so only
+        // adopt a batch that actually carried one — otherwise the fields and
+        // row count captured from the real data would be lost.
+        if (batch.result) {
+          lastResult = batch.result
+        }
 
         if (batch.rows.length === 0) {
           break
@@ -194,7 +199,10 @@ export class PostgresAdapter implements DatabaseAdapter {
 function readBatch(
   cursor: Cursor<Record<string, unknown>>,
   count: number
-): Promise<{ result: DriverQueryResult; rows: Record<string, unknown>[] }> {
+): Promise<{
+  result: DriverQueryResult | undefined
+  rows: Record<string, unknown>[]
+}> {
   return new Promise((resolve, reject) => {
     cursor.read(count, (error, rows, result) => {
       if (error) {

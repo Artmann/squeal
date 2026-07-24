@@ -36,6 +36,7 @@ vi.mock('pg', () => {
 
 vi.mock('pg-cursor', () => {
   class FakeCursor {
+    private done = false
     private readonly fixture: CursorFixture
     private served = 0
 
@@ -49,7 +50,7 @@ vi.mock('pg-cursor', () => {
       callback: (
         error: Error | undefined,
         rows: Record<string, unknown>[],
-        result: {
+        result?: {
           fields: { name: string }[]
           rowCount: number | null
           rows: never[]
@@ -59,11 +60,16 @@ vi.mock('pg-cursor', () => {
       cursorState.readRequests.push(count)
 
       if (this.fixture.error) {
-        callback(this.fixture.error, [], {
-          fields: this.fixture.fields,
-          rowCount: null,
-          rows: []
-        })
+        callback(this.fixture.error, [])
+
+        return
+      }
+
+      // Once the portal completes, pg-cursor answers any further read with an
+      // empty batch and no result object. This is the terminal read that used
+      // to clobber the captured fields.
+      if (this.done) {
+        callback(undefined, [])
 
         return
       }
@@ -72,13 +78,19 @@ vi.mock('pg-cursor', () => {
 
       this.served += batch.length
 
-      // The driver only learns the row count once the statement completes,
-      // which the adapter observes as an empty batch.
-      const exhausted = batch.length === 0
+      // A read returning fewer rows than requested exhausts the portal, so the
+      // driver attaches CommandComplete — the fields and the final row count —
+      // to it and the cursor is done. A full batch suspends with the count
+      // still unknown.
+      const completed = batch.length < count
+
+      if (completed) {
+        this.done = true
+      }
 
       callback(undefined, batch, {
         fields: this.fixture.fields,
-        rowCount: exhausted ? (this.fixture.rowCount ?? this.served) : null,
+        rowCount: completed ? (this.fixture.rowCount ?? this.served) : null,
         rows: []
       })
     }
@@ -178,6 +190,51 @@ describe('PostgresAdapter', () => {
       expect(result).toEqual({
         fields: [{ name: 'letter' }, { name: 'num' }],
         rowCount: 3,
+        rows,
+        truncated: false
+      })
+    })
+
+    it('keeps the column fields when the result completes inside one batch', async () => {
+      // Regression: a completed result smaller than the batch cap makes the
+      // adapter read once more, and that terminal read carries no driver
+      // result. The captured fields must survive it, or the grid renders rows
+      // with no columns.
+      const rows = Array.from({ length: 100 }, (_, index) => ({
+        id: index + 1,
+        name: `Employer ${index + 1}`
+      }))
+
+      cursorState.fixtures.push({
+        fields: [{ name: 'id' }, { name: 'name' }],
+        rows
+      })
+
+      const adapter = new PostgresAdapter(connectionInfo)
+      const result = await adapter.runQuery('SELECT * FROM Employers LIMIT 100')
+
+      expect(result).toEqual({
+        fields: [{ name: 'id' }, { name: 'name' }],
+        rowCount: 100,
+        rows,
+        truncated: false
+      })
+    })
+
+    it('keeps the column fields when the row count is an exact batch multiple', async () => {
+      // The other path: a full batch suspends the portal, so completion (and
+      // the fields) arrive on the trailing empty read instead. Both paths must
+      // preserve the fields.
+      const rows = Array.from({ length: 1_000 }, (_, index) => ({ id: index }))
+
+      cursorState.fixtures.push({ fields: [{ name: 'id' }], rows })
+
+      const adapter = new PostgresAdapter(connectionInfo)
+      const result = await adapter.runQuery('SELECT id FROM batch_table')
+
+      expect(result).toEqual({
+        fields: [{ name: 'id' }],
+        rowCount: 1_000,
         rows,
         truncated: false
       })
