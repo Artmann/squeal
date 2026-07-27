@@ -2,7 +2,15 @@ import { tokenize } from '@/app/sql-parser/tokenizer'
 
 import type { SchemaInfo } from './adapter'
 
+const missingColumnPattern =
+  /column "([^"]+)"(?: of relation "[^"]+")? does not exist/
 const missingRelationPattern = /relation "([^"]+)" does not exist/
+
+export function extractMissingColumn(errorMessage: string): string | null {
+  const match = errorMessage.match(missingColumnPattern)
+
+  return match ? match[1] : null
+}
 
 export function extractMissingRelation(errorMessage: string): string | null {
   const match = errorMessage.match(missingRelationPattern)
@@ -19,6 +27,26 @@ interface Replacement {
   end: number
   start: number
   text: string
+}
+
+export function rewriteWithQuotedColumns(
+  sql: string,
+  schema: SchemaInfo,
+  missingColumn: string
+): string | null {
+  const columnName = findColumnMatch(schema, missingColumn)
+
+  if (!columnName) {
+    return null
+  }
+
+  const replacements = findColumnReplacements(sql, missingColumn, columnName)
+
+  if (replacements.length === 0) {
+    return null
+  }
+
+  return applyReplacements(sql, replacements)
 }
 
 export function rewriteWithQuotedIdentifiers(
@@ -53,6 +81,57 @@ function applyReplacements(sql: string, replacements: Replacement[]): string {
   }
 
   return result
+}
+
+function findColumnMatch(
+  schema: SchemaInfo,
+  missingColumn: string
+): string | undefined {
+  const target = missingColumn.toLowerCase()
+  const matches = new Set<string>()
+
+  for (const table of schema.tables) {
+    for (const column of table.columns) {
+      if (column.columnName.toLowerCase() === target) {
+        matches.add(column.columnName)
+      }
+    }
+  }
+
+  // Only rewrite when the correct casing is unambiguous — different tables
+  // spelling the same column differently would make the choice a guess.
+  if (matches.size !== 1) {
+    return undefined
+  }
+
+  const [columnName] = matches
+
+  return columnName
+}
+
+function findColumnReplacements(
+  sql: string,
+  missingColumn: string,
+  columnName: string
+): Replacement[] {
+  const tokens = tokenize(sql)
+  const replacements: Replacement[] = []
+
+  for (const token of tokens) {
+    if (!isUnquotedIdentifierFor(token, missingColumn)) {
+      continue
+    }
+
+    // Quote every unquoted match — even one already spelled correctly, since
+    // Postgres folds unquoted identifiers to lowercase and lost the casing.
+    replacements.push({
+      end: token.end,
+      start: token.start,
+      text: `"${columnName}"`
+    })
+  }
+
+  return replacements
 }
 
 function findReplacements(

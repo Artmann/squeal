@@ -107,7 +107,11 @@ vi.mock('pg-cursor', () => {
 
 import { Client } from 'pg'
 
-import { PostgresAdapter } from './postgres-adapter'
+import {
+  connectWithRetry,
+  isTooManyClientsError,
+  PostgresAdapter
+} from './postgres-adapter'
 
 const connectionInfo = {
   database: 'testdb',
@@ -362,6 +366,57 @@ describe('PostgresAdapter', () => {
       expect(cursorState.closeCount).toEqual(2)
     })
 
+    it('retries with quoted identifiers when a column is missing', async () => {
+      cursorState.fixtures.push(
+        {
+          error: new Error('column "platformid" does not exist'),
+          fields: [],
+          rows: []
+        },
+        { fields: [{ name: 'PlatformId' }], rows: [{ PlatformId: 'abc' }] }
+      )
+
+      mockQuery.mockImplementation((input: unknown) => {
+        if (typeof input === 'string') {
+          return Promise.resolve({
+            rows: input.includes('referenced')
+              ? []
+              : [
+                  {
+                    column_default: null,
+                    column_name: 'PlatformId',
+                    data_type: 'uuid',
+                    is_nullable: 'NO',
+                    is_primary_key: false,
+                    ordinal_position: 2,
+                    table_name: 'Employees',
+                    table_schema: 'platform'
+                  }
+                ]
+          })
+        }
+
+        return input
+      })
+
+      const adapter = new PostgresAdapter(connectionInfo)
+      const result = await adapter.runQuery(
+        "SELECT * FROM Employees WHERE PlatformId = 'abc'"
+      )
+
+      expect(cursorState.createdWith).toEqual([
+        "SELECT * FROM Employees WHERE PlatformId = 'abc'",
+        'SELECT * FROM Employees WHERE "PlatformId" = \'abc\''
+      ])
+      expect(result).toEqual({
+        fields: [{ name: 'PlatformId' }],
+        rowCount: 1,
+        rows: [{ PlatformId: 'abc' }],
+        truncated: false
+      })
+      expect(cursorState.closeCount).toEqual(2)
+    })
+
     it('closes the cursor and connection even when the query fails', async () => {
       cursorState.fixtures.push({
         error: new Error('Query failed'),
@@ -454,5 +509,91 @@ describe('PostgresAdapter', () => {
         user: 'testuser'
       })
     })
+  })
+})
+
+describe('isTooManyClientsError', () => {
+  it('matches the Postgres too-many-clients message', () => {
+    expect(
+      isTooManyClientsError(new Error('sorry, too many clients already'))
+    ).toEqual(true)
+  })
+
+  it('matches when wrapped in an AggregateError', () => {
+    const aggregate = new AggregateError([
+      new Error('connect ECONNREFUSED'),
+      new Error('sorry, too many clients already')
+    ])
+
+    expect(isTooManyClientsError(aggregate)).toEqual(true)
+  })
+
+  it('does not match unrelated errors', () => {
+    expect(
+      isTooManyClientsError(new Error('relation "users" does not exist'))
+    ).toEqual(false)
+  })
+})
+
+describe('connectWithRetry', () => {
+  function retryOptions(sleep: (milliseconds: number) => Promise<void>) {
+    return {
+      delays: [1, 2, 3],
+      isRetryable: isTooManyClientsError,
+      onExhausted: () => new Error('out of slots'),
+      sleep
+    }
+  }
+
+  const tooMany = () => new Error('sorry, too many clients already')
+
+  it('returns the first successful connection without sleeping', async () => {
+    const sleep = vi.fn(async () => undefined)
+    const connect = vi.fn(async () => 'connection')
+
+    const result = await connectWithRetry(connect, retryOptions(sleep))
+
+    expect(result).toEqual('connection')
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('retries a retryable failure then succeeds, backing off each time', async () => {
+    const sleep = vi.fn(async () => undefined)
+    const connect = vi
+      .fn()
+      .mockRejectedValueOnce(tooMany())
+      .mockRejectedValueOnce(tooMany())
+      .mockResolvedValueOnce('connection')
+
+    const result = await connectWithRetry(connect, retryOptions(sleep))
+
+    expect(result).toEqual('connection')
+    expect(connect).toHaveBeenCalledTimes(3)
+    expect(sleep.mock.calls).toEqual([[1], [2]])
+  })
+
+  it('propagates a non-retryable error immediately', async () => {
+    const sleep = vi.fn(async () => undefined)
+    const connect = vi
+      .fn()
+      .mockRejectedValue(new Error('password authentication failed'))
+
+    await expect(
+      connectWithRetry(connect, retryOptions(sleep))
+    ).rejects.toThrow('password authentication failed')
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('throws the exhausted error after using every retry', async () => {
+    const sleep = vi.fn(async () => undefined)
+    const connect = vi.fn().mockRejectedValue(tooMany())
+
+    await expect(
+      connectWithRetry(connect, retryOptions(sleep))
+    ).rejects.toThrow('out of slots')
+    expect(connect).toHaveBeenCalledTimes(4)
+    expect(sleep).toHaveBeenCalledTimes(3)
   })
 })

@@ -8,7 +8,9 @@ import Cursor from 'pg-cursor'
 import { maxResultRows } from './adapter'
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
+  extractMissingColumn,
   extractMissingRelation,
+  rewriteWithQuotedColumns,
   rewriteWithQuotedIdentifiers
 } from './postgres-identifier-fixer'
 import {
@@ -69,45 +71,109 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async runQuery(query: string): Promise<QueryResult> {
-    const client = new Client(createClientConfig(this.connectionInfo))
+    const client = await this.acquireConnection()
+
+    this.activeClient = client
+
+    console.log('Connected to database')
 
     try {
-      await client.connect()
+      // Postgres folds unquoted identifiers to lowercase, so a query written
+      // with the real mixed-case table or column names fails. Retry with those
+      // identifiers quoted, rewriting one at a time — Postgres only reports the
+      // first offending identifier — until the query runs or nothing is left to
+      // fix. The schema is fetched once and reused; the attempted set stops the
+      // loop the moment a rewrite makes no progress.
+      let currentQuery = query
+      let schema: SchemaInfo | undefined
+      const attempted = new Set<string>()
 
-      this.activeClient = client
+      for (;;) {
+        try {
+          return await this.executeQuery(client, currentQuery)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
 
-      console.log('Connected to database')
+          // Columns first: "column "x" of relation "y" does not exist" is a
+          // column problem, yet its message also matches the relation pattern.
+          const missingColumn = extractMissingColumn(message)
+          const missingRelation = missingColumn
+            ? null
+            : extractMissingRelation(message)
 
-      try {
-        return await this.executeQuery(client, query)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        const missingRelation = extractMissingRelation(message)
+          if (!missingColumn && !missingRelation) {
+            throw error
+          }
 
-        if (!missingRelation) {
-          throw error
+          schema ??= await this.getSchemaWithClient(client)
+
+          let rewritten: string | null = null
+
+          if (missingColumn) {
+            rewritten = rewriteWithQuotedColumns(
+              currentQuery,
+              schema,
+              missingColumn
+            )
+          } else if (missingRelation) {
+            rewritten = rewriteWithQuotedIdentifiers(
+              currentQuery,
+              schema,
+              missingRelation
+            )
+          }
+
+          if (!rewritten || attempted.has(rewritten)) {
+            throw error
+          }
+
+          console.log(`  ↻ Retrying with quoted identifiers:\n${rewritten}\n`)
+
+          attempted.add(rewritten)
+          currentQuery = rewritten
         }
-
-        const schema = await this.getSchemaWithClient(client)
-        const rewritten = rewriteWithQuotedIdentifiers(
-          query,
-          schema,
-          missingRelation
-        )
-
-        if (!rewritten) {
-          throw error
-        }
-
-        console.log(`  ↻ Retrying with quoted identifiers:\n${rewritten}\n`)
-
-        return await this.executeQuery(client, rewritten)
       }
     } finally {
       this.activeClient = null
 
       await client.end()
     }
+  }
+
+  // Connecting can transiently fail with "too many clients already" when the
+  // server is momentarily at its connection cap (a busy neighbour, a spike of
+  // background jobs). Retry a few times with backoff before surfacing a clear,
+  // actionable error instead of the raw driver message.
+  private async acquireConnection(): Promise<Client> {
+    return connectWithRetry(
+      async () => {
+        const client = new Client(createClientConfig(this.connectionInfo))
+
+        try {
+          await client.connect()
+
+          return client
+        } catch (error) {
+          // A client that failed to connect can't be reused; drop it before
+          // the next attempt so we never leak a half-open connection.
+          try {
+            await client.end()
+          } catch {
+            // Cleanup is best-effort; the original error matters more.
+          }
+
+          throw error
+        }
+      },
+      {
+        delays: connectionRetryDelays,
+        isRetryable: isTooManyClientsError,
+        onExhausted: () =>
+          new Error(
+            `Can't connect to "${this.connectionInfo.database}" right now — the database server is busy with too many open connections. Please try again in a moment.`
+          )
+      }
+    )
   }
 
   private async executeQuery(
@@ -214,6 +280,59 @@ function readBatch(
       resolve({ result, rows })
     })
   })
+}
+
+// Backoff between connection attempts when the server reports it is full. The
+// count of entries is the number of retries after the initial attempt.
+const connectionRetryDelays = [250, 750, 1500]
+
+// Retries a connection while it fails with a retryable error, backing off
+// between attempts, and returns the first successful connection. A
+// non-retryable error propagates immediately; exhausting the retries throws
+// the caller-provided error. Generic over the connection type so it can be
+// unit-tested without a real driver.
+export async function connectWithRetry<Connection>(
+  connect: () => Promise<Connection>,
+  options: {
+    delays: number[]
+    isRetryable: (error: unknown) => boolean
+    onExhausted: (error: unknown) => Error
+    sleep?: (milliseconds: number) => Promise<void>
+  }
+): Promise<Connection> {
+  const sleep =
+    options.sleep ??
+    ((milliseconds) =>
+      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await connect()
+    } catch (error) {
+      if (!options.isRetryable(error)) {
+        throw error
+      }
+
+      if (attempt >= options.delays.length) {
+        throw options.onExhausted(error)
+      }
+
+      await sleep(options.delays[attempt])
+    }
+  }
+}
+
+export function isTooManyClientsError(error: unknown): boolean {
+  const messages =
+    error instanceof AggregateError
+      ? error.errors.map((inner) =>
+          inner instanceof Error ? inner.message : String(inner)
+        )
+      : [error instanceof Error ? error.message : String(error)]
+
+  return messages.some((message) =>
+    message.toLowerCase().includes('too many clients')
+  )
 }
 
 function createClientConfig(info: PostgresConnectionInfo): ClientConfig {
