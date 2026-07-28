@@ -3,9 +3,11 @@ import { sql } from 'drizzle-orm'
 import type { Hono } from 'hono'
 
 import {
+  authorizeApp,
   getTestDatabase,
   resetTestDatabase,
-  setupApiMocks
+  setupApiMocks,
+  testApiToken
 } from '@/test/api-test-helper'
 
 setupApiMocks()
@@ -17,7 +19,7 @@ describe('GET /queries', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should return an empty list when no queries exist', async () => {
@@ -56,7 +58,7 @@ describe('GET /queries/:id', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should return a specific query', async () => {
@@ -141,7 +143,7 @@ describe('POST /queries', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should create a query and return it', async () => {

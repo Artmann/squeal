@@ -3,10 +3,12 @@ import { sql } from 'drizzle-orm'
 import type { Hono } from 'hono'
 
 import {
+  authorizeApp,
   getTestDatabase,
   mockAdapterConfig,
   resetTestDatabase,
   setupApiMocks,
+  testApiToken,
   testEncryptionPrefix
 } from '@/test/api-test-helper'
 
@@ -19,7 +21,7 @@ describe('POST /connection-tests', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should return success when connection succeeds', async () => {
@@ -87,7 +89,7 @@ describe('POST /databases', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should create a database and return it', async () => {
@@ -221,7 +223,7 @@ describe('GET /databases/:id/schema', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should return the schema for a database', async () => {
@@ -327,7 +329,7 @@ describe('PATCH /databases/:id', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should update a database', async () => {
@@ -524,7 +526,7 @@ describe('GET /databases', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should order databases by sortOrder', async () => {
@@ -582,7 +584,7 @@ describe('PUT /databases/order', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should reorder databases and return the full list in the new order', async () => {
@@ -689,7 +691,7 @@ describe('POST /connection-tests with a stored password', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should merge the stored password when the request omits it', async () => {

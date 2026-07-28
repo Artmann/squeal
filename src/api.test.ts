@@ -36,6 +36,19 @@ describe('authentication', () => {
     })
   })
 
+  it('rejects a wrong token of a different length', async () => {
+    const response = await app.request('/databases', {
+      headers: {
+        Authorization: 'Bearer a-much-longer-token-than-the-configured-one'
+      }
+    })
+
+    expect(response.status).toEqual(401)
+    expect(await response.json()).toEqual({
+      error: { message: 'Unauthorized', status: 401 }
+    })
+  })
+
   it('accepts requests with the correct token', async () => {
     const response = await app.request('/databases', {
       headers: { Authorization: 'Bearer secret-token' }
@@ -49,15 +62,9 @@ describe('authentication', () => {
     const response = await app.request('/health')
 
     expect(response.status).toEqual(200)
-    expect(await response.json()).toEqual({ status: 'ok' })
-  })
-
-  it('does not require a token when none is configured', async () => {
-    const openApp = createApp({ enableLogging: false })
-
-    const response = await openApp.request('/databases')
-
-    expect(response.status).toEqual(200)
-    expect(await response.json()).toEqual({ databases: [] })
+    expect(await response.json()).toEqual({
+      encryptionAvailable: true,
+      status: 'ok'
+    })
   })
 })
