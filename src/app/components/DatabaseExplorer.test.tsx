@@ -12,6 +12,7 @@ import { DatabaseExplorer } from './DatabaseExplorer'
 vi.mock('../api-client', () => ({
   apiClient: {
     createWorksheet: vi.fn(),
+    deleteDatabase: vi.fn(),
     getDatabases: vi.fn(async () => []),
     getQueries: vi.fn(async () => []),
     getWorksheets: vi.fn(async () => []),
@@ -229,6 +230,43 @@ describe('DatabaseExplorer', () => {
     await waitFor(() => {
       expect(store.getState().editor.openWorksheetId).toEqual('ws-users')
     })
+  })
+
+  it('deletes a database after confirming via the action toast', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.deleteDatabase).mockResolvedValue(undefined)
+
+    renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
+
+    fireEvent.contextMenu(screen.getByText('Test Database'))
+
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+
+    // The action toast asks for confirmation before anything is deleted.
+    expect(apiClient.deleteDatabase).not.toHaveBeenCalled()
+    expect(await screen.findByText('Delete "Test Database"?')).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => {
+      expect(apiClient.deleteDatabase).toHaveBeenCalledWith('db-123')
+    })
+  })
+
+  it('does not delete when the confirmation toast is ignored', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.deleteDatabase).mockClear()
+
+    renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
+
+    fireEvent.contextMenu(screen.getByText('Test Database'))
+
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+
+    expect(await screen.findByText('Delete "Test Database"?')).toBeVisible()
+    expect(apiClient.deleteDatabase).not.toHaveBeenCalled()
   })
 
   it('opens the create database screen from the add button', async () => {

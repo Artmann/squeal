@@ -53,6 +53,18 @@ export function useQueriesList() {
   )
 }
 
+// Whether the OS keychain can encrypt stored connection secrets. Fetched once
+// per session — it only changes with the OS environment.
+export function useEncryptionAvailable(): boolean {
+  const health = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => apiClient.getHealth(),
+    staleTime: Infinity
+  })
+
+  return health.data?.encryptionAvailable ?? true
+}
+
 export function useDatabaseSchema(databaseId: string | undefined) {
   return useQuery<SchemaInfo>({
     queryKey: databaseId ? queryKeys.schema(databaseId) : ['schema', 'noop'],

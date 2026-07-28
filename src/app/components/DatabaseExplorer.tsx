@@ -15,7 +15,8 @@ import {
   Pencil,
   Plus,
   SearchIcon,
-  Table2Icon
+  Table2Icon,
+  Trash2
 } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -26,7 +27,11 @@ import {
   useDatabaseSchema,
   useDatabaseSchemas
 } from '../hooks/queries'
-import { useCreateWorksheet, useReorderDatabases } from '../hooks/mutations'
+import {
+  useCreateWorksheet,
+  useDeleteDatabase,
+  useReorderDatabases
+} from '../hooks/mutations'
 import {
   staticListStrategy,
   useDropIndicator,
@@ -103,7 +108,8 @@ export function DatabaseExplorer(): ReactElement {
 
   const renderedRows: RenderedDatabaseRow[] = baseRows.map((row) => ({
     ...row,
-    hasMultipleSchemas: multipleSchemasByDatabaseId.get(row.database.id) ?? false
+    hasMultipleSchemas:
+      multipleSchemasByDatabaseId.get(row.database.id) ?? false
   }))
 
   // While a search is settling, some schemas may still be loading, so hold off
@@ -155,6 +161,38 @@ export function DatabaseExplorer(): ReactElement {
       dispatch(uiActions.openEditDatabase(databaseId))
     },
     [dispatch]
+  )
+
+  const deleteDatabase = useDeleteDatabase()
+
+  const handleDeleteDatabase = useCallback(
+    (database: DatabaseDto) => {
+      // Deleting purges the stored secret, so it asks for confirmation via an
+      // action toast — ignoring it is a safe no.
+      toast(`Delete "${database.name}"?`, {
+        action: {
+          label: 'Delete',
+          onClick: () => {
+            deleteDatabase.mutate(database.id, {
+              onError: (error) => {
+                const message =
+                  error instanceof Error ? error.message : 'Unknown error'
+
+                toast.error('Failed to delete database', {
+                  description: message
+                })
+              },
+              onSuccess: () => {
+                toast.success(`Deleted "${database.name}"`)
+              }
+            })
+          }
+        },
+        description:
+          'The stored connection details, including its password, will be removed. Worksheets and query history are kept.'
+      })
+    },
+    [deleteDatabase]
   )
 
   const handleCreateDatabase = useCallback(() => {
@@ -209,6 +247,7 @@ export function DatabaseExplorer(): ReactElement {
                 isExpanded={Boolean(expandedDatabases[row.database.id])}
                 isSortingDisabled={isSortingDisabled}
                 searchMatch={row.searchMatch}
+                onDelete={handleDeleteDatabase}
                 onEdit={handleEditDatabase}
               />
             ))}
@@ -251,6 +290,7 @@ interface DatabaseRowProps {
   hasMultipleSchemas: boolean
   isExpanded: boolean
   isSortingDisabled: boolean
+  onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
   searchMatch?: DatabaseMatch
 }
@@ -261,6 +301,7 @@ function DatabaseRow({
   hasMultipleSchemas,
   isExpanded,
   isSortingDisabled,
+  onDelete,
   onEdit,
   searchMatch
 }: DatabaseRowProps): ReactElement {
@@ -293,7 +334,7 @@ function DatabaseRow({
 
   const tableEntries = searchMatch
     ? searchMatch.tables
-    : schema.data?.tables ?? []
+    : (schema.data?.tables ?? [])
 
   const handleQueryTable = useCallback(
     (tableName: string) => {
@@ -370,6 +411,14 @@ function DatabaseRow({
           >
             <Pencil className="size-3" />
             Edit
+          </ContextMenuItem>
+
+          <ContextMenuItem
+            className="flex items-center gap-2 min-w-32 text-xs text-destructive focus:text-destructive"
+            onClick={() => onDelete(database)}
+          >
+            <Trash2 className="size-3" />
+            Delete
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>

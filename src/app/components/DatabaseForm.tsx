@@ -26,6 +26,7 @@ import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 import { apiClient } from '../api-client'
 import { useCreateDatabase, useUpdateDatabase } from '../hooks/mutations'
+import { useEncryptionAvailable } from '../hooks/queries'
 import { Button } from './ui/button'
 import {
   Form,
@@ -665,6 +666,8 @@ function AuthenticationSection({
   form: DatabaseFormApi
   isEditMode: boolean
 }): ReactElement {
+  const encryptionAvailable = useEncryptionAvailable()
+
   return (
     <FormSection>
       <FormSectionHeader>
@@ -672,6 +675,13 @@ function AuthenticationSection({
       </FormSectionHeader>
 
       <Separator />
+
+      {!encryptionAvailable && (
+        <p className="rounded-md border border-yellow/40 bg-yellow/10 px-3 py-2 text-xs text-yellow">
+          Your OS keychain is unavailable — this password will be stored
+          unencrypted on this computer.
+        </p>
+      )}
 
       <div className="flex items-start gap-4">
         <FormField
@@ -750,16 +760,25 @@ function SslSection({ form }: { form: DatabaseFormApi }): ReactElement {
                 <SelectContent>
                   <SelectItem value="disable">Disabled</SelectItem>
                   <SelectItem value="require">Require</SelectItem>
+                  <SelectItem value="verify-ca">Verify CA</SelectItem>
                   <SelectItem value="verify-full">Verify Full</SelectItem>
                 </SelectContent>
               </Select>
+              {field.value === 'require' && (
+                <p className="text-xs text-muted-foreground">
+                  Encrypts traffic but does not verify the server&apos;s
+                  identity.
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
         />
       </div>
 
-      {form.watch('connectionInfo.sslMode') === 'verify-full' && (
+      {['verify-ca', 'verify-full'].includes(
+        form.watch('connectionInfo.sslMode') ?? ''
+      ) && (
         <FormField
           control={form.control}
           name="connectionInfo.sslRootCert"
@@ -899,7 +918,12 @@ function parseConnectionString(value: string): ParsedConnectionString | null {
 function parseSslMode(url: URL): SslMode | undefined {
   const value = url.searchParams.get('sslmode') ?? url.searchParams.get('ssl')
 
-  if (value === 'disable' || value === 'require' || value === 'verify-full') {
+  if (
+    value === 'disable' ||
+    value === 'require' ||
+    value === 'verify-ca' ||
+    value === 'verify-full'
+  ) {
     return value
   }
 
