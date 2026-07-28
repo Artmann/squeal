@@ -34,6 +34,23 @@ src/
 - `yarn package` - Package the app
 - `yarn make` - Build distributable
 
+## Releases
+
+Releases are automated with
+[release-please](https://github.com/googleapis/release-please). PR titles must
+follow [Conventional Commits](https://www.conventionalcommits.org/) (enforced by
+the PR Title check) because squash-merged titles drive versioning:
+
+- `feat:` bumps the minor version
+- `fix:` bumps the patch version
+- Other types (`chore:`, `docs:`, `refactor:`, ...) don't trigger a release
+- `feat!:` or a `BREAKING CHANGE:` footer bumps the major version — use with
+  care
+
+release-please maintains a release PR on `main` that accumulates changes.
+Merging it tags `vX.Y.Z`, creates the GitHub Release, updates `CHANGELOG.md`,
+and CI builds and uploads installers for Windows, macOS, and Linux.
+
 ## Database Migrations
 
 Generate migrations after schema changes:
