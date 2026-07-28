@@ -91,6 +91,34 @@ export class DatabaseService {
     return { database: databaseDto, updatedWorksheet }
   }
 
+  async deleteDatabase(id: string): Promise<void> {
+    const record = await this.findActiveRecord(id)
+
+    if (!record) {
+      throw new ApiError(404, 'Database not found')
+    }
+
+    // The secret purge and the soft delete are one write, so a deleted row
+    // never retains a password.
+    await database
+      .update(databasesTable)
+      .set({
+        connectionInfo: this.secretStorage.encrypt('{}'),
+        deletedAt: Date.now()
+      })
+      .where(eq(databasesTable.id, id))
+
+    await database
+      .update(worksheetsTable)
+      .set({ databaseId: null })
+      .where(
+        and(
+          eq(worksheetsTable.databaseId, id),
+          isNull(worksheetsTable.deletedAt)
+        )
+      )
+  }
+
   async getDatabase(id: string): Promise<DatabaseDto | null> {
     const record = await this.findActiveRecord(id)
 
