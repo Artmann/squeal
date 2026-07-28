@@ -237,7 +237,12 @@ describe('apiClient', () => {
         finishedAt: 1704067201000,
         id: request.id,
         queriedAt: request.queriedAt,
-        result: { columns: ['id', 'name'], rows: [[1, 'Alice']] },
+        result: {
+          fields: [{ name: 'id' }, { name: 'name' }],
+          rowCount: 1,
+          rows: [{ id: 1, name: 'Alice' }],
+          truncated: false
+        },
         truncated: false,
         worksheetId: request.worksheetId
       }
@@ -261,7 +266,12 @@ describe('apiClient', () => {
         finishedAt: 1704067201000,
         id: queryId,
         queriedAt: 1704067200000,
-        result: { columns: ['?column?'], rows: [[1]] },
+        result: {
+          fields: [{ name: '?column?' }],
+          rowCount: 1,
+          rows: [{ '?column?': 1 }],
+          truncated: false
+        },
         truncated: false,
         worksheetId: 'ws-123'
       }
@@ -292,7 +302,12 @@ describe('apiClient', () => {
         finishedAt: 1704067201000,
         id: queryId,
         queriedAt: 1704067200000,
-        result: { columns: ['?column?'], rows: [[1]] },
+        result: {
+          fields: [{ name: '?column?' }],
+          rowCount: 1,
+          rows: [{ '?column?': 1 }],
+          truncated: false
+        },
         truncated: false,
         worksheetId: 'ws-123'
       }

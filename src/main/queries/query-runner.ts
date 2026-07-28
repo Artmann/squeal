@@ -1,10 +1,11 @@
 import { eq, isNull } from 'drizzle-orm'
+import { log } from 'tiny-typescript-logger'
 import { z } from 'zod'
 
 import { database } from '@/database'
 import { databasesTable, queriesTable } from '@/database/schema'
 import { canceledQueryMessage } from '@/glue/queries'
-import type { DatabaseAdapter } from '@/databases/adapter'
+import { QueryCanceledError, type DatabaseAdapter } from '@/databases/adapter'
 import { createAdapter } from '@/databases/create-adapter'
 import { DatabaseService } from '@/main/databases/database-service'
 
@@ -71,7 +72,9 @@ class QueryRunner {
     return insertedQueryRow
   }
 
-  private async runQueryInBackground(query: any): Promise<void> {
+  private async runQueryInBackground(
+    query: typeof queriesTable.$inferSelect
+  ): Promise<void> {
     try {
       const service = new DatabaseService()
       const databaseRecord = await service.getDatabaseWithSecrets(
@@ -107,15 +110,32 @@ class QueryRunner {
         ? canceledQueryMessage
         : extractErrorMessage(error)
 
-      await database
-        .update(queriesTable)
-        .set({ error: errorMessage, finishedAt: Date.now() })
-        .where(eq(queriesTable.id, query.id))
+      // This promise is fire-and-forget, so a failed write must be contained
+      // here — an unhandled rejection would take down the main process while
+      // the row silently stayed "running".
+      try {
+        await database
+          .update(queriesTable)
+          .set({ error: errorMessage, finishedAt: Date.now() })
+          .where(eq(queriesTable.id, query.id))
+      } catch (updateError) {
+        log.error(
+          `Could not mark query ${query.id} as failed: ${
+            updateError instanceof Error
+              ? updateError.message
+              : String(updateError)
+          }`
+        )
+      }
     }
   }
 }
 
 function isCancellationError(error: unknown): boolean {
+  if (error instanceof QueryCanceledError) {
+    return true
+  }
+
   const message = error instanceof Error ? error.message : String(error)
 
   return message

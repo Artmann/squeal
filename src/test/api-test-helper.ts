@@ -33,6 +33,7 @@ export function authorizeApp(app: Hono): Hono {
 
 // Mock adapter configuration that can be changed per test.
 export const mockAdapterConfig = {
+  cancel: undefined as (() => Promise<void>) | undefined,
   getSchema: async (): Promise<SchemaInfo> => ({
     databaseName: 'test_db',
     tables: []
@@ -103,6 +104,10 @@ function createMockAdapterClass() {
       mockAdapterConfig.lastConnectionInfo = connectionInfo
     }
 
+    async cancel() {
+      await mockAdapterConfig.cancel?.()
+    }
+
     async getSchema() {
       return mockAdapterConfig.getSchema()
     }
@@ -125,6 +130,7 @@ export async function resetTestDatabase(): Promise<void> {
   testDatabase = await createTestDatabase()
 
   // Reset mock adapter config to defaults.
+  mockAdapterConfig.cancel = undefined
   mockAdapterConfig.lastConnectionInfo = undefined
   mockAdapterConfig.getSchema = async () => ({
     databaseName: 'test_db',
