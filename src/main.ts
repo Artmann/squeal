@@ -5,6 +5,9 @@ import started from 'electron-squirrel-startup'
 import { apiPort, startServer } from './api'
 import { initializeDatabase } from './database'
 import { migrateConnectionInfoEncryption } from './main/databases/connection-info-migration'
+import { isEncryptionAvailable } from './main/databases/secret-storage'
+import { startQueryRetentionSchedule } from './main/queries/query-retention'
+import { markInterruptedQueries } from './main/queries/reconcile-queries'
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -107,6 +110,12 @@ app.on('ready', async () => {
 
   await initializeDatabase()
 
+  // Runs before the server accepts requests so the renderer never sees a
+  // stale "running" query from a previous process.
+  await markInterruptedQueries()
+
+  startQueryRetentionSchedule()
+
   // safeStorage is only reliable once the app is ready.
   await migrateConnectionInfoEncryption()
 
@@ -116,13 +125,12 @@ app.on('ready', async () => {
     allowedOrigins.push(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
   }
 
-  const { token } = startServer(apiPort, { allowedOrigins })
+  const { token } = startServer(apiPort, {
+    allowedOrigins,
+    encryptionAvailable: isEncryptionAvailable()
+  })
 
   apiToken = token
-
-  if (!app.isPackaged) {
-    console.log(`API token: ${apiToken}`)
-  }
 
   createWindow()
 })
