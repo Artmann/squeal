@@ -14,7 +14,7 @@ const portSchema = z
     return typeof value === 'number' ? value : Number(value)
   })
 
-const sslModeSchema = z.enum(['disable', 'require', 'verify-full'])
+const sslModeSchema = z.enum(['disable', 'require', 'verify-ca', 'verify-full'])
 
 export type SslMode = z.infer<typeof sslModeSchema>
 
