@@ -2,6 +2,16 @@
 // off at the driver and flagged as truncated.
 export const maxResultRows = 10_000
 
+// Thrown by adapters when a query is canceled before it ever reaches the
+// server — for example while the connection is still being established.
+export class QueryCanceledError extends Error {
+  constructor() {
+    super('Query canceled.')
+
+    this.name = 'QueryCanceledError'
+  }
+}
+
 export interface QueryResult {
   fields: { name: string }[]
 

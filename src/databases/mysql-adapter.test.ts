@@ -165,6 +165,7 @@ describe('MysqlAdapter', () => {
       const result = await adapter.runQuery('SELECT * FROM users')
 
       expect(createConnection).toHaveBeenCalledWith({
+        connectTimeout: 5000,
         database: 'testdb',
         host: 'localhost',
         password: 'secret',
