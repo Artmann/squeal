@@ -1,9 +1,11 @@
 import { desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import invariant from 'tiny-invariant'
+import { log } from 'tiny-typescript-logger'
 
 import { database } from '@/database'
 import { queriesTable } from '@/database/schema'
+import type { QueryResult } from '@/databases/adapter'
 import { ApiError, ValidationError } from '@/errors'
 import { createQuerySchema, queryRunner } from './query-runner'
 
@@ -18,7 +20,7 @@ export interface QueryDto {
   finishedAt?: number | null
   id: string
   queriedAt: number
-  result: any | null
+  result: QueryResult | null
   truncated: boolean
   worksheetId: string
 }
@@ -97,13 +99,25 @@ queryRouter.post('/:id/cancel', async (context) => {
   return context.json({ success: true })
 })
 
-function transformQuery(query: any): QueryDto {
-  const parsed = query.result ? JSON.parse(query.result) : null
+function transformQuery(query: typeof queriesTable.$inferSelect): QueryDto {
+  let parsed: QueryResult | null = null
+  let parseError: string | null = null
+
+  // One unreadable stored result must not take down the whole history list.
+  if (query.result) {
+    try {
+      parsed = JSON.parse(query.result) as QueryResult
+    } catch {
+      parseError = 'Stored result could not be read.'
+
+      log.error(`Could not parse the stored result for query ${query.id}.`)
+    }
+  }
 
   return {
     content: query.content,
     databaseId: query.databaseId,
-    error: query.error ?? null,
+    error: query.error ?? parseError,
     finishedAt: query.finishedAt ?? null,
     id: query.id,
     queriedAt: query.queriedAt,
