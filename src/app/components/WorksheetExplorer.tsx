@@ -1,13 +1,6 @@
-import {
-  closestCenter,
-  DndContext,
-  DragEndEvent,
-  PointerSensor,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core'
+import { closestCenter, DndContext } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { arrayMove, SortableContext, useSortable } from '@dnd-kit/sortable'
+import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { FileBracesIcon, PlusIcon } from 'lucide-react'
 import {
@@ -28,6 +21,7 @@ import {
   useDropIndicator,
   type DropIndicator
 } from '../hooks/use-drop-indicator'
+import { useReorderDrag } from '../hooks/use-reorder-drag'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import {
@@ -178,31 +172,11 @@ export function WorksheetExplorer(): ReactElement {
     resetDropIndicator
   } = useDropIndicator(filteredWorksheetIds)
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
-  )
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-
-      resetDropIndicator()
-
-      if (!over || active.id === over.id) {
-        return
-      }
-
-      const worksheetIds = worksheets.data.map((worksheet) => worksheet.id)
-      const orderedIds = arrayMove(
-        worksheetIds,
-        worksheetIds.indexOf(String(active.id)),
-        worksheetIds.indexOf(String(over.id))
-      )
-
-      reorderWorksheets.mutate(orderedIds)
-    },
-    [reorderWorksheets, resetDropIndicator, worksheets.data]
-  )
+  const { handleDragEnd, sensors } = useReorderDrag({
+    ids: worksheets.data.map((worksheet) => worksheet.id),
+    onReorder: reorderWorksheets.mutate,
+    resetDropIndicator
+  })
 
   const touchWorksheet = useCallback(
     (worksheetId: string) => {
