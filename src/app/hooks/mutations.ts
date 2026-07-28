@@ -114,6 +114,25 @@ export function useCreateDatabase() {
   })
 }
 
+export function useDeleteDatabase() {
+  const { databases } = useCollections()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (databaseId: string) => apiClient.deleteDatabase(databaseId),
+    onSuccess: (_, databaseId) => {
+      if (databases.status === 'ready') {
+        databases.utils.writeDelete(databaseId)
+      }
+
+      // The backend detaches worksheets that pointed at the database, and the
+      // cached schema belongs to a connection that no longer exists.
+      queryClient.removeQueries({ queryKey: queryKeys.schema(databaseId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.worksheets })
+    }
+  })
+}
+
 export function useReorderDatabases() {
   const { databases } = useCollections()
   const queryClient = useQueryClient()

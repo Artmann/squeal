@@ -33,6 +33,11 @@ interface GetDatabasesResponse {
   databases: DatabaseDto[]
 }
 
+interface GetHealthResponse {
+  encryptionAvailable: boolean
+  status: string
+}
+
 interface GetSchemaResponse {
   schema: SchemaInfo
 }
@@ -132,10 +137,20 @@ export const apiClient = {
     })
   },
 
+  async deleteDatabase(databaseId: string): Promise<void> {
+    await apiRequest<{ success: boolean }>(`/databases/${databaseId}`, {
+      method: 'DELETE'
+    })
+  },
+
   async getDatabases(): Promise<DatabaseDto[]> {
     const data = await apiRequest<GetDatabasesResponse>('/databases')
 
     return data.databases
+  },
+
+  async getHealth(): Promise<GetHealthResponse> {
+    return apiRequest<GetHealthResponse>('/health')
   },
 
   async getWorksheets(): Promise<WorksheetDto[]> {

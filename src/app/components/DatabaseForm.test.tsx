@@ -16,6 +16,19 @@ import { createCollections } from '../collections'
 import { CollectionsProvider } from '../collections-context'
 import { DatabaseForm } from './DatabaseForm'
 
+// The form asks the backend whether the OS keychain can encrypt secrets; stub
+// the hook so no test consumes the fetch mocks with a health request.
+let encryptionAvailable = true
+
+vi.mock('../hooks/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/queries')>()
+
+  return {
+    ...actual,
+    useEncryptionAvailable: () => encryptionAvailable
+  }
+})
+
 // Radix UI Select uses DOM APIs not available in jsdom
 beforeAll(() => {
   Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false)
@@ -64,11 +77,35 @@ function renderDatabaseForm(props: Parameters<typeof DatabaseForm>[0] = {}) {
 
 describe('DatabaseForm', () => {
   beforeEach(() => {
+    encryptionAvailable = true
+
     vi.stubGlobal('fetch', vi.fn())
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('warns when the OS keychain cannot encrypt the password', () => {
+    encryptionAvailable = false
+
+    renderDatabaseForm()
+
+    expect(
+      screen.getByText(
+        'Your OS keychain is unavailable — this password will be stored unencrypted on this computer.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('does not warn when the OS keychain is available', () => {
+    renderDatabaseForm()
+
+    expect(
+      screen.queryByText(
+        'Your OS keychain is unavailable — this password will be stored unencrypted on this computer.'
+      )
+    ).not.toBeInTheDocument()
   })
 
   it('renders all form fields', () => {
@@ -416,6 +453,34 @@ describe('DatabaseForm', () => {
       await user.click(screen.getByRole('option', { name: 'Verify Full' }))
 
       expect(screen.getByLabelText('SSL Root Certificate')).toBeInTheDocument()
+    })
+
+    it('shows SSL Root Certificate field when verify-ca is selected', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      await user.click(screen.getByRole('button', { name: /advanced/i }))
+      await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
+      await user.click(screen.getByRole('option', { name: 'Verify CA' }))
+
+      expect(screen.getByLabelText('SSL Root Certificate')).toBeInTheDocument()
+    })
+
+    it('explains that require does not verify the server identity', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      await user.click(screen.getByRole('button', { name: /advanced/i }))
+      await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
+      await user.click(screen.getByRole('option', { name: 'Require' }))
+
+      expect(
+        screen.getByText(
+          "Encrypts traffic but does not verify the server's identity."
+        )
+      ).toBeInTheDocument()
     })
 
     it('hides SSL Root Certificate field when switching away from verify-full', async () => {
