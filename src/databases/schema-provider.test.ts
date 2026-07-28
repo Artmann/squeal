@@ -188,9 +188,9 @@ describe('transformToSchemaInfo', () => {
 
     // 'banana' lives in another schema but still slots alphabetically by name
     // instead of being grouped after its schema.
-    expect(result.tables.map((table) => `${table.tableSchema}.${table.tableName}`)).toEqual(
-      ['public.apple', 'admin.banana', 'public.zebra']
-    )
+    expect(
+      result.tables.map((table) => `${table.tableSchema}.${table.tableName}`)
+    ).toEqual(['public.apple', 'admin.banana', 'public.zebra'])
   })
 
   it('falls back to schema order for identically named tables', () => {
@@ -219,9 +219,9 @@ describe('transformToSchemaInfo', () => {
 
     const result = transformToSchemaInfo('testdb', columnRows, [])
 
-    expect(result.tables.map((table) => `${table.tableSchema}.${table.tableName}`)).toEqual(
-      ['archive.orders', 'public.orders']
-    )
+    expect(
+      result.tables.map((table) => `${table.tableSchema}.${table.tableName}`)
+    ).toEqual(['archive.orders', 'public.orders'])
   })
 
   it('ignores foreign keys for tables not in columns', () => {

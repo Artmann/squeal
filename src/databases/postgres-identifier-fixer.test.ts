@@ -155,9 +155,9 @@ describe('rewriteWithQuotedIdentifiers', () => {
 
 describe('extractMissingColumn', () => {
   it('extracts the column name from a standard error', () => {
-    expect(
-      extractMissingColumn('column "platformid" does not exist')
-    ).toEqual('platformid')
+    expect(extractMissingColumn('column "platformid" does not exist')).toEqual(
+      'platformid'
+    )
   })
 
   it('extracts the column from a column-of-relation error', () => {
@@ -173,9 +173,9 @@ describe('extractMissingColumn', () => {
   })
 
   it('returns null for relation errors', () => {
-    expect(
-      extractMissingColumn('relation "employees" does not exist')
-    ).toEqual(null)
+    expect(extractMissingColumn('relation "employees" does not exist')).toEqual(
+      null
+    )
   })
 })
 
@@ -234,7 +234,9 @@ describe('rewriteWithQuotedColumns', () => {
         columnSchema,
         'platformid'
       )
-    ).toEqual('SELECT Id, "PlatformId" FROM Employees WHERE "PlatformId" = \'x\'')
+    ).toEqual(
+      'SELECT Id, "PlatformId" FROM Employees WHERE "PlatformId" = \'x\''
+    )
   })
 
   it('rewrites a lowercase reference to its mixed-case column', () => {
