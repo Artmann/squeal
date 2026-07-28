@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 export const chatsTable = sqliteTable('chats', {
   id: text()
@@ -39,18 +39,30 @@ export const messagesTable = sqliteTable('messages', {
   toolInvocations: text()
 })
 
-export const queriesTable = sqliteTable('queries', {
-  id: text()
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  content: text().notNull(),
-  databaseId: text().notNull(),
-  error: text(),
-  finishedAt: integer(),
-  queriedAt: integer().notNull(),
-  result: text(),
-  worksheetId: text().notNull()
-})
+export const queriesTable = sqliteTable(
+  'queries',
+  {
+    id: text()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    content: text().notNull(),
+    databaseId: text().notNull(),
+    error: text(),
+    finishedAt: integer(),
+    queriedAt: integer().notNull(),
+    result: text(),
+    worksheetId: text().notNull()
+  },
+  (table) => [
+    // The history list sorts by queriedAt, and retention keeps the newest
+    // query per worksheet — both scan the whole table without these.
+    index('queries_queried_at_index').on(table.queriedAt),
+    index('queries_worksheet_id_queried_at_index').on(
+      table.worksheetId,
+      table.queriedAt
+    )
+  ]
+)
 
 export const worksheetsTable = sqliteTable('worksheets', {
   id: text()

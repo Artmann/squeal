@@ -49,6 +49,16 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
   `)
 
   await database.run(sql`
+    CREATE INDEX IF NOT EXISTS queries_queried_at_index
+    ON queries (queriedAt)
+  `)
+
+  await database.run(sql`
+    CREATE INDEX IF NOT EXISTS queries_worksheet_id_queried_at_index
+    ON queries (worksheetId, queriedAt)
+  `)
+
+  await database.run(sql`
     CREATE TABLE IF NOT EXISTS worksheets (
       id TEXT PRIMARY KEY NOT NULL,
       content TEXT NOT NULL DEFAULT '',
