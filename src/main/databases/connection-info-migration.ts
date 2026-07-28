@@ -26,13 +26,13 @@ export async function migrateConnectionInfoEncryption(
   const migrationResults = await Promise.all(
     records.map(async (record) => {
       if (isEncrypted(record.connectionInfo)) {
-        return false
+        return 'encrypted'
       }
 
       const encrypted = secretStorage.encrypt(record.connectionInfo)
 
       if (encrypted === record.connectionInfo) {
-        return false
+        return 'plaintext'
       }
 
       await database
@@ -40,13 +40,24 @@ export async function migrateConnectionInfoEncryption(
         .set({ connectionInfo: encrypted })
         .where(eq(databasesTable.id, record.id))
 
-      return true
+      return 'migrated'
     })
   )
 
-  const migratedCount = migrationResults.filter(Boolean).length
+  const migratedCount = migrationResults.filter(
+    (result) => result === 'migrated'
+  ).length
+  const plaintextCount = migrationResults.filter(
+    (result) => result === 'plaintext'
+  ).length
 
   if (migratedCount > 0) {
     log.info(`Encrypted connection info for ${migratedCount} database(s).`)
+  }
+
+  if (plaintextCount > 0) {
+    log.warn(
+      `${plaintextCount} database connection(s) remain unencrypted because OS keychain encryption is unavailable.`
+    )
   }
 }

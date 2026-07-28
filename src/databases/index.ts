@@ -80,7 +80,11 @@ connectionTestRouter.post('/', async (context) => {
   try {
     await adapter.testConnection()
   } catch (error) {
-    log.error('Connection test failed:', error)
+    // Log only the message — the full driver error object embeds the
+    // connection config (host, user).
+    log.error(
+      `Connection test failed: ${error instanceof Error ? error.message : String(error)}`
+    )
 
     return context.json(
       {
@@ -163,6 +167,18 @@ databaseRouter.get('/:id/schema', async (context) => {
       `Failed to load schema for "${databaseRecord.name}": ${reason}`
     )
   }
+})
+
+databaseRouter.delete('/:id', async (context) => {
+  const { id } = context.req.param()
+
+  invariant(id, 'Database ID is required')
+
+  const service = new DatabaseService()
+
+  await service.deleteDatabase(id)
+
+  return context.json({ success: true })
 })
 
 databaseRouter.patch('/:id', async (context) => {

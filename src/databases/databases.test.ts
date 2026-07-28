@@ -763,3 +763,112 @@ describe('POST /connection-tests with a stored password', () => {
     })
   })
 })
+
+describe('DELETE /databases/:id', () => {
+  let app: Hono
+
+  beforeEach(async () => {
+    await resetTestDatabase()
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
+  })
+
+  async function insertDatabase(databaseId: string): Promise<void> {
+    const database = getTestDatabase()
+
+    await database.run(sql`
+      INSERT INTO databases (id, name, type, connectionInfo, createdAt)
+      VALUES (
+        ${databaseId},
+        'Doomed DB',
+        'postgres',
+        ${`enc:v1:test:${JSON.stringify({
+          database: 'doomed',
+          host: 'localhost',
+          password: 'super-secret',
+          port: 5432,
+          username: 'user'
+        })}`},
+        ${Date.now()}
+      )
+    `)
+  }
+
+  it('soft deletes the database and purges the stored secret', async () => {
+    const database = getTestDatabase()
+    const databaseId = crypto.randomUUID()
+
+    await insertDatabase(databaseId)
+
+    const response = await app.request(`/databases/${databaseId}`, {
+      method: 'DELETE'
+    })
+
+    expect(response.status).toEqual(200)
+    expect(await response.json()).toEqual({ success: true })
+
+    const rows = await database.all<{
+      connectionInfo: string
+      deletedAt: number | null
+    }>(
+      sql`SELECT connectionInfo, deletedAt FROM databases WHERE id = ${databaseId}`
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].connectionInfo).toEqual('enc:v1:test:{}')
+    expect(rows[0].deletedAt).not.toBeNull()
+  })
+
+  it('removes the database from the list', async () => {
+    const databaseId = crypto.randomUUID()
+
+    await insertDatabase(databaseId)
+    await app.request(`/databases/${databaseId}`, { method: 'DELETE' })
+
+    const response = await app.request('/databases')
+
+    expect(response.status).toEqual(200)
+    expect(await response.json()).toEqual({ databases: [] })
+  })
+
+  it('detaches worksheets that pointed at the database', async () => {
+    const database = getTestDatabase()
+    const databaseId = crypto.randomUUID()
+    const worksheetId = crypto.randomUUID()
+
+    await insertDatabase(databaseId)
+
+    await database.run(sql`
+      INSERT INTO worksheets (id, content, createdAt, databaseId, name)
+      VALUES (${worksheetId}, '', ${Date.now()}, ${databaseId}, 'Sheet')
+    `)
+
+    await app.request(`/databases/${databaseId}`, { method: 'DELETE' })
+
+    const rows = await database.all<{ databaseId: string | null }>(
+      sql`SELECT databaseId FROM worksheets WHERE id = ${worksheetId}`
+    )
+
+    expect(rows).toEqual([{ databaseId: null }])
+  })
+
+  it('returns 404 for an unknown database', async () => {
+    const response = await app.request(`/databases/${crypto.randomUUID()}`, {
+      method: 'DELETE'
+    })
+
+    expect(response.status).toEqual(404)
+  })
+
+  it('returns 404 for an already deleted database', async () => {
+    const databaseId = crypto.randomUUID()
+
+    await insertDatabase(databaseId)
+    await app.request(`/databases/${databaseId}`, { method: 'DELETE' })
+
+    const response = await app.request(`/databases/${databaseId}`, {
+      method: 'DELETE'
+    })
+
+    expect(response.status).toEqual(404)
+  })
+})

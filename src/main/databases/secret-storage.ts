@@ -14,6 +14,12 @@ export function isEncrypted(value: string): boolean {
   return value.startsWith(encryptedPrefix)
 }
 
+// Whether the OS keychain can protect stored secrets. Exposed so the renderer
+// can warn the user before a password is saved unencrypted.
+export function isEncryptionAvailable(): boolean {
+  return safeStorage.isEncryptionAvailable()
+}
+
 // Encrypts values with the OS keychain via Electron's safeStorage. Values are
 // stored as `enc:v1:<base64>`; anything without that prefix is treated as
 // legacy plaintext and passed through so existing rows keep working until the
