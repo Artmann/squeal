@@ -59,15 +59,10 @@ export class SqliteAdapter implements DatabaseAdapter {
     const database = new Database(this.connectionInfo.path)
 
     try {
-      console.log('Connected to SQLite database')
-      console.log(`Running query:\n${query}\n`)
-
       const statement = database.prepare(query)
 
       if (!statement.reader) {
         const info = statement.run()
-
-        console.log(`  ✓ Query executed successfully\n`)
 
         return {
           fields: [],
@@ -95,8 +90,6 @@ export class SqliteAdapter implements DatabaseAdapter {
         rows.push(row as Record<string, unknown>)
       }
 
-      console.log(`  ✓ Query executed successfully\n`)
-
       return { fields, rowCount: rows.length, rows, truncated }
     } finally {
       database.close()
@@ -108,8 +101,6 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     try {
       await client.execute('SELECT 1')
-
-      console.log('Connected to SQLite database successfully')
     } finally {
       client.close()
     }

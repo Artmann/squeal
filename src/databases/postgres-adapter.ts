@@ -4,8 +4,9 @@ import {
   type QueryResult as DriverQueryResult
 } from 'pg'
 import Cursor from 'pg-cursor'
+import { log } from 'tiny-typescript-logger'
 
-import { maxResultRows } from './adapter'
+import { maxResultRows, QueryCanceledError } from './adapter'
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
   extractMissingColumn,
@@ -26,17 +27,32 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   private activeClient: Client | null = null
 
+  private canceled = false
+
+  private connectingClient: Client | null = null
+
   constructor(connectionInfo: PostgresConnectionInfo) {
     this.connectionInfo = connectionInfo
   }
 
   async cancel(): Promise<void> {
-    // node-postgres exposes the backend process id at runtime, but it is not
-    // present on the published Client type.
-    const backendProcessId = this.activeClient
-      ? (this.activeClient as unknown as { processID?: number | null })
-          .processID
-      : undefined
+    this.canceled = true
+
+    // A connect still in flight can simply be aborted — ending the client
+    // tears down the socket and the pending connect rejects.
+    const connectingClient = this.connectingClient
+
+    if (connectingClient) {
+      try {
+        await connectingClient.end()
+      } catch {
+        // Aborting is best-effort; the connect rejecting is what matters.
+      }
+
+      return
+    }
+
+    const backendProcessId = getBackendProcessId(this.activeClient)
 
     if (!backendProcessId) {
       return
@@ -44,7 +60,9 @@ export class PostgresAdapter implements DatabaseAdapter {
 
     // Postgres cancellation must be issued over a separate connection — the
     // one running the query is busy — so we open a throwaway client and ask
-    // the server to cancel the running backend.
+    // the server to cancel the running backend. A failed cancel must not
+    // reject the cancel route: the query keeps running and can be canceled
+    // again.
     const cancelClient = new Client(createClientConfig(this.connectionInfo))
 
     try {
@@ -53,17 +71,27 @@ export class PostgresAdapter implements DatabaseAdapter {
       await cancelClient.query('SELECT pg_cancel_backend($1)', [
         backendProcessId
       ])
+    } catch (error) {
+      log.warn(
+        `Could not cancel the running query: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
     } finally {
-      await cancelClient.end()
+      try {
+        await cancelClient.end()
+      } catch {
+        // Cleanup is best-effort.
+      }
     }
   }
 
   async getSchema(): Promise<SchemaInfo> {
-    const client = new Client(createClientConfig(this.connectionInfo))
+    // Introspection goes through the same retrying connect as queries, and is
+    // bounded — a hung catalog scan should never hold a connection forever.
+    const client = await this.acquireConnection({ statement_timeout: 30_000 })
 
     try {
-      await client.connect()
-
       return await this.getSchemaWithClient(client)
     } finally {
       await client.end()
@@ -74,8 +102,6 @@ export class PostgresAdapter implements DatabaseAdapter {
     const client = await this.acquireConnection()
 
     this.activeClient = client
-
-    console.log('Connected to database')
 
     try {
       // Postgres folds unquoted identifiers to lowercase, so a query written
@@ -127,7 +153,7 @@ export class PostgresAdapter implements DatabaseAdapter {
             throw error
           }
 
-          console.log(`  ↻ Retrying with quoted identifiers:\n${rewritten}\n`)
+          log.debug('Retrying with quoted identifiers')
 
           attempted.add(rewritten)
           currentQuery = rewritten
@@ -144,10 +170,23 @@ export class PostgresAdapter implements DatabaseAdapter {
   // server is momentarily at its connection cap (a busy neighbour, a spike of
   // background jobs). Retry a few times with backoff before surfacing a clear,
   // actionable error instead of the raw driver message.
-  private async acquireConnection(): Promise<Client> {
+  private async acquireConnection(
+    configOverrides?: Partial<ClientConfig>
+  ): Promise<Client> {
     return connectWithRetry(
       async () => {
-        const client = new Client(createClientConfig(this.connectionInfo))
+        if (this.canceled) {
+          throw new QueryCanceledError()
+        }
+
+        const client = new Client({
+          ...createClientConfig(this.connectionInfo),
+          ...configOverrides
+        })
+
+        // Exposed so cancel() can abort a connect still in flight instead of
+        // silently doing nothing before the query reaches the server.
+        this.connectingClient = client
 
         try {
           await client.connect()
@@ -162,7 +201,13 @@ export class PostgresAdapter implements DatabaseAdapter {
             // Cleanup is best-effort; the original error matters more.
           }
 
+          if (this.canceled) {
+            throw new QueryCanceledError()
+          }
+
           throw error
+        } finally {
+          this.connectingClient = null
         }
       },
       {
@@ -180,8 +225,6 @@ export class PostgresAdapter implements DatabaseAdapter {
     client: Client,
     query: string
   ): Promise<QueryResult> {
-    console.log(`Running query:\n${query}\n`)
-
     const cursor = client.query(new Cursor<Record<string, unknown>>(query))
     const rows: Record<string, unknown>[] = []
     let lastResult: DriverQueryResult | undefined
@@ -215,8 +258,6 @@ export class PostgresAdapter implements DatabaseAdapter {
         // Closing is best-effort; the original error matters more.
       }
     }
-
-    console.log(`  ✓ Query executed successfully\n`)
 
     const truncated = rows.length > maxResultRows
     const returnedRows = truncated ? rows.slice(0, maxResultRows) : rows
@@ -252,8 +293,6 @@ export class PostgresAdapter implements DatabaseAdapter {
 
     try {
       await client.connect()
-
-      console.log('Connected to database successfully')
     } finally {
       await client.end()
     }
@@ -322,6 +361,18 @@ export async function connectWithRetry<Connection>(
   }
 }
 
+// node-postgres exposes the backend process id at runtime, but it is not
+// present on the published Client type.
+function getBackendProcessId(client: Client | null): number | undefined {
+  if (!client || !('processID' in client)) {
+    return undefined
+  }
+
+  const processId = (client as Client & { processID?: unknown }).processID
+
+  return typeof processId === 'number' ? processId : undefined
+}
+
 export function isTooManyClientsError(error: unknown): boolean {
   const messages =
     error instanceof AggregateError
@@ -341,6 +392,9 @@ function createClientConfig(info: PostgresConnectionInfo): ClientConfig {
   const ssl = createSslOptions(info)
 
   return {
+    // A connect attempt that can hang forever holds the query, the Explorer,
+    // or a cancel hostage; pg's default is no timeout.
+    connectionTimeoutMillis: 10_000,
     database,
     host,
     password,

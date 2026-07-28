@@ -44,8 +44,6 @@ export class MysqlAdapter implements DatabaseAdapter {
     const connection = createConnection(this.getConnectionConfig())
     let destroyed = false
 
-    console.log(`Running query:\n${query}\n`)
-
     try {
       return await new Promise<QueryResult>((resolve, reject) => {
         const rows: Record<string, unknown>[] = []
@@ -81,8 +79,6 @@ export class MysqlAdapter implements DatabaseAdapter {
             // to this query and never pooled.
             connection.destroy()
 
-            console.log(`  ✓ Query executed successfully\n`)
-
             resolve({ fields, rowCount: rows.length, rows, truncated: true })
 
             return
@@ -110,8 +106,6 @@ export class MysqlAdapter implements DatabaseAdapter {
 
           settled = true
 
-          console.log(`  ✓ Query executed successfully\n`)
-
           resolve({
             fields,
             rowCount: affectedRows ?? rows.length,
@@ -128,15 +122,10 @@ export class MysqlAdapter implements DatabaseAdapter {
   }
 
   async testConnection(): Promise<void> {
-    const connection = await mysql.createConnection({
-      ...this.getConnectionConfig(),
-      connectTimeout: 5000
-    })
+    const connection = await mysql.createConnection(this.getConnectionConfig())
 
     try {
       await connection.ping()
-
-      console.log('Connected to database successfully')
     } finally {
       await connection.end()
     }
@@ -148,6 +137,9 @@ export class MysqlAdapter implements DatabaseAdapter {
     const ssl = createSslOptions(this.connectionInfo)
 
     return {
+      // Every connection — queries and schema loads included, not just the
+      // connection test — should give up instead of hanging forever.
+      connectTimeout: 5000,
       database,
       host,
       password,

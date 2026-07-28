@@ -107,6 +107,7 @@ vi.mock('pg-cursor', () => {
 
 import { Client } from 'pg'
 
+import { QueryCanceledError } from './adapter'
 import {
   connectWithRetry,
   isTooManyClientsError,
@@ -444,6 +445,7 @@ describe('PostgresAdapter', () => {
       await adapter.runQuery('SELECT 1')
 
       expect(Client).toHaveBeenCalledWith({
+        connectionTimeoutMillis: 10000,
         database: 'testdb',
         host: 'localhost',
         password: 'secret',
@@ -463,6 +465,7 @@ describe('PostgresAdapter', () => {
       await adapter.runQuery('SELECT 1')
 
       expect(Client).toHaveBeenCalledWith({
+        connectionTimeoutMillis: 10000,
         database: 'testdb',
         host: 'localhost',
         password: 'p@ss:w/rd#?',
@@ -482,6 +485,7 @@ describe('PostgresAdapter', () => {
       await adapter.runQuery('SELECT 1')
 
       expect(Client).toHaveBeenCalledWith({
+        connectionTimeoutMillis: 10000,
         database: 'testdb',
         host: 'localhost',
         password: 'secret',
@@ -501,6 +505,7 @@ describe('PostgresAdapter', () => {
       await adapter.runQuery('SELECT 1')
 
       expect(Client).toHaveBeenCalledWith({
+        connectionTimeoutMillis: 10000,
         database: 'testdb',
         host: 'localhost',
         password: 'secret',
@@ -595,5 +600,66 @@ describe('connectWithRetry', () => {
     ).rejects.toThrow('out of slots')
     expect(connect).toHaveBeenCalledTimes(4)
     expect(sleep).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('PostgresAdapter cancellation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    cursorState.closeCount = 0
+    cursorState.createdWith.length = 0
+    cursorState.fixtures.length = 0
+    cursorState.readRequests.length = 0
+
+    mockQuery.mockImplementation((input: unknown) => input)
+  })
+
+  it('fails fast when canceled before connecting', async () => {
+    const adapter = new PostgresAdapter(connectionInfo)
+
+    await adapter.cancel()
+
+    await expect(adapter.runQuery('SELECT 1')).rejects.toEqual(
+      new QueryCanceledError()
+    )
+    expect(mockConnect).not.toHaveBeenCalled()
+  })
+
+  it('aborts a connect in flight and reports the query as canceled', async () => {
+    let rejectConnect: ((error: Error) => void) | undefined
+
+    mockConnect.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectConnect = reject
+        })
+    )
+
+    const adapter = new PostgresAdapter(connectionInfo)
+    const runPromise = adapter.runQuery('SELECT pg_sleep(60)')
+
+    // Give the connect a beat to start so cancel sees the in-flight client.
+    await vi.waitFor(() => {
+      expect(mockConnect).toHaveBeenCalled()
+    })
+
+    await adapter.cancel()
+
+    // Ending the client makes the pending connect reject.
+    expect(mockEnd).toHaveBeenCalled()
+
+    rejectConnect?.(new Error('Connection terminated'))
+
+    await expect(runPromise).rejects.toEqual(new QueryCanceledError())
+  })
+
+  it('does nothing when no query is running', async () => {
+    const adapter = new PostgresAdapter(connectionInfo)
+
+    await adapter.cancel()
+
+    expect(mockConnect).not.toHaveBeenCalled()
+    expect(mockQuery).not.toHaveBeenCalled()
   })
 })
