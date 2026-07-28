@@ -118,36 +118,17 @@ export class PostgresAdapter implements DatabaseAdapter {
         try {
           return await this.executeQuery(client, currentQuery)
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-
-          // Columns first: "column "x" of relation "y" does not exist" is a
-          // column problem, yet its message also matches the relation pattern.
-          const missingColumn = extractMissingColumn(message)
-          const missingRelation = missingColumn
-            ? null
-            : extractMissingRelation(message)
-
-          if (!missingColumn && !missingRelation) {
+          if (!isMissingIdentifierError(error)) {
             throw error
           }
 
           schema ??= await this.getSchemaWithClient(client)
 
-          let rewritten: string | null = null
-
-          if (missingColumn) {
-            rewritten = rewriteWithQuotedColumns(
-              currentQuery,
-              schema,
-              missingColumn
-            )
-          } else if (missingRelation) {
-            rewritten = rewriteWithQuotedIdentifiers(
-              currentQuery,
-              schema,
-              missingRelation
-            )
-          }
+          const rewritten = rewriteForMissingIdentifier(
+            currentQuery,
+            schema,
+            error
+          )
 
           if (!rewritten || attempted.has(rewritten)) {
             throw error
@@ -259,17 +240,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       }
     }
 
-    const truncated = rows.length > maxResultRows
-    const returnedRows = truncated ? rows.slice(0, maxResultRows) : rows
-
-    return {
-      fields: (lastResult?.fields ?? []).map((field) => ({ name: field.name })),
-      // When truncated, the statement never completes, so the driver has no
-      // total and we report the number of rows returned instead.
-      rowCount: lastResult?.rowCount ?? returnedRows.length,
-      rows: returnedRows,
-      truncated
-    }
+    return toQueryResult(rows, lastResult)
   }
 
   private async getSchemaWithClient(client: Client): Promise<SchemaInfo> {
@@ -358,6 +329,58 @@ export async function connectWithRetry<Connection>(
 
       await sleep(options.delays[attempt])
     }
+  }
+}
+
+function isMissingIdentifierError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+
+  return Boolean(
+    extractMissingColumn(message) ?? extractMissingRelation(message)
+  )
+}
+
+// Columns are checked first: "column "x" of relation "y" does not exist" is a
+// column problem, yet its message also matches the relation pattern. Returns
+// the corrected SQL, or null when no unambiguous rewrite exists.
+function rewriteForMissingIdentifier(
+  query: string,
+  schema: SchemaInfo,
+  error: unknown
+): string | null {
+  const message = error instanceof Error ? error.message : String(error)
+
+  const missingColumn = extractMissingColumn(message)
+
+  if (missingColumn) {
+    return rewriteWithQuotedColumns(query, schema, missingColumn)
+  }
+
+  const missingRelation = extractMissingRelation(message)
+
+  if (missingRelation) {
+    return rewriteWithQuotedIdentifiers(query, schema, missingRelation)
+  }
+
+  return null
+}
+
+// Shapes the buffered driver rows into the adapter result, dropping the extra
+// row read past the cap.
+function toQueryResult(
+  rows: Record<string, unknown>[],
+  lastResult: DriverQueryResult | undefined
+): QueryResult {
+  const truncated = rows.length > maxResultRows
+  const returnedRows = truncated ? rows.slice(0, maxResultRows) : rows
+
+  return {
+    fields: (lastResult?.fields ?? []).map((field) => ({ name: field.name })),
+    // When truncated, the statement never completes, so the driver has no
+    // total and we report the number of rows returned instead.
+    rowCount: lastResult?.rowCount ?? returnedRows.length,
+    rows: returnedRows,
+    truncated
   }
 }
 

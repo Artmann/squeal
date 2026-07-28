@@ -85,8 +85,6 @@ export const reorderDatabasesSchema = z.object({
     )
 })
 
-export type ReorderDatabasesRequest = z.infer<typeof reorderDatabasesSchema>
-
 export const updateDatabaseSchema = z.object({
   connectionInfo: updateConnectionInfoSchema,
   name: z.string().min(1, 'Name is required.'),
