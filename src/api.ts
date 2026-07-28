@@ -4,7 +4,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { prettyJSON } from 'hono/pretty-json'
 import { requestId } from 'hono/request-id'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 
 import { connectionTestRouter, databaseRouter } from './databases'
 import { chatRouter } from './main/chat/routes'
@@ -20,17 +20,20 @@ const defaultAllowedOrigins = ['null']
 export interface CreateAppOptions {
   allowedOrigins?: string[]
   enableLogging?: boolean
-  token?: string
+  encryptionAvailable?: boolean
+  token: string
 }
 
 export interface StartServerOptions {
   allowedOrigins?: string[]
+  encryptionAvailable?: boolean
 }
 
-export function createApp(options: CreateAppOptions = {}) {
+export function createApp(options: CreateAppOptions) {
   const {
     allowedOrigins = defaultAllowedOrigins,
     enableLogging = true,
+    encryptionAvailable = true,
     token
   } = options
 
@@ -54,25 +57,25 @@ export function createApp(options: CreateAppOptions = {}) {
     })
   )
 
-  if (token) {
-    app.use('*', async (context, next) => {
-      if (context.req.path === '/health') {
-        return next()
-      }
-
-      if (context.req.header('Authorization') !== `Bearer ${token}`) {
-        return context.json(
-          { error: { message: 'Unauthorized', status: 401 } },
-          401
-        )
-      }
-
+  app.use('*', async (context, next) => {
+    if (context.req.path === '/health') {
       return next()
-    })
-  }
+    }
 
+    if (!isAuthorized(context.req.header('Authorization'), token)) {
+      return context.json(
+        { error: { message: 'Unauthorized', status: 401 } },
+        401
+      )
+    }
+
+    return next()
+  })
+
+  // encryptionAvailable tells the renderer whether the OS keychain can
+  // protect stored connection secrets, so it can warn before saving one.
   app.get('/health', (c) => {
-    return c.json({ status: 'ok' })
+    return c.json({ encryptionAvailable, status: 'ok' })
   })
 
   app.route('/connection-tests', connectionTestRouter)
@@ -86,9 +89,24 @@ export function createApp(options: CreateAppOptions = {}) {
   return app
 }
 
+// Hashing both sides first makes timingSafeEqual usable for tokens of unequal
+// length without leaking the length through an early return.
+function isAuthorized(header: string | undefined, token: string): boolean {
+  const presented = header?.startsWith('Bearer ') ? header.slice(7) : ''
+
+  const presentedDigest = createHash('sha256').update(presented).digest()
+  const tokenDigest = createHash('sha256').update(token).digest()
+
+  return timingSafeEqual(presentedDigest, tokenDigest)
+}
+
 export function startServer(port = 3000, options: StartServerOptions = {}) {
   const token = randomBytes(32).toString('hex')
-  const app = createApp({ allowedOrigins: options.allowedOrigins, token })
+  const app = createApp({
+    allowedOrigins: options.allowedOrigins,
+    encryptionAvailable: options.encryptionAvailable,
+    token
+  })
 
   serve({
     fetch: app.fetch,

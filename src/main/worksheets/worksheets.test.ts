@@ -3,9 +3,11 @@ import { sql } from 'drizzle-orm'
 import type { Hono } from 'hono'
 
 import {
+  authorizeApp,
   getTestDatabase,
   resetTestDatabase,
-  setupApiMocks
+  setupApiMocks,
+  testApiToken
 } from '@/test/api-test-helper'
 
 setupApiMocks()
@@ -17,7 +19,7 @@ describe('POST /worksheets', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should create a worksheet with the given name', async () => {
@@ -105,7 +107,7 @@ describe('GET /worksheets', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should order worksheets by sortOrder', async () => {
@@ -163,7 +165,7 @@ describe('PUT /worksheets/order', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should reorder worksheets and return the full list in the new order', async () => {
@@ -270,7 +272,7 @@ describe('PATCH /worksheets/:id', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
-    app = createApp({ enableLogging: false })
+    app = authorizeApp(createApp({ enableLogging: false, token: testApiToken }))
   })
 
   it('should update worksheet name', async () => {
