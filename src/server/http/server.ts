@@ -19,7 +19,7 @@ import { QueriesLive } from './handlers/queries'
 import { TracesLive } from './handlers/traces'
 import { WorksheetsLive } from './handlers/worksheets'
 
-export const apiPort = 7847
+const apiPort = 7847
 
 const HandlersLive = Layer.mergeAll(
   ConnectionTestsLive,

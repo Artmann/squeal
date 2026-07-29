@@ -18,15 +18,10 @@ export const WorksheetId = Schema.String.pipe(Schema.minLength(1))
 
 // --- Connection info ---------------------------------------------------------
 
-export const DatabaseType = Schema.Literal('mysql', 'postgres', 'sqlite')
+const DatabaseType = Schema.Literal('mysql', 'postgres', 'sqlite')
 export type DatabaseType = Schema.Schema.Type<typeof DatabaseType>
 
-export const SslMode = Schema.Literal(
-  'disable',
-  'require',
-  'verify-ca',
-  'verify-full'
-)
+const SslMode = Schema.Literal('disable', 'require', 'verify-ca', 'verify-full')
 export type SslMode = Schema.Schema.Type<typeof SslMode>
 
 // Forms submit the port as a number, a string, or nothing at all — normalize
@@ -63,7 +58,7 @@ const serverConnectionInfoFields = {
 }
 
 // MySQL and PostgreSQL connections share the same shape.
-export const ServerConnectionInfo = Schema.Struct({
+const ServerConnectionInfo = Schema.Struct({
   ...serverConnectionInfoFields,
   password: Schema.String.pipe(
     Schema.minLength(1, { message: () => 'Password is required.' })
@@ -73,7 +68,7 @@ export type ServerConnectionInfo = Schema.Schema.Type<
   typeof ServerConnectionInfo
 >
 
-export const SqliteConnectionInfo = Schema.Struct({
+const SqliteConnectionInfo = Schema.Struct({
   path: Schema.String.pipe(
     Schema.minLength(1, { message: () => 'File path is required.' })
   )
@@ -82,10 +77,7 @@ export type SqliteConnectionInfo = Schema.Schema.Type<
   typeof SqliteConnectionInfo
 >
 
-export const ConnectionInfo = Schema.Union(
-  ServerConnectionInfo,
-  SqliteConnectionInfo
-)
+const ConnectionInfo = Schema.Union(ServerConnectionInfo, SqliteConnectionInfo)
 export type ConnectionInfo = Schema.Schema.Type<typeof ConnectionInfo>
 
 // Updates and connection tests may omit the password to mean "use the stored
@@ -95,7 +87,7 @@ const UpdateServerConnectionInfo = Schema.Struct({
   password: Schema.optional(Schema.String)
 })
 
-export const UpdateConnectionInfo = Schema.Union(
+const UpdateConnectionInfo = Schema.Union(
   UpdateServerConnectionInfo,
   SqliteConnectionInfo
 )
@@ -107,7 +99,7 @@ export type UpdateConnectionInfo = Schema.Schema.Type<
 // shape, which has no password field at all.
 const PublicServerConnectionInfo = Schema.Struct(serverConnectionInfoFields)
 
-export const PublicConnectionInfo = Schema.Union(
+const PublicConnectionInfo = Schema.Union(
   PublicServerConnectionInfo,
   SqliteConnectionInfo
 )
@@ -221,7 +213,7 @@ const QueryResultDto = Schema.Struct({
   truncated: Schema.Boolean
 })
 
-export const QueryDto = Schema.Struct({
+const QueryDto = Schema.Struct({
   content: Schema.String,
   databaseId: Schema.String,
   error: Schema.NullOr(Schema.String),
@@ -281,7 +273,7 @@ const TableInfoDto = Schema.Struct({
   tableSchema: Schema.String
 })
 
-export const SchemaInfoDto = Schema.Struct({
+const SchemaInfoDto = Schema.Struct({
   databaseName: Schema.String,
   tables: Schema.mutable(Schema.Array(TableInfoDto))
 })
@@ -313,7 +305,7 @@ export type ConnectionTestResponse = Schema.Schema.Type<
 const spanIdPattern = /^[0-9a-f]{16}$/
 const traceIdPattern = /^[0-9a-f]{32}$/
 
-export const SpanAttributesDto = Schema.mutable(
+const SpanAttributesDto = Schema.mutable(
   Schema.Record({
     key: Schema.String,
     value: Schema.Union(Schema.Boolean, Schema.Number, Schema.String)
@@ -326,7 +318,7 @@ const SpanEventDto = Schema.Struct({
   time: Schema.Number
 })
 
-export const SpanDto = Schema.Struct({
+const SpanDto = Schema.Struct({
   attributes: SpanAttributesDto,
   durationMs: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0)),
   events: Schema.mutable(Schema.Array(SpanEventDto)),
@@ -344,13 +336,13 @@ export const SpanDto = Schema.Struct({
 })
 export type SpanDto = Schema.Schema.Type<typeof SpanDto>
 
-export const maxIngestBatchSize = 200
+const maxIngestBatchSize = 200
 
 export const IngestSpansRequest = Schema.Struct({
   spans: Schema.Array(SpanDto).pipe(Schema.maxItems(maxIngestBatchSize))
 })
 
-export const TraceSummaryDto = Schema.Struct({
+const TraceSummaryDto = Schema.Struct({
   durationMs: Schema.Number,
   errorMessage: Schema.NullOr(Schema.String),
   hasError: Schema.Boolean,
