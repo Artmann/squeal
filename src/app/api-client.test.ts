@@ -11,6 +11,10 @@ vi.stubGlobal('fetch', mockFetch)
 
 import { apiClient } from './api-client'
 
+const traceparentHeader = expect.stringMatching(
+  /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/
+) as unknown as string
+
 function createMockResponse(
   data: unknown,
   options: { ok?: boolean; status?: number; statusText?: string } = {}
@@ -66,7 +70,8 @@ describe('apiClient', () => {
           body: JSON.stringify(request),
           headers: {
             Authorization: 'Bearer test-token',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            traceparent: traceparentHeader
           },
           method: 'POST'
         }
@@ -140,7 +145,8 @@ describe('apiClient', () => {
         {
           headers: {
             Authorization: 'Bearer test-token',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            traceparent: traceparentHeader
           },
           method: 'GET'
         }
@@ -223,7 +229,8 @@ describe('apiClient', () => {
         body: JSON.stringify(request),
         headers: {
           Authorization: 'Bearer test-token',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          traceparent: traceparentHeader
         },
         method: 'POST'
       })
@@ -355,7 +362,8 @@ describe('apiClient', () => {
           body: JSON.stringify({ connectionInfo, type: 'postgres' }),
           headers: {
             Authorization: 'Bearer test-token',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            traceparent: traceparentHeader
           },
           method: 'POST'
         }
@@ -413,7 +421,8 @@ describe('apiClient', () => {
           body: JSON.stringify(updates),
           headers: {
             Authorization: 'Bearer test-token',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            traceparent: traceparentHeader
           },
           method: 'PATCH'
         }
@@ -457,12 +466,73 @@ describe('apiClient', () => {
           body: JSON.stringify(nameUpdate),
           headers: {
             Authorization: 'Bearer test-token',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            traceparent: traceparentHeader
           },
           method: 'PATCH'
         }
       )
       expect(result).toEqual(worksheet)
+    })
+  })
+
+  describe('tracing', () => {
+    it('does not send a traceparent for health checks', async () => {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({ encryptionAvailable: true, status: 'ok' })
+      )
+
+      await apiClient.getHealth()
+
+      expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:7847/health', {
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json'
+        },
+        method: 'GET'
+      })
+    })
+
+    it('does not send a traceparent when ingesting spans', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse({ insertedCount: 0 }))
+
+      await apiClient.ingestSpans([])
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:7847/traces/spans',
+        {
+          body: JSON.stringify({ spans: [] }),
+          headers: {
+            Authorization: 'Bearer test-token',
+            'Content-Type': 'application/json'
+          },
+          method: 'POST'
+        }
+      )
+    })
+
+    it('continues the provided parent trace', async () => {
+      const traceId = '4bf92f3577b34da6a3ce929d0e0e4736'
+
+      mockFetch.mockResolvedValueOnce(createMockResponse({ query: {} }))
+
+      await apiClient.createQuery(
+        {
+          content: 'SELECT 1',
+          id: 'query-123',
+          queriedAt: 1704067200000,
+          worksheetId: 'ws-123'
+        },
+        { traceParent: { spanId: '00f067aa0ba902b7', traceId } }
+      )
+
+      const headers = (
+        mockFetch.mock.calls[0]?.[1] as { headers: Record<string, string> }
+      ).headers
+
+      expect(headers.traceparent).toMatch(
+        new RegExp(`^00-${traceId}-[0-9a-f]{16}-01$`)
+      )
     })
   })
 

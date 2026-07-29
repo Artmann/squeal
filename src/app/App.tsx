@@ -27,6 +27,7 @@ import { useCancelQuery } from './hooks/mutations'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import { QueryDto } from '@/main/queries'
 import { useAppSelector } from './store'
+import { finishQueryTrace, startQueryTrace } from './tracing/query-traces'
 import { createAstFromSql, type Statement } from './sql-parser'
 import { findActiveStatementIndex } from './sql-parser/active-statement'
 
@@ -134,6 +135,8 @@ function useRunQuery(
       worksheetId
     )
 
+    startQueryTrace(optimistic)
+
     const transaction = queriesCollection.insert(optimistic)
 
     // The optimistic row rolls back automatically if the create fails.
@@ -141,6 +144,7 @@ function useRunQuery(
       const message =
         error instanceof Error ? error.message : 'Failed to run query'
 
+      finishQueryTrace({ error: message, id: optimistic.id })
       toast.error('Query failed', { description: message })
     })
   }, [activeStatement, databaseId, worksheetId, queriesCollection])

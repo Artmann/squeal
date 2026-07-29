@@ -8,6 +8,7 @@ import { QueryDto } from '@/main/queries'
 
 import { apiClient } from './api-client'
 import { queryKeys } from './query-keys'
+import { getQueryTraceParent } from './tracing/query-traces'
 
 export type Collections = ReturnType<typeof createCollections>
 
@@ -60,14 +61,20 @@ export function createCollections(queryClient: QueryClient) {
           transaction.mutations.map(async (mutation) => {
             const query = mutation.modified
 
-            const response = await apiClient.createQuery({
-              content: query.content,
-              databaseId:
-                query.databaseId === '' ? undefined : query.databaseId,
-              id: query.id,
-              queriedAt: query.queriedAt,
-              worksheetId: query.worksheetId
-            })
+            // Continues the query.run trace started when the run was clicked.
+            const traceParent = getQueryTraceParent(query.id)
+
+            const response = await apiClient.createQuery(
+              {
+                content: query.content,
+                databaseId:
+                  query.databaseId === '' ? undefined : query.databaseId,
+                id: query.id,
+                queriedAt: query.queriedAt,
+                worksheetId: query.worksheetId
+              },
+              traceParent ? { traceParent } : {}
+            )
 
             queries.utils.writeUpsert(response.query)
           })

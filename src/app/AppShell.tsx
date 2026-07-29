@@ -14,6 +14,7 @@ import { Button } from './components/ui/button'
 import { useQueriesList, useWorksheets } from './hooks/queries'
 import { useAppDispatch, useAppSelector } from './store'
 import { editorSlice } from './store/editor-slice'
+import { captureRendererError } from './tracing/init'
 import { pickWorksheetToOpen } from './worksheet-selection'
 
 function FullScreenSpinner(): ReactNode {
@@ -62,6 +63,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('Failed to load application data:', error, info)
+    captureRendererError(error, 'error-boundary')
   }
 
   render(): ReactNode {

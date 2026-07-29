@@ -59,6 +59,33 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
   `)
 
   await database.run(sql`
+    CREATE TABLE IF NOT EXISTS spans (
+      id TEXT PRIMARY KEY NOT NULL,
+      attributes TEXT,
+      durationMs REAL NOT NULL,
+      events TEXT,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      parentSpanId TEXT,
+      serviceName TEXT NOT NULL,
+      startedAt INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'unset',
+      statusMessage TEXT,
+      traceId TEXT NOT NULL
+    )
+  `)
+
+  await database.run(sql`
+    CREATE INDEX IF NOT EXISTS spans_started_at_index
+    ON spans (startedAt)
+  `)
+
+  await database.run(sql`
+    CREATE INDEX IF NOT EXISTS spans_trace_id_index
+    ON spans (traceId)
+  `)
+
+  await database.run(sql`
     CREATE TABLE IF NOT EXISTS worksheets (
       id TEXT PRIMARY KEY NOT NULL,
       content TEXT NOT NULL DEFAULT '',

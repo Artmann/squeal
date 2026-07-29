@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text
+} from 'drizzle-orm/sqlite-core'
 
 export const chatsTable = sqliteTable('chats', {
   id: text()
@@ -61,6 +67,32 @@ export const queriesTable = sqliteTable(
       table.worksheetId,
       table.queriedAt
     )
+  ]
+)
+
+export const spansTable = sqliteTable(
+  'spans',
+  {
+    // The id is the 16-hex W3C span id, so re-ingested batches from the
+    // renderer dedupe on the primary key.
+    id: text().primaryKey(),
+    attributes: text(),
+    durationMs: real().notNull(),
+    events: text(),
+    kind: text().notNull(),
+    name: text().notNull(),
+    parentSpanId: text(),
+    serviceName: text().notNull(),
+    startedAt: integer().notNull(),
+    status: text().notNull().default('unset'),
+    statusMessage: text(),
+    traceId: text().notNull()
+  },
+  (table) => [
+    // The trace list sorts and prunes by startedAt; the detail view and the
+    // list aggregates group by traceId.
+    index('spans_started_at_index').on(table.startedAt),
+    index('spans_trace_id_index').on(table.traceId)
   ]
 )
 

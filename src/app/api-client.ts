@@ -8,6 +8,8 @@ import {
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
+import { SpanContext, SpanRecord } from '@/glue/tracing/spans'
+import { formatTraceparent } from '@/glue/tracing/traceparent'
 import { CreateWorksheetRequest, WorksheetDto } from '@/glue/worksheets'
 import {
   CreateQueryResponse,
@@ -15,12 +17,21 @@ import {
   GetQueryResponse,
   QueryDto
 } from '@/main/queries'
+import type {
+  GetTraceResponse,
+  GetTracesResponse,
+  IngestSpansResponse,
+  SpanDto,
+  TraceSummaryDto
+} from '@/main/tracing/routes'
 import {
   CreateWorksheetResponse,
   ListWorksheetsResponse,
   ReorderWorksheetsResponse,
   UpdateWorksheetResponse
 } from '@/main/worksheets'
+
+import { startSpan } from './tracing/tracer'
 
 const baseUrl = 'http://127.0.0.1:7847'
 
@@ -61,6 +72,33 @@ interface ApiErrorResponse {
 interface RequestOptions {
   body?: unknown
   method?: string
+  traceParent?: SpanContext
+}
+
+const pollPathPattern = /^\/queries\/[^/]+$/
+const uuidPattern =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+
+// Health checks, the trace API itself, and the 250ms result poller would
+// only produce noise (or feedback loops) as spans.
+function shouldTrace(method: string, path: string): boolean {
+  if (
+    path === '/health' ||
+    path === '/traces' ||
+    path.startsWith('/traces/') ||
+    path.startsWith('/traces?')
+  ) {
+    return false
+  }
+
+  return !(method === 'GET' && pollPathPattern.test(path))
+}
+
+// Collapses ids so requests group under one span name in the trace list.
+function spanName(method: string, path: string): string {
+  const pathname = path.split('?')[0] ?? path
+
+  return `HTTP ${method} ${pathname.replace(uuidPattern, ':id')}`
 }
 
 let apiTokenPromise: Promise<string> | undefined
@@ -102,18 +140,52 @@ async function apiRequest<T>(
   path: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const token = await getApiToken()
+  const method = options.method ?? 'GET'
+  const span = shouldTrace(method, path)
+    ? startSpan(spanName(method, path), {
+        attributes: {
+          'http.method': method,
+          'http.url': `${baseUrl}${path}`
+        },
+        kind: 'client',
+        parent: options.traceParent
+      })
+    : undefined
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    headers: {
+  try {
+    const token = await getApiToken()
+
+    const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
-    },
-    method: options.method ?? 'GET'
-  })
+    }
 
-  return handleResponse<T>(response)
+    if (span) {
+      headers.traceparent = formatTraceparent(span.context)
+    }
+
+    const response = await fetch(`${baseUrl}${path}`, {
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
+      headers,
+      method
+    })
+
+    span?.setAttribute('http.status_code', response.status)
+
+    if (response.ok) {
+      span?.setStatus('ok')
+    }
+
+    // Error responses throw here, so the catch below records them.
+    return await handleResponse<T>(response)
+  } catch (error) {
+    span?.recordException(error)
+
+    throw error
+  } finally {
+    span?.end()
+  }
 }
 
 export const apiClient = {
@@ -167,16 +239,22 @@ export const apiClient = {
     return data.schema
   },
 
-  async createQuery(request: {
-    content: string
-    databaseId?: string
-    id: string
-    queriedAt: number
-    worksheetId: string
-  }): Promise<CreateQueryResponse> {
+  async createQuery(
+    request: {
+      content: string
+      databaseId?: string
+      id: string
+      queriedAt: number
+      worksheetId: string
+    },
+    options: { traceParent?: SpanContext } = {}
+  ): Promise<CreateQueryResponse> {
     return apiRequest<CreateQueryResponse>('/queries', {
       body: request,
-      method: 'POST'
+      method: 'POST',
+      ...(options.traceParent === undefined
+        ? {}
+        : { traceParent: options.traceParent })
     })
   },
 
@@ -196,6 +274,53 @@ export const apiClient = {
     const data = await apiRequest<GetQueryResponse>(`/queries/${queryId}`)
 
     return data.query
+  },
+
+  async getTraces(
+    params: {
+      before?: number
+      errorOnly?: boolean
+      limit?: number
+      search?: string
+    } = {}
+  ): Promise<TraceSummaryDto[]> {
+    const searchParams = new URLSearchParams()
+
+    if (params.before !== undefined) {
+      searchParams.set('before', String(params.before))
+    }
+
+    if (params.errorOnly) {
+      searchParams.set('errorOnly', 'true')
+    }
+
+    if (params.limit !== undefined) {
+      searchParams.set('limit', String(params.limit))
+    }
+
+    if (params.search) {
+      searchParams.set('search', params.search)
+    }
+
+    const query = searchParams.toString()
+    const data = await apiRequest<GetTracesResponse>(
+      query ? `/traces?${query}` : '/traces'
+    )
+
+    return data.traces
+  },
+
+  async getTraceSpans(traceId: string): Promise<SpanDto[]> {
+    const data = await apiRequest<GetTraceResponse>(`/traces/${traceId}`)
+
+    return data.spans
+  },
+
+  async ingestSpans(spans: SpanRecord[]): Promise<IngestSpansResponse> {
+    return apiRequest<IngestSpansResponse>('/traces/spans', {
+      body: { spans },
+      method: 'POST'
+    })
   },
 
   async reorderDatabases(

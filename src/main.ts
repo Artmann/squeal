@@ -8,6 +8,7 @@ import { migrateConnectionInfoEncryption } from './main/databases/connection-inf
 import { isEncryptionAvailable } from './main/databases/secret-storage'
 import { startQueryRetentionSchedule } from './main/queries/query-retention'
 import { markInterruptedQueries } from './main/queries/reconcile-queries'
+import { startTraceRetentionSchedule } from './main/tracing/trace-retention'
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -115,6 +116,7 @@ app.on('ready', async () => {
   await markInterruptedQueries()
 
   startQueryRetentionSchedule()
+  startTraceRetentionSchedule()
 
   // safeStorage is only reliable once the app is ready.
   await migrateConnectionInfoEncryption()
@@ -127,7 +129,9 @@ app.on('ready', async () => {
 
   const { token } = startServer(apiPort, {
     allowedOrigins,
-    encryptionAvailable: isEncryptionAvailable()
+    encryptionAvailable: isEncryptionAvailable(),
+    // Lets local agents read traces with plain curl during development.
+    publicTraceReads: !app.isPackaged
   })
 
   apiToken = token

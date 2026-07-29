@@ -9,9 +9,11 @@ import { AppShell } from './app/AppShell'
 import { createCollections } from './app/collections'
 import { CollectionsProvider } from './app/collections-context'
 import { ThemeProvider } from './app/components/ThemeProvider'
+import { TraceDashboardHost } from './app/components/traces/TraceDashboardHost'
 import './app/index.css'
 import { createQueryClient } from './app/query-client'
 import { createStore } from './app/store'
+import { initTracing } from './app/tracing/init'
 
 function main() {
   const root = document.getElementById('root')
@@ -19,6 +21,8 @@ function main() {
   if (!root) {
     throw new Error('Root element not found')
   }
+
+  initTracing()
 
   const store = createStore()
   const queryClient = createQueryClient()
@@ -34,6 +38,10 @@ function main() {
                 <App />
                 <Toaster />
               </AppShell>
+
+              {/* Outside AppShell so traces stay reachable when app data
+                  fails to load — that is when they matter most. */}
+              <TraceDashboardHost />
             </ThemeProvider>
           </Provider>
         </CollectionsProvider>

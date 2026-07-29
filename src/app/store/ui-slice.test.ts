@@ -51,4 +51,30 @@ describe('uiSlice', () => {
       expect(state.editorScreen).toBeUndefined()
     })
   })
+
+  describe('toggleTraceDashboard', () => {
+    it('opens the dashboard from the initial state', () => {
+      const state = reducer(initialState, uiActions.toggleTraceDashboard())
+
+      expect(state.traceDashboardOpen).toEqual(true)
+    })
+
+    it('closes an open dashboard', () => {
+      const openState: UiState = { traceDashboardOpen: true }
+
+      const state = reducer(openState, uiActions.toggleTraceDashboard())
+
+      expect(state.traceDashboardOpen).toEqual(false)
+    })
+  })
+
+  describe('closeTraceDashboard', () => {
+    it('closes the dashboard', () => {
+      const openState: UiState = { traceDashboardOpen: true }
+
+      const state = reducer(openState, uiActions.closeTraceDashboard())
+
+      expect(state.traceDashboardOpen).toEqual(false)
+    })
+  })
 })

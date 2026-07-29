@@ -10,6 +10,8 @@ import { connectionTestRouter, databaseRouter } from './databases'
 import { chatRouter } from './main/chat/routes'
 import { errorHandler } from './main/middleware/error-handler'
 import { queryRouter } from './main/queries'
+import { traceRouter } from './main/tracing/routes'
+import { traceMiddleware } from './main/tracing/trace-middleware'
 import { worksheetRouter } from './main/worksheets'
 
 export const apiPort = 7847
@@ -21,12 +23,14 @@ export interface CreateAppOptions {
   allowedOrigins?: string[]
   enableLogging?: boolean
   encryptionAvailable?: boolean
+  publicTraceReads?: boolean
   token: string
 }
 
 export interface StartServerOptions {
   allowedOrigins?: string[]
   encryptionAvailable?: boolean
+  publicTraceReads?: boolean
 }
 
 export function createApp(options: CreateAppOptions) {
@@ -34,6 +38,7 @@ export function createApp(options: CreateAppOptions) {
     allowedOrigins = defaultAllowedOrigins,
     enableLogging = true,
     encryptionAvailable = true,
+    publicTraceReads = false,
     token
   } = options
 
@@ -52,13 +57,24 @@ export function createApp(options: CreateAppOptions) {
   app.use(
     '*',
     cors({
-      allowHeaders: ['Authorization', 'Content-Type'],
+      allowHeaders: ['Authorization', 'Content-Type', 'traceparent'],
       origin: allowedOrigins
     })
   )
 
   app.use('*', async (context, next) => {
     if (context.req.path === '/health') {
+      return next()
+    }
+
+    // In development agents read traces with plain curl; the server binds
+    // loopback only, and span ingest stays authenticated.
+    if (
+      publicTraceReads &&
+      context.req.method === 'GET' &&
+      (context.req.path === '/traces' ||
+        context.req.path.startsWith('/traces/'))
+    ) {
       return next()
     }
 
@@ -72,6 +88,9 @@ export function createApp(options: CreateAppOptions) {
     return next()
   })
 
+  // After auth so unauthorized probes are not traced.
+  app.use('*', traceMiddleware())
+
   // encryptionAvailable tells the renderer whether the OS keychain can
   // protect stored connection secrets, so it can warn before saving one.
   app.get('/health', (c) => {
@@ -82,6 +101,7 @@ export function createApp(options: CreateAppOptions) {
   app.route('/databases', databaseRouter)
   app.route('/chat', chatRouter)
   app.route('/queries', queryRouter)
+  app.route('/traces', traceRouter)
   app.route('/worksheets', worksheetRouter)
 
   app.onError(errorHandler)
@@ -105,6 +125,7 @@ export function startServer(port = 3000, options: StartServerOptions = {}) {
   const app = createApp({
     allowedOrigins: options.allowedOrigins,
     encryptionAvailable: options.encryptionAvailable,
+    publicTraceReads: options.publicTraceReads,
     token
   })
 

@@ -5,9 +5,21 @@ import { z } from 'zod'
 import { database } from '@/database'
 import { databasesTable, queriesTable } from '@/database/schema'
 import { canceledQueryMessage } from '@/glue/queries'
-import { QueryCanceledError, type DatabaseAdapter } from '@/databases/adapter'
+import { SpanContext } from '@/glue/tracing/spans'
+import {
+  QueryCanceledError,
+  type DatabaseAdapter,
+  type QueryResult
+} from '@/databases/adapter'
 import { createAdapter } from '@/databases/create-adapter'
 import { DatabaseService } from '@/main/databases/database-service'
+import {
+  getActiveSpanContext,
+  runWithContext,
+  startSpan,
+  withSpan,
+  type Span
+} from '@/main/tracing/tracer'
 
 export const createQuerySchema = z.object({
   content: z.string(),
@@ -67,45 +79,117 @@ class QueryRunner {
       .values(data)
       .returning()
 
-    void this.runQueryInBackground(insertedQueryRow)
+    // The active span context must be captured here: the fire-and-forget
+    // call below escapes the request scope, so AsyncLocalStorage alone
+    // would not link the background spans to the request trace.
+    const parentContext = getActiveSpanContext()
+
+    void this.runQueryInBackground(insertedQueryRow, parentContext)
 
     return insertedQueryRow
   }
 
-  private async runQueryInBackground(
+  private async executeQuery(
     query: typeof queriesTable.$inferSelect
   ): Promise<void> {
+    const { adapter, databaseType } = await withSpan(
+      'query.loadConnection',
+      { attributes: { 'database.id': query.databaseId } },
+      async () => {
+        const service = new DatabaseService()
+        const databaseRecord = await service.getDatabaseWithSecrets(
+          query.databaseId
+        )
+
+        if (!databaseRecord) {
+          throw new Error(`Database not found: ${query.databaseId}`)
+        }
+
+        return {
+          adapter: createAdapter(
+            databaseRecord.type,
+            databaseRecord.connectionInfo
+          ),
+          databaseType: databaseRecord.type
+        }
+      }
+    )
+
+    this.runningAdapters.set(query.id, adapter)
+
     try {
-      const service = new DatabaseService()
-      const databaseRecord = await service.getDatabaseWithSecrets(
-        query.databaseId
+      const result = await this.runAdapterQuery(adapter, databaseType, query)
+
+      await withSpan(
+        'query.saveResult',
+        {
+          attributes: {
+            'query.id': query.id,
+            'query.rowCount': result.rowCount,
+            'query.truncated': result.truncated
+          }
+        },
+        async () => {
+          await database
+            .update(queriesTable)
+            .set({
+              finishedAt: Date.now(),
+              result: JSON.stringify(result)
+            })
+            .where(eq(queriesTable.id, query.id))
+        }
+      )
+    } finally {
+      this.runningAdapters.delete(query.id)
+    }
+  }
+
+  private async runAdapterQuery(
+    adapter: DatabaseAdapter,
+    databaseType: string,
+    query: typeof queriesTable.$inferSelect
+  ): Promise<QueryResult> {
+    const span = startSpan('db.query', {
+      attributes: {
+        'db.statement': query.content,
+        'db.system': databaseType,
+        'query.id': query.id
+      }
+    })
+
+    try {
+      const result = await runWithContext(span.context, () =>
+        adapter.runQuery(query.content)
       )
 
-      if (!databaseRecord) {
-        throw new Error(`Database not found: ${query.databaseId}`)
-      }
+      span.setStatus('ok')
 
-      const adapter = createAdapter(
-        databaseRecord.type,
-        databaseRecord.connectionInfo
-      )
-
-      this.runningAdapters.set(query.id, adapter)
-
-      try {
-        const result = await adapter.runQuery(query.content)
-
-        await database
-          .update(queriesTable)
-          .set({
-            finishedAt: Date.now(),
-            result: JSON.stringify(result)
-          })
-          .where(eq(queriesTable.id, query.id))
-      } finally {
-        this.runningAdapters.delete(query.id)
-      }
+      return result
     } catch (error) {
+      recordQueryOutcome(span, error)
+
+      throw error
+    } finally {
+      await span.end()
+    }
+  }
+
+  private async runQueryInBackground(
+    query: typeof queriesTable.$inferSelect,
+    parentContext?: SpanContext
+  ): Promise<void> {
+    const span = startSpan('query.execute', {
+      attributes: { 'database.id': query.databaseId, 'query.id': query.id },
+      parent: parentContext
+    })
+
+    try {
+      await runWithContext(span.context, () => this.executeQuery(query))
+
+      span.setStatus('ok')
+    } catch (error) {
+      recordQueryOutcome(span, error)
+
       const errorMessage = isCancellationError(error)
         ? canceledQueryMessage
         : extractErrorMessage(error)
@@ -127,8 +211,23 @@ class QueryRunner {
           }`
         )
       }
+    } finally {
+      await span.end()
     }
   }
+}
+
+// A canceled query is a user action, not a failure — the span stays ok and
+// carries an event instead of an exception.
+function recordQueryOutcome(span: Span, error: unknown): void {
+  if (isCancellationError(error)) {
+    span.addEvent('query.canceled')
+    span.setStatus('ok')
+
+    return
+  }
+
+  span.recordException(error)
 }
 
 function isCancellationError(error: unknown): boolean {

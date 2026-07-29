@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
+import { finishQueryTrace } from '../tracing/query-traces'
 import { QueryDto } from '@/main/queries'
 import { SchemaInfo } from '@/databases/adapter'
 
@@ -135,6 +136,9 @@ export function useQueryResultSync(query: QueryDto | undefined): void {
     if (!finished || !isRunning) {
       return
     }
+
+    // Ends the query.run root span with the observed terminal state.
+    finishQueryTrace(finished)
 
     void queries.stateWhenReady().then(() => {
       queries.utils.writeUpsert(finished)

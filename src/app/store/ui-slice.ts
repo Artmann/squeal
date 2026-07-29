@@ -7,6 +7,7 @@ export interface EditorScreen {
 
 export interface UiState {
   editorScreen?: EditorScreen
+  traceDashboardOpen?: boolean
 }
 
 const initialState: UiState = {}
@@ -17,6 +18,10 @@ const uiSlice = createSlice({
   reducers: {
     closeEditorScreen: (state) => {
       state.editorScreen = undefined
+    },
+
+    closeTraceDashboard: (state) => {
+      state.traceDashboardOpen = false
     },
 
     openCreateDatabase: (state) => {
@@ -30,6 +35,10 @@ const uiSlice = createSlice({
         databaseId: action.payload,
         type: 'edit-database'
       }
+    },
+
+    toggleTraceDashboard: (state) => {
+      state.traceDashboardOpen = !state.traceDashboardOpen
     }
   }
 })
