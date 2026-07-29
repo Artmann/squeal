@@ -2,33 +2,22 @@
 // main-process imports — the renderer bundles it.
 import { Schema } from 'effect'
 
-// --- Branded request ids -----------------------------------------------------
-// Ids are branded for type safety across service boundaries, but only require
-// non-emptiness: rows created by older app versions are not guaranteed to be
-// UUIDs.
+// --- Request ids ---------------------------------------------------------------
+// Validated but deliberately unbranded: ids round-trip through DTOs and the
+// typed client as plain strings, and a brand here would force a decode at
+// every call site. They only require non-emptiness — rows created by older
+// app versions are not guaranteed to be UUIDs.
 
-export const DatabaseId = Schema.String.pipe(
-  Schema.minLength(1),
-  Schema.brand('@Squeal/DatabaseId')
-)
+export const DatabaseId = Schema.String.pipe(Schema.minLength(1))
 export type DatabaseId = Schema.Schema.Type<typeof DatabaseId>
 
-export const QueryId = Schema.String.pipe(
-  Schema.minLength(1),
-  Schema.brand('@Squeal/QueryId')
-)
+export const QueryId = Schema.String.pipe(Schema.minLength(1))
 export type QueryId = Schema.Schema.Type<typeof QueryId>
 
-export const TraceId = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{32}$/),
-  Schema.brand('@Squeal/TraceId')
-)
+export const TraceId = Schema.String.pipe(Schema.pattern(/^[0-9a-f]{32}$/))
 export type TraceId = Schema.Schema.Type<typeof TraceId>
 
-export const WorksheetId = Schema.String.pipe(
-  Schema.minLength(1),
-  Schema.brand('@Squeal/WorksheetId')
-)
+export const WorksheetId = Schema.String.pipe(Schema.minLength(1))
 export type WorksheetId = Schema.Schema.Type<typeof WorksheetId>
 
 // --- Connection info ---------------------------------------------------------

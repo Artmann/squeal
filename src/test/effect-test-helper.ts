@@ -1,18 +1,34 @@
 // Layer-based test substitutes for the Effect services — no vi.mock. Tests
 // compose these under the service layers they exercise and get a fresh
 // in-memory app database per layer build.
+import {
+  HttpApiBuilder,
+  HttpApiClient,
+  HttpClient,
+  HttpClientRequest
+} from '@effect/platform'
+// Subpath import on purpose: the package barrel pulls in cluster modules
+// whose optional peers are not installed.
+import * as NodeHttpServer from '@effect/platform-node/NodeHttpServer'
 import { drizzle } from 'drizzle-orm/libsql'
-import { Effect, Layer } from 'effect'
+import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
 
 import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
 import { QueryCanceledError } from '@/databases/adapter'
+import { SquealApi } from '@/glue/api/api'
+import { ApiToken } from '@/server/http/api-token'
+import { ApiLive } from '@/server/http/server'
 import {
   AppDatabase,
   makeAppDatabaseService
 } from '@/server/services/app-database'
 import { AdapterFactory } from '@/server/services/adapter-factory'
+import { DatabaseService } from '@/server/services/database-service'
+import { QueryRunner } from '@/server/services/query-runner'
 import { SecretStorage } from '@/server/services/secret-storage'
+import { TraceStore } from '@/server/services/trace-store'
+import { WorksheetService } from '@/server/services/worksheet-service'
 
 export const testEncryptionPrefix = 'enc:v1:test:'
 
@@ -107,3 +123,55 @@ export { QueryCanceledError }
 export function runTest<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
   return Effect.runPromise(effect)
 }
+
+// --- HTTP harness ------------------------------------------------------------
+// Serves the real API implementation on an ephemeral in-process server
+// (NodeHttpServer.layerTest) and exposes an HttpClient wired to it, so route
+// tests exercise auth, decoding, and status mapping end to end.
+
+export const testApiToken = 'test-api-token'
+
+export interface TestApiOptions {
+  adapter?: TestAdapterConfig
+  publicTraceReads?: boolean
+}
+
+export function makeTestApi(options: TestApiOptions = {}) {
+  const adapterFactory = makeTestAdapterFactory(options.adapter)
+
+  const services = Layer.mergeAll(
+    QueryRunner.DefaultWithoutDependencies,
+    TraceStore.DefaultWithoutDependencies,
+    WorksheetService.DefaultWithoutDependencies
+  ).pipe(
+    Layer.provideMerge(DatabaseService.DefaultWithoutDependencies),
+    Layer.provideMerge(adapterFactory.layer),
+    Layer.provideMerge(makeTestAppDatabase()),
+    Layer.provideMerge(TestSecretStorage)
+  )
+
+  const configuration = Layer.setConfigProvider(
+    ConfigProvider.fromMap(
+      new Map([
+        ['PUBLIC_TRACE_READS', String(options.publicTraceReads ?? false)]
+      ])
+    )
+  )
+
+  const layer = HttpApiBuilder.serve().pipe(
+    Layer.provide(ApiLive),
+    Layer.provideMerge(services),
+    Layer.provide(Layer.succeed(ApiToken, Redacted.make(testApiToken))),
+    Layer.provide(configuration),
+    Layer.provideMerge(NodeHttpServer.layerTest)
+  )
+
+  return { adapterState: adapterFactory.state, layer }
+}
+
+// A typed client for the served test API, authenticated with the test token.
+export const makeAuthorizedClient = HttpApiClient.make(SquealApi, {
+  transformClient: HttpClient.mapRequest(
+    HttpClientRequest.setHeader('authorization', `Bearer ${testApiToken}`)
+  )
+})
