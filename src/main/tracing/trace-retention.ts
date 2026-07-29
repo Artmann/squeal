@@ -47,20 +47,3 @@ export async function deleteExpiredSpans(
 
   return deletedCount
 }
-
-// Desktop apps can stay open for weeks, so a boot-only sweep is not enough.
-export function startTraceRetentionSchedule(): void {
-  const sweep = () => {
-    void deleteExpiredSpans().catch((error: unknown) => {
-      log.error(
-        `Trace span cleanup failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
-    })
-  }
-
-  sweep()
-
-  setInterval(sweep, dayInMilliseconds)
-}

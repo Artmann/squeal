@@ -15,12 +15,12 @@ import { SecretDecryptError } from '../errors'
 import { AppDatabase } from './app-database'
 import { SecretStorage } from './secret-storage'
 
-export interface CreateDatabaseResult {
+interface CreateDatabaseResult {
   database: DatabaseDto
   updatedWorksheet?: WorksheetDto
 }
 
-export interface DatabaseWithSecrets {
+interface DatabaseWithSecrets {
   connectionInfo: ConnectionInfo
   id: string
   name: string

@@ -36,20 +36,3 @@ export async function deleteExpiredQueries(
 
   return deletedCount
 }
-
-// Desktop apps can stay open for weeks, so a boot-only sweep is not enough.
-export function startQueryRetentionSchedule(): void {
-  const sweep = () => {
-    void deleteExpiredQueries().catch((error: unknown) => {
-      log.error(
-        `Query history cleanup failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
-    })
-  }
-
-  sweep()
-
-  setInterval(sweep, dayInMilliseconds)
-}

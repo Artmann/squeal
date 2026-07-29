@@ -24,9 +24,7 @@ function dailySweep(
   )
 }
 
-const queryRetention = dailySweep('Query history', () =>
-  deleteExpiredQueries()
-)
+const queryRetention = dailySweep('Query history', () => deleteExpiredQueries())
 
 const traceRetention = dailySweep('Trace span', () => deleteExpiredSpans())
 

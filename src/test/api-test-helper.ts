@@ -13,7 +13,7 @@ import type { QueryResult, SchemaInfo } from '@/databases/adapter'
 let testDatabase: LibSQLDatabase
 
 // Mock adapter configuration that can be changed per test.
-export const mockAdapterConfig = {
+const mockAdapterConfig = {
   cancel: undefined as (() => Promise<void>) | undefined,
   getSchema: async (): Promise<SchemaInfo> => ({
     databaseName: 'test_db',
