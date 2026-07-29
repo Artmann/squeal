@@ -1,15 +1,7 @@
-export interface CreateWorksheetRequest {
-  content?: string
-  databaseId?: string
-  name: string
-}
-
-export interface WorksheetDto {
-  content: string
-  createdAt: number
-  databaseId: string | null
-  id: string
-  lastOpenedAt: number | null
-  name: string
-  sortOrder: number | null
-}
+// Re-exported from the API contract so the renderer keeps one import path
+// for worksheet shapes.
+export type {
+  CreateWorksheetRequest,
+  UpdateWorksheetRequest,
+  WorksheetDto
+} from './api/schemas'

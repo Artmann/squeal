@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { SpanDto } from '@/main/tracing/routes'
+import type { SpanDto } from '@/glue/api/schemas'
 
 import { computeWaterfallLayout, visibleRows } from './waterfall-layout'
 

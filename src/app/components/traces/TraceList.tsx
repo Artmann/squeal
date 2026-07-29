@@ -1,7 +1,7 @@
 import { CircleAlertIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
-import type { TraceSummaryDto } from '@/main/tracing/routes'
+import type { TraceSummaryDto } from '@/glue/api/schemas'
 
 import { TimeAgo } from '../TimeAgo'
 import {

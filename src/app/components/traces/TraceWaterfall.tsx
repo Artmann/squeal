@@ -2,7 +2,7 @@ import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { ReactElement, useMemo, useState } from 'react'
 
 import { cn } from '@/app/lib/utils'
-import type { SpanDto } from '@/main/tracing/routes'
+import type { SpanDto } from '@/glue/api/schemas'
 
 import { formatDuration } from './format-duration'
 import {

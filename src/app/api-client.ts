@@ -1,104 +1,49 @@
-import { CreateConnectionTestResponse } from '@/databases'
-import { SchemaInfo } from '@/databases/adapter'
+// The renderer's API layer, derived from the shared HttpApi definition so
+// request and response shapes stay in lockstep with the server. Everything
+// exported here returns a promise: the React hooks (TanStack Query/DB) stay
+// promise-based and know nothing about Effect.
 import {
+  FetchHttpClient,
+  HttpApiClient,
+  HttpClient,
+  HttpClientRequest
+} from '@effect/platform'
+import { HttpApiDecodeError } from '@effect/platform/HttpApiError'
+import { Cause, Effect, Exit, FiberRef, ManagedRuntime, Option } from 'effect'
+
+import { SquealApi } from '@/glue/api/api'
+import type {
+  ConnectionTestResponse,
   CreateDatabaseRequest,
+  CreateDatabaseResponse,
+  CreateQueryResponse,
+  CreateWorksheetRequest,
+  DatabaseDto,
   DatabaseType,
+  ListTracesUrlParams,
+  QueryDto,
+  ReorderDatabasesResponse,
+  ReorderWorksheetsResponse,
+  SchemaInfoDto,
+  SpanDto,
+  TraceSummaryDto,
   UpdateConnectionInfo,
-  UpdateDatabaseRequest
-} from '@/databases/schemas'
+  UpdateDatabaseRequest,
+  UpdateDatabaseResponse,
+  UpdateWorksheetRequest,
+  WorksheetDto
+} from '@/glue/api/schemas'
 import { ApiError } from '@/errors'
-import { DatabaseDto } from '@/glue/databases'
 import { SpanContext, SpanRecord } from '@/glue/tracing/spans'
 import { formatTraceparent } from '@/glue/tracing/traceparent'
-import { CreateWorksheetRequest, WorksheetDto } from '@/glue/worksheets'
-import {
-  CreateQueryResponse,
-  GetQueriesResponse,
-  GetQueryResponse,
-  QueryDto
-} from '@/main/queries'
-import type {
-  GetTraceResponse,
-  GetTracesResponse,
-  IngestSpansResponse,
-  SpanDto,
-  TraceSummaryDto
-} from '@/main/tracing/routes'
-import {
-  CreateWorksheetResponse,
-  ListWorksheetsResponse,
-  ReorderWorksheetsResponse,
-  UpdateWorksheetResponse
-} from '@/main/worksheets'
 
 import { startSpan } from './tracing/tracer'
 
 const baseUrl = 'http://127.0.0.1:7847'
 
-interface CreateDatabaseResponse {
-  database: DatabaseDto
-  updatedWorksheet?: WorksheetDto
-}
-
-interface GetDatabasesResponse {
-  databases: DatabaseDto[]
-}
-
-interface GetHealthResponse {
+export interface GetHealthResponse {
   encryptionAvailable: boolean
   status: string
-}
-
-interface GetSchemaResponse {
-  schema: SchemaInfo
-}
-
-interface ReorderDatabasesResponse {
-  databases: DatabaseDto[]
-}
-
-interface UpdateDatabaseResponse {
-  database: DatabaseDto
-}
-
-interface ApiErrorResponse {
-  error: {
-    details?: Record<string, string>
-    message: string
-    status: number
-  }
-}
-
-interface RequestOptions {
-  body?: unknown
-  method?: string
-  traceParent?: SpanContext
-}
-
-const pollPathPattern = /^\/queries\/[^/]+$/
-const uuidPattern =
-  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
-
-// Health checks, the trace API itself, and the 250ms result poller would
-// only produce noise (or feedback loops) as spans.
-function shouldTrace(method: string, path: string): boolean {
-  if (
-    path === '/health' ||
-    path === '/traces' ||
-    path.startsWith('/traces/') ||
-    path.startsWith('/traces?')
-  ) {
-    return false
-  }
-
-  return !(method === 'GET' && pollPathPattern.test(path))
-}
-
-// Collapses ids so requests group under one span name in the trace list.
-function spanName(method: string, path: string): string {
-  const pathname = path.split('?')[0] ?? path
-
-  return `HTTP ${method} ${pathname.replace(uuidPattern, ':id')}`
 }
 
 let apiTokenPromise: Promise<string> | undefined
@@ -109,134 +54,169 @@ function getApiToken(): Promise<string> {
   return apiTokenPromise
 }
 
-function isApiErrorResponse(data: unknown): data is ApiErrorResponse {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'error' in data &&
-    typeof (data as ApiErrorResponse).error === 'object'
+// The renderer's tracer is hand-rolled (no fiber context to inherit), so the
+// traceparent for the current call travels through a FiberRef that the
+// request transform reads.
+const currentTraceparent = FiberRef.unsafeMake<string | undefined>(undefined)
+
+const runtime = ManagedRuntime.make(FetchHttpClient.layer)
+
+const client = HttpApiClient.make(SquealApi, {
+  baseUrl,
+  transformClient: (httpClient) =>
+    httpClient.pipe(
+      HttpClient.mapRequestEffect((request) =>
+        Effect.gen(function* () {
+          const token = yield* Effect.promise(getApiToken)
+          const traceparent = yield* FiberRef.get(currentTraceparent)
+
+          const authorized = HttpClientRequest.setHeader(
+            request,
+            'Authorization',
+            `Bearer ${token}`
+          )
+
+          if (traceparent === undefined) {
+            return authorized
+          }
+
+          return HttpClientRequest.setHeader(
+            authorized,
+            'traceparent',
+            traceparent
+          )
+        })
+      ),
+      // The spans below carry the traceparent explicitly; the client's own
+      // propagation would inject a competing one.
+      HttpClient.withTracerPropagation(false)
+    )
+})
+
+// Infrastructure failures the API contract does not describe. They carry
+// `_tag` like domain errors but reference the whole request/response, so they
+// are flattened into an ApiError instead of being handed to callers.
+const infrastructureTags = new Set([
+  'ParseError',
+  'RequestError',
+  'ResponseError'
+])
+
+// Domain errors reach the caller as themselves so hooks can discriminate on
+// `_tag`; decode and transport failures become ApiError, which existing
+// catch-alls and the database form's field mapping already understand.
+function toThrowable(cause: Cause.Cause<unknown>): unknown {
+  const failure = Cause.failureOption(cause)
+  const error = Option.isSome(failure) ? failure.value : Cause.squash(cause)
+
+  if (error instanceof HttpApiDecodeError) {
+    const details: Record<string, string> = {}
+
+    for (const issue of error.issues) {
+      details[issue.path.join('.')] = issue.message
+    }
+
+    return new ApiError(400, 'Validation error', details)
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    '_tag' in error &&
+    typeof error._tag === 'string' &&
+    !infrastructureTags.has(error._tag)
+  ) {
+    return error
+  }
+
+  const status =
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof (error as { response?: { status?: number } }).response?.status ===
+      'number'
+      ? ((error as { response: { status: number } }).response.status ?? 500)
+      : 500
+
+  return new ApiError(
+    status,
+    error instanceof Error
+      ? error.message
+      : 'The request could not be completed. Please try again.'
   )
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json()
+function run<A, E>(
+  effect: Effect.Effect<A, E, HttpClient.HttpClient>
+): Promise<A> {
+  return runtime.runPromiseExit(effect).then((exit) => {
+    if (Exit.isSuccess(exit)) {
+      return exit.value
+    }
 
-  if (isApiErrorResponse(data)) {
-    throw new ApiError(
-      data.error.status,
-      data.error.message,
-      data.error.details
-    )
-  }
-
-  if (!response.ok) {
-    throw new ApiError(response.status, response.statusText)
-  }
-
-  return data as T
+    throw toThrowable(exit.cause)
+  })
 }
 
-async function apiRequest<T>(
-  path: string,
-  options: RequestOptions = {}
-): Promise<T> {
-  const method = options.method ?? 'GET'
-  const span = shouldTrace(method, path)
-    ? startSpan(spanName(method, path), {
-        attributes: {
-          'http.method': method,
-          'http.url': `${baseUrl}${path}`
-        },
-        kind: 'client',
-        parent: options.traceParent
-      })
-    : undefined
+// Requests the renderer traces get a client span whose context is sent as the
+// traceparent. Health checks, the trace API itself, and the 250ms result
+// poller would only produce noise (or feedback loops).
+function traced<A, E>(
+  name: string,
+  attributes: { method: string; path: string },
+  parent: SpanContext | undefined,
+  effect: Effect.Effect<A, E, HttpClient.HttpClient>
+): Promise<A> {
+  const span = startSpan(name, {
+    attributes: {
+      'http.method': attributes.method,
+      'http.url': `${baseUrl}${attributes.path}`
+    },
+    kind: 'client',
+    ...(parent === undefined ? {} : { parent })
+  })
 
-  try {
-    const token = await getApiToken()
+  return run(
+    Effect.locally(effect, currentTraceparent, formatTraceparent(span.context))
+  ).then(
+    (value) => {
+      span.setStatus('ok')
+      span.end()
 
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      return value
+    },
+    (error: unknown) => {
+      span.recordException(error)
+      span.end()
+
+      throw error
     }
-
-    if (span) {
-      headers.traceparent = formatTraceparent(span.context)
-    }
-
-    const response = await fetch(`${baseUrl}${path}`, {
-      body:
-        options.body === undefined ? undefined : JSON.stringify(options.body),
-      headers,
-      method
-    })
-
-    span?.setAttribute('http.status_code', response.status)
-
-    if (response.ok) {
-      span?.setStatus('ok')
-    }
-
-    // Error responses throw here, so the catch below records them.
-    return await handleResponse<T>(response)
-  } catch (error) {
-    span?.recordException(error)
-
-    throw error
-  } finally {
-    span?.end()
-  }
+  )
 }
 
 export const apiClient = {
-  async createWorksheet(
-    request: CreateWorksheetRequest
-  ): Promise<WorksheetDto> {
-    const data = await apiRequest<CreateWorksheetResponse>('/worksheets', {
-      body: request,
-      method: 'POST'
-    })
-
-    return data.worksheet
+  async cancelQuery(queryId: string): Promise<void> {
+    await traced(
+      'HTTP POST /queries/:id/cancel',
+      { method: 'POST', path: `/queries/${queryId}/cancel` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.queries.cancel({ path: { id: queryId } })
+      )
+    )
   },
 
   async createDatabase(
     request: CreateDatabaseRequest
   ): Promise<CreateDatabaseResponse> {
-    return apiRequest<CreateDatabaseResponse>('/databases', {
-      body: request,
-      method: 'POST'
-    })
-  },
-
-  async deleteDatabase(databaseId: string): Promise<void> {
-    await apiRequest<{ success: boolean }>(`/databases/${databaseId}`, {
-      method: 'DELETE'
-    })
-  },
-
-  async getDatabases(): Promise<DatabaseDto[]> {
-    const data = await apiRequest<GetDatabasesResponse>('/databases')
-
-    return data.databases
-  },
-
-  async getHealth(): Promise<GetHealthResponse> {
-    return apiRequest<GetHealthResponse>('/health')
-  },
-
-  async getWorksheets(): Promise<WorksheetDto[]> {
-    const data = await apiRequest<ListWorksheetsResponse>('/worksheets')
-
-    return data.worksheets
-  },
-
-  async getDatabaseSchema(databaseId: string): Promise<SchemaInfo> {
-    const data = await apiRequest<GetSchemaResponse>(
-      `/databases/${databaseId}/schema`
+    return traced(
+      'HTTP POST /databases',
+      { method: 'POST', path: '/databases' },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.databases.create({ payload: request })
+      )
     )
-
-    return data.schema
   },
 
   async createQuery(
@@ -249,134 +229,208 @@ export const apiClient = {
     },
     options: { traceParent?: SpanContext } = {}
   ): Promise<CreateQueryResponse> {
-    return apiRequest<CreateQueryResponse>('/queries', {
-      body: request,
-      method: 'POST',
-      ...(options.traceParent === undefined
-        ? {}
-        : { traceParent: options.traceParent })
-    })
+    return traced(
+      'HTTP POST /queries',
+      { method: 'POST', path: '/queries' },
+      options.traceParent,
+      Effect.flatMap(client, (api) => api.queries.create({ payload: request }))
+    )
   },
 
-  async cancelQuery(queryId: string): Promise<void> {
-    await apiRequest<{ success: boolean }>(`/queries/${queryId}/cancel`, {
-      method: 'POST'
-    })
+  async createWorksheet(
+    request: CreateWorksheetRequest
+  ): Promise<WorksheetDto> {
+    const data = await traced(
+      'HTTP POST /worksheets',
+      { method: 'POST', path: '/worksheets' },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.worksheets.create({ payload: request })
+      )
+    )
+
+    return data.worksheet
+  },
+
+  async deleteDatabase(databaseId: string): Promise<void> {
+    await traced(
+      'HTTP DELETE /databases/:id',
+      { method: 'DELETE', path: `/databases/${databaseId}` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.databases.remove({ path: { id: databaseId } })
+      )
+    )
+  },
+
+  async getDatabaseSchema(databaseId: string): Promise<SchemaInfoDto> {
+    const data = await traced(
+      'HTTP GET /databases/:id/schema',
+      { method: 'GET', path: `/databases/${databaseId}/schema` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.databases.schema({ path: { id: databaseId } })
+      )
+    )
+
+    return data.schema
+  },
+
+  async getDatabases(): Promise<DatabaseDto[]> {
+    const data = await traced(
+      'HTTP GET /databases',
+      { method: 'GET', path: '/databases' },
+      undefined,
+      Effect.flatMap(client, (api) => api.databases.list())
+    )
+
+    return data.databases
+  },
+
+  // Untraced: a health probe every few seconds would drown the trace list.
+  async getHealth(): Promise<GetHealthResponse> {
+    return run(Effect.flatMap(client, (api) => api.health.get()))
   },
 
   async getQueries(): Promise<QueryDto[]> {
-    const data = await apiRequest<GetQueriesResponse>('/queries')
+    const data = await traced(
+      'HTTP GET /queries',
+      { method: 'GET', path: '/queries' },
+      undefined,
+      Effect.flatMap(client, (api) => api.queries.list())
+    )
 
     return data.queries
   },
 
+  // Untraced: this is the 250ms result poller.
   async getQuery(queryId: string): Promise<QueryDto> {
-    const data = await apiRequest<GetQueryResponse>(`/queries/${queryId}`)
+    const data = await run(
+      Effect.flatMap(client, (api) =>
+        api.queries.get({ path: { id: queryId } })
+      )
+    )
 
     return data.query
   },
 
+  // Untraced: tracing the trace API is a feedback loop.
+  async getTraceSpans(traceId: string): Promise<SpanDto[]> {
+    const data = await run(
+      Effect.flatMap(client, (api) => api.traces.get({ path: { traceId } }))
+    )
+
+    return data.spans
+  },
+
+  async getWorksheets(): Promise<WorksheetDto[]> {
+    const data = await traced(
+      'HTTP GET /worksheets',
+      { method: 'GET', path: '/worksheets' },
+      undefined,
+      Effect.flatMap(client, (api) => api.worksheets.list())
+    )
+
+    return data.worksheets
+  },
+
   async getTraces(
-    params: {
-      before?: number
-      errorOnly?: boolean
-      limit?: number
-      search?: string
-    } = {}
+    params: Partial<ListTracesUrlParams> = {}
   ): Promise<TraceSummaryDto[]> {
-    const searchParams = new URLSearchParams()
-
-    if (params.before !== undefined) {
-      searchParams.set('before', String(params.before))
-    }
-
-    if (params.errorOnly) {
-      searchParams.set('errorOnly', 'true')
-    }
-
-    if (params.limit !== undefined) {
-      searchParams.set('limit', String(params.limit))
-    }
-
-    if (params.search) {
-      searchParams.set('search', params.search)
-    }
-
-    const query = searchParams.toString()
-    const data = await apiRequest<GetTracesResponse>(
-      query ? `/traces?${query}` : '/traces'
+    const data = await run(
+      Effect.flatMap(client, (api) =>
+        api.traces.list({
+          urlParams: {
+            errorOnly: params.errorOnly ?? false,
+            limit: params.limit ?? 50,
+            ...(params.before === undefined ? {} : { before: params.before }),
+            ...(params.search === undefined ? {} : { search: params.search })
+          }
+        })
+      )
     )
 
     return data.traces
   },
 
-  async getTraceSpans(traceId: string): Promise<SpanDto[]> {
-    const data = await apiRequest<GetTraceResponse>(`/traces/${traceId}`)
-
-    return data.spans
-  },
-
-  async ingestSpans(spans: SpanRecord[]): Promise<IngestSpansResponse> {
-    return apiRequest<IngestSpansResponse>('/traces/spans', {
-      body: { spans },
-      method: 'POST'
-    })
+  async ingestSpans(spans: SpanRecord[]): Promise<{ insertedCount: number }> {
+    return run(
+      Effect.flatMap(client, (api) => api.traces.ingest({ payload: { spans } }))
+    )
   },
 
   async reorderDatabases(
     databaseIds: string[]
   ): Promise<ReorderDatabasesResponse> {
-    return apiRequest<ReorderDatabasesResponse>('/databases/order', {
-      body: { databaseIds },
-      method: 'PUT'
-    })
+    return traced(
+      'HTTP PUT /databases/order',
+      { method: 'PUT', path: '/databases/order' },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.databases.reorder({ payload: { databaseIds } })
+      )
+    )
   },
 
   async reorderWorksheets(
     worksheetIds: string[]
   ): Promise<ReorderWorksheetsResponse> {
-    return apiRequest<ReorderWorksheetsResponse>('/worksheets/order', {
-      body: { worksheetIds },
-      method: 'PUT'
-    })
+    return traced(
+      'HTTP PUT /worksheets/order',
+      { method: 'PUT', path: '/worksheets/order' },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.worksheets.reorder({ payload: { worksheetIds } })
+      )
+    )
   },
 
   async testConnection(
     connectionInfo: UpdateConnectionInfo,
     type: DatabaseType,
     databaseId?: string
-  ): Promise<CreateConnectionTestResponse> {
-    return apiRequest<CreateConnectionTestResponse>('/connection-tests', {
-      body: { connectionInfo, databaseId, type },
-      method: 'POST'
-    })
+  ): Promise<ConnectionTestResponse> {
+    return traced(
+      'HTTP POST /connection-tests',
+      { method: 'POST', path: '/connection-tests' },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.connectionTests.create({
+          payload: {
+            connectionInfo,
+            type,
+            ...(databaseId === undefined ? {} : { databaseId })
+          }
+        })
+      )
+    )
   },
 
   async updateDatabase(
     databaseId: string,
     request: UpdateDatabaseRequest
   ): Promise<UpdateDatabaseResponse> {
-    return apiRequest<UpdateDatabaseResponse>(`/databases/${databaseId}`, {
-      body: request,
-      method: 'PATCH'
-    })
+    return traced(
+      'HTTP PATCH /databases/:id',
+      { method: 'PATCH', path: `/databases/${databaseId}` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.databases.update({ path: { id: databaseId }, payload: request })
+      )
+    )
   },
 
   async updateWorksheet(
     worksheetId: string,
-    updates: {
-      databaseId?: string | null
-      content?: string
-      lastOpenedAt?: number
-      name?: string
-    }
+    updates: UpdateWorksheetRequest
   ): Promise<WorksheetDto> {
-    const data = await apiRequest<UpdateWorksheetResponse>(
-      `/worksheets/${worksheetId}`,
-      {
-        body: updates,
-        method: 'PATCH'
-      }
+    const data = await traced(
+      'HTTP PATCH /worksheets/:id',
+      { method: 'PATCH', path: `/worksheets/${worksheetId}` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.worksheets.update({ path: { id: worksheetId }, payload: updates })
+      )
     )
 
     return data.worksheet

@@ -14,6 +14,8 @@ import {
 
 import { createCollections } from '../collections'
 import { CollectionsProvider } from '../collections-context'
+import type { DatabaseDto, WorksheetDto } from '@/glue/api/schemas'
+import { capturedFetch, jsonResponse } from '../test-fetch'
 import { DatabaseForm } from './DatabaseForm'
 
 // The form asks the backend whether the OS keychain can encrypt secrets; stub
@@ -172,10 +174,7 @@ describe('DatabaseForm', () => {
   it('shows success icon when connection test succeeds', async () => {
     const user = userEvent.setup()
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () => Promise.resolve({ success: true }),
-      ok: true
-    } as Response)
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: true }))
 
     renderDatabaseForm()
 
@@ -190,11 +189,9 @@ describe('DatabaseForm', () => {
   it('shows error icon when connection test fails', async () => {
     const user = userEvent.setup()
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({ message: 'Connection refused', success: false }),
-      ok: true
-    } as Response)
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ message: 'Connection refused', success: false })
+    )
 
     renderDatabaseForm()
 
@@ -224,10 +221,7 @@ describe('DatabaseForm', () => {
     it('sends the databaseId when testing a connection without a password', async () => {
       const user = userEvent.setup()
 
-      vi.mocked(fetch).mockResolvedValueOnce({
-        json: () => Promise.resolve({ success: true }),
-        ok: true
-      } as Response)
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: true }))
 
       renderDatabaseForm(editProps)
 
@@ -239,8 +233,11 @@ describe('DatabaseForm', () => {
         ).toBeInTheDocument()
       })
 
-      const [, requestOptions] = vi.mocked(fetch).mock.calls[0]
-      const body = JSON.parse(String(requestOptions?.body))
+      const request = await capturedFetch()
+      const body = request.body as {
+        connectionInfo: { password: string }
+        databaseId: string
+      }
 
       expect(body.databaseId).toEqual('db-123')
       expect(body.connectionInfo.password).toEqual('')
@@ -249,19 +246,17 @@ describe('DatabaseForm', () => {
     it('submits without a password', async () => {
       const user = userEvent.setup()
 
-      vi.mocked(fetch).mockResolvedValueOnce({
-        json: () =>
-          Promise.resolve({
-            database: {
-              connectionInfo: editProps.defaultValues.connectionInfo,
-              createdAt: 1704067200000,
-              id: 'db-123',
-              name: 'My Database',
-              type: 'postgres'
-            }
-          }),
-        ok: true
-      } as Response)
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({
+          database: {
+            connectionInfo: editProps.defaultValues.connectionInfo,
+            createdAt: 1704067200000,
+            id: 'db-123',
+            name: 'My Database',
+            type: 'postgres'
+          }
+        })
+      )
 
       renderDatabaseForm(editProps)
 
@@ -271,10 +266,10 @@ describe('DatabaseForm', () => {
         expect(fetch).toHaveBeenCalled()
       })
 
-      const [url, requestOptions] = vi.mocked(fetch).mock.calls[0]
+      const request = await capturedFetch()
 
-      expect(String(url)).toContain('/databases/db-123')
-      expect(requestOptions?.method).toEqual('PATCH')
+      expect(request.url).toContain('/databases/db-123')
+      expect(request.method).toEqual('PATCH')
     })
   })
 
@@ -282,25 +277,33 @@ describe('DatabaseForm', () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()
 
-    const database = {
-      connectionInfo: {},
+    const database: DatabaseDto = {
+      connectionInfo: {
+        database: 'testdb',
+        host: 'localhost',
+        port: 5432,
+        username: 'admin'
+      },
       createdAt: Date.now(),
       id: '123',
       name: 'My Database',
+      sortOrder: null,
       type: 'postgres'
     }
 
-    const updatedWorksheet = {
+    const updatedWorksheet: WorksheetDto = {
+      content: '',
       createdAt: Date.now(),
       databaseId: '123',
       id: 'ws-1',
-      name: 'Worksheet 1'
+      lastOpenedAt: null,
+      name: 'Worksheet 1',
+      sortOrder: null
     }
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () => Promise.resolve({ database, updatedWorksheet }),
-      ok: true
-    } as Response)
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ database, updatedWorksheet }, { status: 201 })
+    )
 
     renderDatabaseForm({ onSuccess })
 
@@ -315,19 +318,26 @@ describe('DatabaseForm', () => {
   it('shows success toast when save succeeds', async () => {
     const user = userEvent.setup()
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(
+        {
           database: {
-            connectionInfo: {},
+            connectionInfo: {
+              database: 'testdb',
+              host: 'localhost',
+              port: 5432,
+              username: 'admin'
+            },
             createdAt: Date.now(),
             id: '123',
             name: 'My Database',
+            sortOrder: null,
             type: 'postgres'
           }
-        }),
-      ok: true
-    } as Response)
+        },
+        { status: 201 }
+      )
+    )
 
     renderDatabaseForm()
 
@@ -342,16 +352,16 @@ describe('DatabaseForm', () => {
   it('shows error toast when save fails', async () => {
     const user = userEvent.setup()
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({
-          error: {
-            message: 'Database already exists',
-            status: 400
-          }
-        }),
-      ok: true
-    } as Response)
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(
+        {
+          _tag: 'DatabaseNotFoundError',
+          databaseId: '123',
+          message: 'Database already exists'
+        },
+        { status: 404 }
+      )
+    )
 
     renderDatabaseForm()
 
@@ -366,22 +376,27 @@ describe('DatabaseForm', () => {
   it('displays field-level validation errors from API response', async () => {
     const user = userEvent.setup()
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () =>
-        Promise.resolve({
-          error: {
-            details: {
-              connectionInfo: {
-                host: 'Invalid host format'
-              },
-              name: 'Name is already taken'
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(
+        {
+          _tag: 'HttpApiDecodeError',
+          issues: [
+            {
+              _tag: 'Type',
+              message: 'Name is already taken',
+              path: ['name']
             },
-            message: 'Validation failed',
-            status: 400
-          }
-        }),
-      ok: true
-    } as Response)
+            {
+              _tag: 'Type',
+              message: 'Invalid host format',
+              path: ['connectionInfo', 'host']
+            }
+          ],
+          message: 'The request payload is invalid'
+        },
+        { status: 400 }
+      )
+    )
 
     renderDatabaseForm()
 
@@ -401,10 +416,7 @@ describe('DatabaseForm', () => {
       () =>
         new Promise((resolve) => {
           setTimeout(() => {
-            resolve({
-              json: () => Promise.resolve({ success: true }),
-              ok: true
-            } as Response)
+            resolve(jsonResponse({ success: true }))
           }, 100)
         })
     )
@@ -506,18 +518,23 @@ describe('DatabaseForm', () => {
       const user = userEvent.setup()
       const onSuccess = vi.fn()
 
-      const database = {
-        connectionInfo: {},
+      const database: DatabaseDto = {
+        connectionInfo: {
+          database: 'testdb',
+          host: 'localhost',
+          port: 5432,
+          username: 'admin'
+        },
         createdAt: Date.now(),
         id: '123',
         name: 'My Database',
+        sortOrder: null,
         type: 'postgres'
       }
 
-      vi.mocked(fetch).mockResolvedValueOnce({
-        json: () => Promise.resolve({ database }),
-        ok: true
-      } as Response)
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ database }, { status: 201 })
+      )
 
       renderDatabaseForm({ onSuccess })
 
@@ -529,13 +546,15 @@ describe('DatabaseForm', () => {
       await user.click(screen.getByRole('button', { name: 'Save' }))
 
       await waitFor(() => {
-        const body = JSON.parse(
-          (vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string
-        )
-
-        expect(body.connectionInfo.sslMode).toEqual('verify-full')
-        expect(body.connectionInfo.sslRootCert).toEqual('system')
+        expect(fetch).toHaveBeenCalled()
       })
+
+      const body = (await capturedFetch()).body as {
+        connectionInfo: { sslMode: string; sslRootCert: string }
+      }
+
+      expect(body.connectionInfo.sslMode).toEqual('verify-full')
+      expect(body.connectionInfo.sslRootCert).toEqual('system')
     })
   })
 
@@ -546,19 +565,21 @@ describe('DatabaseForm', () => {
       () =>
         new Promise((resolve) => {
           setTimeout(() => {
-            resolve({
-              json: () =>
-                Promise.resolve({
+            resolve(
+              jsonResponse(
+                {
                   database: {
-                    connectionInfo: {},
+                    connectionInfo: { path: '/tmp/test.sqlite3' },
                     createdAt: Date.now(),
                     id: '123',
                     name: 'My Database',
+                    sortOrder: null,
                     type: 'postgres'
                   }
-                }),
-              ok: true
-            } as Response)
+                },
+                { status: 201 }
+              )
+            )
           }, 100)
         })
     )

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { SpanDto, TraceSummaryDto } from '@/main/tracing/routes'
+import type { SpanDto, TraceSummaryDto } from '@/glue/api/schemas'
 
 vi.mock('@/app/api-client', () => ({
   apiClient: {

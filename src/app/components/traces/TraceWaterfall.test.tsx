@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { SpanDto } from '@/main/tracing/routes'
+import type { SpanDto } from '@/glue/api/schemas'
 
 import { TraceWaterfall } from './TraceWaterfall'
 
