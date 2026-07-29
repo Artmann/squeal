@@ -13,7 +13,7 @@
     "seed": "tsx scripts/seed.ts",
     "start": "electron-forge start",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.backend.json && tsc --noEmit -p tsconfig.renderer.json"
   },
   "keywords": [],
   "author": {
@@ -33,6 +33,8 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@effect/platform": "^0.97.0",
+    "@effect/platform-node": "^0.108.0",
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource/geist-mono": "^5.2.7",
@@ -57,6 +59,7 @@
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.44.7",
+    "effect": "^3.22.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
     "hono": "^4.10.6",
@@ -79,6 +82,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.87.1",
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
