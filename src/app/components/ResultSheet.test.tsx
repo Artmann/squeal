@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 import { ResultSheet } from './ResultSheet'
 
 const successfulQuery: QueryDto = {

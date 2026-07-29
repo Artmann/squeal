@@ -9,10 +9,10 @@ import { queryKeys } from '../query-keys'
 import {
   CreateDatabaseRequest,
   UpdateDatabaseRequest
-} from '@/databases/schemas'
+} from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
 import { CreateWorksheetRequest } from '@/glue/worksheets'
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 
 const cancelPollAttempts = 20
 

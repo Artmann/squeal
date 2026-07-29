@@ -1,6 +1,6 @@
 import { ReactElement, ReactNode, useCallback, useState } from 'react'
 
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 import { TimeAgo } from './TimeAgo'
 import { cn } from '../lib/utils'
 

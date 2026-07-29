@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import dayjs from 'dayjs'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { TraceSummaryDto } from '@/main/tracing/routes'
+import type { TraceSummaryDto } from '@/glue/api/schemas'
 
 import { TraceList } from './TraceList'
 

@@ -1,10 +1,7 @@
-import { DatabaseType, PublicConnectionInfo } from '@/databases/schemas'
-
-export interface DatabaseDto {
-  connectionInfo: PublicConnectionInfo
-  createdAt: number
-  id: string
-  name: string
-  sortOrder: number | null
-  type: DatabaseType
-}
+// Re-exported from the API contract so the renderer keeps one import path
+// for database shapes.
+export type {
+  DatabaseDto,
+  DatabaseType,
+  PublicConnectionInfo
+} from './api/schemas'

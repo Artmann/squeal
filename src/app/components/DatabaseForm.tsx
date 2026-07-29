@@ -11,14 +11,19 @@ import { useForm, type Resolver, type UseFormReturn } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
-import { CreateConnectionTestResponse } from '@/databases'
-import {
+import type {
+  ConnectionTestResponse,
   CreateDatabaseRequest,
-  createDatabaseSchema,
   DatabaseType,
-  databaseTypeSchema,
   SslMode,
   UpdateConnectionInfo,
+  UpdateDatabaseRequest
+} from '@/glue/api/schemas'
+// The form is validated client-side with zod through react-hook-form's
+// resolver; the API contract itself is Effect Schema.
+import {
+  createDatabaseSchema,
+  databaseTypeSchema,
   updateDatabaseSchema
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
@@ -259,7 +264,9 @@ function useSaveDatabase({
 
       if (isEditMode && databaseId) {
         updateDatabase.mutate(
-          { id: databaseId, request: values },
+          // The resolver validated connectionInfo, which zod's transform
+          // output types as optional.
+          { id: databaseId, request: values as UpdateDatabaseRequest },
           {
             onSuccess: handleSuccess,
             onError: handleFailure
@@ -296,7 +303,7 @@ function useConnectionTest({
   form
 }: UseConnectionTestOptions) {
   const [connectTestResult, setConnectTestResult] = useState<
-    CreateConnectionTestResponse | undefined
+    ConnectionTestResponse | undefined
   >()
   const [isTestingConnection, setIsTestingConnection] = useState(false)
 

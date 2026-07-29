@@ -25,7 +25,7 @@ import {
 } from './hooks/queries'
 import { useCancelQuery } from './hooks/mutations'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 import { useAppSelector } from './store'
 import { finishQueryTrace, startQueryTrace } from './tracing/query-traces'
 import { createAstFromSql, type Statement } from './sql-parser'

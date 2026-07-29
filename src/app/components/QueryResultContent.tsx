@@ -6,7 +6,7 @@ import { QueryResultTable } from './QueryResultTable'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
 import { canceledQueryMessage } from '@/glue/queries'
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 
 interface QueryResultContentProps {
   isCancelPending: boolean

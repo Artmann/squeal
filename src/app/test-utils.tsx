@@ -7,7 +7,7 @@ import { Toaster } from 'sonner'
 
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 import { WorksheetDto } from '@/glue/worksheets'
 
 import { createCollections } from './collections'

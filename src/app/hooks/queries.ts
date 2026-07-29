@@ -6,7 +6,7 @@ import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import { finishQueryTrace } from '../tracing/query-traces'
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 import { SchemaInfo } from '@/databases/adapter'
 
 export const queryPollInterval = 250
