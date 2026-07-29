@@ -337,7 +337,7 @@ function messageFromCause(cause: Cause.Cause<{ message: string }>): string {
   return extractErrorMessage(Cause.squash(cause))
 }
 
-export function transformQueryRow(row: QueryRow): QueryDto {
+function transformQueryRow(row: QueryRow): QueryDto {
   let parsed: QueryResult | null = null
   let parseError: string | null = null
 

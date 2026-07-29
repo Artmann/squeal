@@ -94,13 +94,10 @@ export type ConnectionInfo = Schema.Schema.Type<typeof ConnectionInfo>
 
 // Updates and connection tests may omit the password to mean "use the stored
 // one" — the main process merges it back in server-side.
-export const UpdateServerConnectionInfo = Schema.Struct({
+const UpdateServerConnectionInfo = Schema.Struct({
   ...serverConnectionInfoFields,
   password: Schema.optional(Schema.String)
 })
-export type UpdateServerConnectionInfo = Schema.Schema.Type<
-  typeof UpdateServerConnectionInfo
->
 
 export const UpdateConnectionInfo = Schema.Union(
   UpdateServerConnectionInfo,
@@ -112,12 +109,7 @@ export type UpdateConnectionInfo = Schema.Schema.Type<
 
 // The renderer never receives stored passwords — API responses use this
 // shape, which has no password field at all.
-export const PublicServerConnectionInfo = Schema.Struct(
-  serverConnectionInfoFields
-)
-export type PublicServerConnectionInfo = Schema.Schema.Type<
-  typeof PublicServerConnectionInfo
->
+const PublicServerConnectionInfo = Schema.Struct(serverConnectionInfoFields)
 
 export const PublicConnectionInfo = Schema.Union(
   PublicServerConnectionInfo,
@@ -161,8 +153,7 @@ export type UpdateDatabaseRequest = Schema.Schema.Type<
   typeof UpdateDatabaseRequest
 >
 
-const uniqueIds = (ids: readonly string[]) =>
-  new Set(ids).size === ids.length
+const uniqueIds = (ids: readonly string[]) => new Set(ids).size === ids.length
 
 export const ReorderDatabasesRequest = Schema.Struct({
   databaseIds: Schema.Array(Schema.String.pipe(Schema.minLength(1))).pipe(
@@ -222,10 +213,8 @@ export type ReorderWorksheetsRequest = Schema.Schema.Type<
 
 // --- Queries -------------------------------------------------------------------
 
-export const QueryResultDto = Schema.Struct({
-  fields: Schema.mutable(
-    Schema.Array(Schema.Struct({ name: Schema.String }))
-  ),
+const QueryResultDto = Schema.Struct({
+  fields: Schema.mutable(Schema.Array(Schema.Struct({ name: Schema.String }))),
 
   // Number of rows returned (at most the adapter row cap) for row-returning
   // statements, or the driver-reported affected-row count for DML. When
@@ -241,7 +230,6 @@ export const QueryResultDto = Schema.Struct({
   ),
   truncated: Schema.Boolean
 })
-export type QueryResultDto = Schema.Schema.Type<typeof QueryResultDto>
 
 export const QueryDto = Schema.Struct({
   content: Schema.String,
@@ -279,7 +267,7 @@ export type CreateQueryRequest = Schema.Schema.Type<typeof CreateQueryRequest>
 
 // --- Database schema introspection ----------------------------------------------
 
-export const ColumnInfoDto = Schema.Struct({
+const ColumnInfoDto = Schema.Struct({
   columnName: Schema.String,
   dataType: Schema.String,
   defaultValue: Schema.NullOr(Schema.String),
@@ -287,24 +275,21 @@ export const ColumnInfoDto = Schema.Struct({
   isPrimaryKey: Schema.Boolean,
   ordinalPosition: Schema.Number
 })
-export type ColumnInfoDto = Schema.Schema.Type<typeof ColumnInfoDto>
 
-export const ForeignKeyInfoDto = Schema.Struct({
+const ForeignKeyInfoDto = Schema.Struct({
   columnName: Schema.String,
   constraintName: Schema.String,
   referencedColumnName: Schema.String,
   referencedTableName: Schema.String,
   referencedTableSchema: Schema.String
 })
-export type ForeignKeyInfoDto = Schema.Schema.Type<typeof ForeignKeyInfoDto>
 
-export const TableInfoDto = Schema.Struct({
+const TableInfoDto = Schema.Struct({
   columns: Schema.mutable(Schema.Array(ColumnInfoDto)),
   foreignKeys: Schema.mutable(Schema.Array(ForeignKeyInfoDto)),
   tableName: Schema.String,
   tableSchema: Schema.String
 })
-export type TableInfoDto = Schema.Schema.Type<typeof TableInfoDto>
 
 export const SchemaInfoDto = Schema.Struct({
   databaseName: Schema.String,
@@ -345,12 +330,11 @@ export const SpanAttributesDto = Schema.mutable(
   })
 )
 
-export const SpanEventDto = Schema.Struct({
+const SpanEventDto = Schema.Struct({
   attributes: Schema.optional(SpanAttributesDto),
   name: Schema.String,
   time: Schema.Number
 })
-export type SpanEventDto = Schema.Schema.Type<typeof SpanEventDto>
 
 export const SpanDto = Schema.Struct({
   attributes: SpanAttributesDto,
@@ -359,7 +343,9 @@ export const SpanDto = Schema.Struct({
   id: Schema.String.pipe(Schema.pattern(spanIdPattern)),
   kind: Schema.Literal('client', 'internal', 'server'),
   name: Schema.String.pipe(Schema.minLength(1)),
-  parentSpanId: Schema.NullOr(Schema.String.pipe(Schema.pattern(spanIdPattern))),
+  parentSpanId: Schema.NullOr(
+    Schema.String.pipe(Schema.pattern(spanIdPattern))
+  ),
   serviceName: Schema.Literal('main', 'renderer'),
   startedAt: Schema.Number,
   status: Schema.Literal('error', 'ok', 'unset'),

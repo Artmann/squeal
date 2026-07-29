@@ -41,7 +41,7 @@ import { startSpan } from './tracing/tracer'
 
 const baseUrl = 'http://127.0.0.1:7847'
 
-export interface GetHealthResponse {
+interface GetHealthResponse {
   encryptionAvailable: boolean
   status: string
 }
