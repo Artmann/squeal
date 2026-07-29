@@ -1,0 +1,535 @@
+// Shared between the main process and the renderer. Keep this module free of
+// main-process imports — the renderer bundles it.
+import { Schema } from 'effect'
+
+// --- Branded request ids -----------------------------------------------------
+// Ids are branded for type safety across service boundaries, but only require
+// non-emptiness: rows created by older app versions are not guaranteed to be
+// UUIDs.
+
+export const DatabaseId = Schema.String.pipe(
+  Schema.minLength(1),
+  Schema.brand('@Squeal/DatabaseId')
+)
+export type DatabaseId = Schema.Schema.Type<typeof DatabaseId>
+
+export const QueryId = Schema.String.pipe(
+  Schema.minLength(1),
+  Schema.brand('@Squeal/QueryId')
+)
+export type QueryId = Schema.Schema.Type<typeof QueryId>
+
+export const TraceId = Schema.String.pipe(
+  Schema.pattern(/^[0-9a-f]{32}$/),
+  Schema.brand('@Squeal/TraceId')
+)
+export type TraceId = Schema.Schema.Type<typeof TraceId>
+
+export const WorksheetId = Schema.String.pipe(
+  Schema.minLength(1),
+  Schema.brand('@Squeal/WorksheetId')
+)
+export type WorksheetId = Schema.Schema.Type<typeof WorksheetId>
+
+// --- Connection info ---------------------------------------------------------
+
+export const DatabaseType = Schema.Literal('mysql', 'postgres', 'sqlite')
+export type DatabaseType = Schema.Schema.Type<typeof DatabaseType>
+
+export const SslMode = Schema.Literal(
+  'disable',
+  'require',
+  'verify-ca',
+  'verify-full'
+)
+export type SslMode = Schema.Schema.Type<typeof SslMode>
+
+// Forms submit the port as a number, a string, or nothing at all — normalize
+// to a number or undefined, matching the previous zod transform.
+const Port = Schema.transform(
+  Schema.Union(Schema.Null, Schema.Number, Schema.String, Schema.Undefined),
+  Schema.UndefinedOr(Schema.Number),
+  {
+    decode: (value) => {
+      if (value === undefined || value === null || value === '') {
+        return undefined
+      }
+
+      return typeof value === 'number' ? value : Number(value)
+    },
+    encode: (value) => value,
+    strict: true
+  }
+)
+
+const serverConnectionInfoFields = {
+  database: Schema.String.pipe(
+    Schema.minLength(1, { message: () => 'Database name is required.' })
+  ),
+  host: Schema.String.pipe(
+    Schema.minLength(1, { message: () => 'Host is required.' })
+  ),
+  port: Schema.optional(Port),
+  sslMode: Schema.optional(SslMode),
+  sslRootCert: Schema.optional(Schema.String),
+  username: Schema.String.pipe(
+    Schema.minLength(1, { message: () => 'Username is required.' })
+  )
+}
+
+// MySQL and PostgreSQL connections share the same shape.
+export const ServerConnectionInfo = Schema.Struct({
+  ...serverConnectionInfoFields,
+  password: Schema.String.pipe(
+    Schema.minLength(1, { message: () => 'Password is required.' })
+  )
+})
+export type ServerConnectionInfo = Schema.Schema.Type<
+  typeof ServerConnectionInfo
+>
+
+export const SqliteConnectionInfo = Schema.Struct({
+  path: Schema.String.pipe(
+    Schema.minLength(1, { message: () => 'File path is required.' })
+  )
+})
+export type SqliteConnectionInfo = Schema.Schema.Type<
+  typeof SqliteConnectionInfo
+>
+
+export const ConnectionInfo = Schema.Union(
+  ServerConnectionInfo,
+  SqliteConnectionInfo
+)
+export type ConnectionInfo = Schema.Schema.Type<typeof ConnectionInfo>
+
+// Updates and connection tests may omit the password to mean "use the stored
+// one" — the main process merges it back in server-side.
+export const UpdateServerConnectionInfo = Schema.Struct({
+  ...serverConnectionInfoFields,
+  password: Schema.optional(Schema.String)
+})
+export type UpdateServerConnectionInfo = Schema.Schema.Type<
+  typeof UpdateServerConnectionInfo
+>
+
+export const UpdateConnectionInfo = Schema.Union(
+  UpdateServerConnectionInfo,
+  SqliteConnectionInfo
+)
+export type UpdateConnectionInfo = Schema.Schema.Type<
+  typeof UpdateConnectionInfo
+>
+
+// The renderer never receives stored passwords — API responses use this
+// shape, which has no password field at all.
+export const PublicServerConnectionInfo = Schema.Struct(
+  serverConnectionInfoFields
+)
+export type PublicServerConnectionInfo = Schema.Schema.Type<
+  typeof PublicServerConnectionInfo
+>
+
+export const PublicConnectionInfo = Schema.Union(
+  PublicServerConnectionInfo,
+  SqliteConnectionInfo
+)
+export type PublicConnectionInfo = Schema.Schema.Type<
+  typeof PublicConnectionInfo
+>
+
+// --- Databases ---------------------------------------------------------------
+
+export const DatabaseDto = Schema.Struct({
+  connectionInfo: PublicConnectionInfo,
+  createdAt: Schema.Number,
+  id: Schema.String,
+  name: Schema.String,
+  sortOrder: Schema.NullOr(Schema.Number),
+  type: DatabaseType
+})
+export type DatabaseDto = Schema.Schema.Type<typeof DatabaseDto>
+
+export const CreateDatabaseRequest = Schema.Struct({
+  connectionInfo: ConnectionInfo,
+  name: Schema.String.pipe(
+    Schema.minLength(1, { message: () => 'Name is required.' })
+  ),
+  type: DatabaseType
+})
+export type CreateDatabaseRequest = Schema.Schema.Type<
+  typeof CreateDatabaseRequest
+>
+
+export const UpdateDatabaseRequest = Schema.Struct({
+  connectionInfo: UpdateConnectionInfo,
+  name: Schema.String.pipe(
+    Schema.minLength(1, { message: () => 'Name is required.' })
+  ),
+  type: DatabaseType
+})
+export type UpdateDatabaseRequest = Schema.Schema.Type<
+  typeof UpdateDatabaseRequest
+>
+
+const uniqueIds = (ids: readonly string[]) =>
+  new Set(ids).size === ids.length
+
+export const ReorderDatabasesRequest = Schema.Struct({
+  databaseIds: Schema.Array(Schema.String.pipe(Schema.minLength(1))).pipe(
+    Schema.minItems(1, {
+      message: () => 'At least one database id is required.'
+    }),
+    Schema.filter((ids) => uniqueIds(ids) || 'Database ids must be unique.')
+  )
+})
+export type ReorderDatabasesRequest = Schema.Schema.Type<
+  typeof ReorderDatabasesRequest
+>
+
+// --- Worksheets ----------------------------------------------------------------
+
+export const WorksheetDto = Schema.Struct({
+  content: Schema.String,
+  createdAt: Schema.Number,
+  databaseId: Schema.NullOr(Schema.String),
+  id: Schema.String,
+  lastOpenedAt: Schema.NullOr(Schema.Number),
+  name: Schema.String,
+  sortOrder: Schema.NullOr(Schema.Number)
+})
+export type WorksheetDto = Schema.Schema.Type<typeof WorksheetDto>
+
+export const CreateWorksheetRequest = Schema.Struct({
+  content: Schema.optional(Schema.String),
+  databaseId: Schema.optional(Schema.String),
+  name: Schema.String
+})
+export type CreateWorksheetRequest = Schema.Schema.Type<
+  typeof CreateWorksheetRequest
+>
+
+export const UpdateWorksheetRequest = Schema.Struct({
+  content: Schema.optional(Schema.String),
+  databaseId: Schema.optional(Schema.NullOr(Schema.String)),
+  lastOpenedAt: Schema.optional(Schema.Number),
+  name: Schema.optional(Schema.String)
+})
+export type UpdateWorksheetRequest = Schema.Schema.Type<
+  typeof UpdateWorksheetRequest
+>
+
+export const ReorderWorksheetsRequest = Schema.Struct({
+  worksheetIds: Schema.Array(Schema.String.pipe(Schema.minLength(1))).pipe(
+    Schema.minItems(1, {
+      message: () => 'At least one worksheet id is required.'
+    }),
+    Schema.filter((ids) => uniqueIds(ids) || 'Worksheet ids must be unique.')
+  )
+})
+export type ReorderWorksheetsRequest = Schema.Schema.Type<
+  typeof ReorderWorksheetsRequest
+>
+
+// --- Queries -------------------------------------------------------------------
+
+export const QueryResultDto = Schema.Struct({
+  fields: Schema.mutable(
+    Schema.Array(Schema.Struct({ name: Schema.String }))
+  ),
+
+  // Number of rows returned (at most the adapter row cap) for row-returning
+  // statements, or the driver-reported affected-row count for DML. When
+  // truncated is true the true total is unknown.
+  rowCount: Schema.Number,
+
+  rows: Schema.mutable(
+    Schema.Array(
+      Schema.mutable(
+        Schema.Record({ key: Schema.String, value: Schema.Unknown })
+      )
+    )
+  ),
+  truncated: Schema.Boolean
+})
+export type QueryResultDto = Schema.Schema.Type<typeof QueryResultDto>
+
+export const QueryDto = Schema.Struct({
+  content: Schema.String,
+  databaseId: Schema.String,
+  error: Schema.NullOr(Schema.String),
+  finishedAt: Schema.NullOr(Schema.Number),
+  id: Schema.String,
+  queriedAt: Schema.Number,
+  result: Schema.NullOr(QueryResultDto),
+  truncated: Schema.Boolean,
+  worksheetId: Schema.String
+})
+export type QueryDto = Schema.Schema.Type<typeof QueryDto>
+
+export const CreateQueryRequest = Schema.Struct({
+  content: Schema.String,
+
+  // Absent, null, or empty means "run against the default database".
+  databaseId: Schema.optional(
+    Schema.transform(
+      Schema.NullOr(Schema.String),
+      Schema.UndefinedOr(Schema.String),
+      {
+        decode: (value) => value || undefined,
+        encode: (value) => value ?? null,
+        strict: true
+      }
+    )
+  ),
+  id: Schema.String,
+  queriedAt: Schema.Number,
+  worksheetId: Schema.String
+})
+export type CreateQueryRequest = Schema.Schema.Type<typeof CreateQueryRequest>
+
+// --- Database schema introspection ----------------------------------------------
+
+export const ColumnInfoDto = Schema.Struct({
+  columnName: Schema.String,
+  dataType: Schema.String,
+  defaultValue: Schema.NullOr(Schema.String),
+  isNullable: Schema.Boolean,
+  isPrimaryKey: Schema.Boolean,
+  ordinalPosition: Schema.Number
+})
+export type ColumnInfoDto = Schema.Schema.Type<typeof ColumnInfoDto>
+
+export const ForeignKeyInfoDto = Schema.Struct({
+  columnName: Schema.String,
+  constraintName: Schema.String,
+  referencedColumnName: Schema.String,
+  referencedTableName: Schema.String,
+  referencedTableSchema: Schema.String
+})
+export type ForeignKeyInfoDto = Schema.Schema.Type<typeof ForeignKeyInfoDto>
+
+export const TableInfoDto = Schema.Struct({
+  columns: Schema.mutable(Schema.Array(ColumnInfoDto)),
+  foreignKeys: Schema.mutable(Schema.Array(ForeignKeyInfoDto)),
+  tableName: Schema.String,
+  tableSchema: Schema.String
+})
+export type TableInfoDto = Schema.Schema.Type<typeof TableInfoDto>
+
+export const SchemaInfoDto = Schema.Struct({
+  databaseName: Schema.String,
+  tables: Schema.mutable(Schema.Array(TableInfoDto))
+})
+export type SchemaInfoDto = Schema.Schema.Type<typeof SchemaInfoDto>
+
+// --- Connection tests ------------------------------------------------------------
+
+export const ConnectionTestRequest = Schema.Struct({
+  connectionInfo: UpdateConnectionInfo,
+  databaseId: Schema.optional(Schema.String),
+  type: DatabaseType
+})
+export type ConnectionTestRequest = Schema.Schema.Type<
+  typeof ConnectionTestRequest
+>
+
+// A failed test is data, not an error — the endpoint always answers 200 so
+// the renderer can show the driver message inline.
+export const ConnectionTestResponse = Schema.Struct({
+  message: Schema.optional(Schema.String),
+  success: Schema.Boolean
+})
+export type ConnectionTestResponse = Schema.Schema.Type<
+  typeof ConnectionTestResponse
+>
+
+// --- Traces ---------------------------------------------------------------------
+
+const spanIdPattern = /^[0-9a-f]{16}$/
+const traceIdPattern = /^[0-9a-f]{32}$/
+
+export const SpanAttributesDto = Schema.mutable(
+  Schema.Record({
+    key: Schema.String,
+    value: Schema.Union(Schema.Boolean, Schema.Number, Schema.String)
+  })
+)
+
+export const SpanEventDto = Schema.Struct({
+  attributes: Schema.optional(SpanAttributesDto),
+  name: Schema.String,
+  time: Schema.Number
+})
+export type SpanEventDto = Schema.Schema.Type<typeof SpanEventDto>
+
+export const SpanDto = Schema.Struct({
+  attributes: SpanAttributesDto,
+  durationMs: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0)),
+  events: Schema.mutable(Schema.Array(SpanEventDto)),
+  id: Schema.String.pipe(Schema.pattern(spanIdPattern)),
+  kind: Schema.Literal('client', 'internal', 'server'),
+  name: Schema.String.pipe(Schema.minLength(1)),
+  parentSpanId: Schema.NullOr(Schema.String.pipe(Schema.pattern(spanIdPattern))),
+  serviceName: Schema.Literal('main', 'renderer'),
+  startedAt: Schema.Number,
+  status: Schema.Literal('error', 'ok', 'unset'),
+  statusMessage: Schema.NullOr(Schema.String),
+  traceId: Schema.String.pipe(Schema.pattern(traceIdPattern))
+})
+export type SpanDto = Schema.Schema.Type<typeof SpanDto>
+
+export const maxIngestBatchSize = 200
+
+export const IngestSpansRequest = Schema.Struct({
+  spans: Schema.Array(SpanDto).pipe(Schema.maxItems(maxIngestBatchSize))
+})
+export type IngestSpansRequest = Schema.Schema.Type<typeof IngestSpansRequest>
+
+export const TraceSummaryDto = Schema.Struct({
+  durationMs: Schema.Number,
+  errorMessage: Schema.NullOr(Schema.String),
+  hasError: Schema.Boolean,
+  name: Schema.String,
+  serviceName: Schema.String,
+  spanCount: Schema.Number,
+  startedAt: Schema.Number,
+  traceId: Schema.String
+})
+export type TraceSummaryDto = Schema.Schema.Type<typeof TraceSummaryDto>
+
+export const ListTracesUrlParams = Schema.Struct({
+  before: Schema.optional(Schema.NumberFromString.pipe(Schema.int())),
+  errorOnly: Schema.optionalWith(
+    Schema.transform(Schema.Literal('false', 'true'), Schema.Boolean, {
+      decode: (value) => value === 'true',
+      encode: (value) => (value ? 'true' : 'false'),
+      strict: true
+    }),
+    { default: () => false }
+  ),
+  limit: Schema.optionalWith(
+    Schema.NumberFromString.pipe(Schema.int(), Schema.between(1, 200)),
+    { default: () => 50 }
+  ),
+  search: Schema.optional(Schema.String)
+})
+export type ListTracesUrlParams = Schema.Schema.Type<typeof ListTracesUrlParams>
+
+// --- Health ---------------------------------------------------------------------
+
+// encryptionAvailable tells the renderer whether the OS keychain can protect
+// stored connection secrets, so it can warn before saving one.
+export const HealthResponse = Schema.Struct({
+  encryptionAvailable: Schema.Boolean,
+  status: Schema.Literal('ok')
+})
+export type HealthResponse = Schema.Schema.Type<typeof HealthResponse>
+
+// --- Response envelopes -----------------------------------------------------------
+
+export const ListDatabasesResponse = Schema.Struct({
+  databases: Schema.mutable(Schema.Array(DatabaseDto))
+})
+export type ListDatabasesResponse = Schema.Schema.Type<
+  typeof ListDatabasesResponse
+>
+
+export const CreateDatabaseResponse = Schema.Struct({
+  database: DatabaseDto,
+  updatedWorksheet: Schema.optional(WorksheetDto)
+})
+export type CreateDatabaseResponse = Schema.Schema.Type<
+  typeof CreateDatabaseResponse
+>
+
+export const UpdateDatabaseResponse = Schema.Struct({
+  database: DatabaseDto
+})
+export type UpdateDatabaseResponse = Schema.Schema.Type<
+  typeof UpdateDatabaseResponse
+>
+
+export const ReorderDatabasesResponse = Schema.Struct({
+  databases: Schema.mutable(Schema.Array(DatabaseDto))
+})
+export type ReorderDatabasesResponse = Schema.Schema.Type<
+  typeof ReorderDatabasesResponse
+>
+
+export const GetDatabaseSchemaResponse = Schema.Struct({
+  schema: SchemaInfoDto
+})
+export type GetDatabaseSchemaResponse = Schema.Schema.Type<
+  typeof GetDatabaseSchemaResponse
+>
+
+export const DeleteDatabaseResponse = Schema.Struct({
+  success: Schema.Literal(true)
+})
+export type DeleteDatabaseResponse = Schema.Schema.Type<
+  typeof DeleteDatabaseResponse
+>
+
+export const GetQueriesResponse = Schema.Struct({
+  queries: Schema.mutable(Schema.Array(QueryDto))
+})
+export type GetQueriesResponse = Schema.Schema.Type<typeof GetQueriesResponse>
+
+export const GetQueryResponse = Schema.Struct({
+  query: QueryDto
+})
+export type GetQueryResponse = Schema.Schema.Type<typeof GetQueryResponse>
+
+export const CreateQueryResponse = Schema.Struct({
+  query: QueryDto
+})
+export type CreateQueryResponse = Schema.Schema.Type<typeof CreateQueryResponse>
+
+export const CancelQueryResponse = Schema.Struct({
+  success: Schema.Literal(true)
+})
+export type CancelQueryResponse = Schema.Schema.Type<typeof CancelQueryResponse>
+
+export const ListWorksheetsResponse = Schema.Struct({
+  worksheets: Schema.mutable(Schema.Array(WorksheetDto))
+})
+export type ListWorksheetsResponse = Schema.Schema.Type<
+  typeof ListWorksheetsResponse
+>
+
+export const CreateWorksheetResponse = Schema.Struct({
+  worksheet: WorksheetDto
+})
+export type CreateWorksheetResponse = Schema.Schema.Type<
+  typeof CreateWorksheetResponse
+>
+
+export const UpdateWorksheetResponse = Schema.Struct({
+  worksheet: WorksheetDto
+})
+export type UpdateWorksheetResponse = Schema.Schema.Type<
+  typeof UpdateWorksheetResponse
+>
+
+export const ReorderWorksheetsResponse = Schema.Struct({
+  worksheets: Schema.mutable(Schema.Array(WorksheetDto))
+})
+export type ReorderWorksheetsResponse = Schema.Schema.Type<
+  typeof ReorderWorksheetsResponse
+>
+
+export const GetTracesResponse = Schema.Struct({
+  traces: Schema.mutable(Schema.Array(TraceSummaryDto))
+})
+export type GetTracesResponse = Schema.Schema.Type<typeof GetTracesResponse>
+
+export const GetTraceResponse = Schema.Struct({
+  spans: Schema.mutable(Schema.Array(SpanDto))
+})
+export type GetTraceResponse = Schema.Schema.Type<typeof GetTraceResponse>
+
+export const IngestSpansResponse = Schema.Struct({
+  insertedCount: Schema.Number
+})
+export type IngestSpansResponse = Schema.Schema.Type<typeof IngestSpansResponse>
