@@ -5,5 +5,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["src/glue/**/*"]
+  "include": ["src/glue/**/*", "src/server/**/*"]
 }
