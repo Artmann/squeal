@@ -11,7 +11,7 @@ import {
   UpdateDatabaseRequest
 } from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
-import { CreateWorksheetRequest } from '@/glue/worksheets'
+import type { CreateWorksheetRequest } from '@/glue/api/schemas'
 import type { QueryDto } from '@/glue/api/schemas'
 
 const cancelPollAttempts = 20
