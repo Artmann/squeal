@@ -24,17 +24,10 @@ function dailySweep(
   )
 }
 
-export const QueryRetentionLive = dailySweep(
-  'Query history',
-  () => deleteExpiredQueries()
+const queryRetention = dailySweep('Query history', () =>
+  deleteExpiredQueries()
 )
 
-export const TraceRetentionLive = dailySweep(
-  'Trace span',
-  () => deleteExpiredSpans()
-)
+const traceRetention = dailySweep('Trace span', () => deleteExpiredSpans())
 
-export const RetentionLive = Layer.mergeAll(
-  QueryRetentionLive,
-  TraceRetentionLive
-)
+export const RetentionLive = Layer.mergeAll(queryRetention, traceRetention)
