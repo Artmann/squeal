@@ -35,9 +35,11 @@ export class TraceStore extends Effect.Service<TraceStore>()('TraceStore', {
   effect: Effect.gen(function* () {
     const appDatabase = yield* AppDatabase
 
-    const getTrace = Effect.fn('TraceStore.getTrace')(function* (
-      traceId: string
-    ) {
+    // Deliberately no Effect.fn spans in this service: the /traces routes
+    // are excluded from tracing (self-tracing feedback loop), and a span
+    // here would surface as a parentless root trace on every dashboard
+    // poll and every renderer span batch.
+    const getTrace = Effect.fn(function* (traceId: string) {
       const rows = yield* appDatabase.execute((client) =>
         client
           .select()
@@ -49,15 +51,11 @@ export class TraceStore extends Effect.Service<TraceStore>()('TraceStore', {
       return rows.map(transformSpan)
     })
 
-    const ingestSpans = Effect.fn('TraceStore.ingestSpans')(function* (
-      spans: SpanRecord[]
-    ) {
+    const ingestSpans = Effect.fn(function* (spans: SpanRecord[]) {
       return yield* appDatabase.execute((client) => writeSpans(spans, client))
     })
 
-    const listTraces = Effect.fn('TraceStore.listTraces')(function* (
-      params: ListTracesUrlParams
-    ) {
+    const listTraces = Effect.fn(function* (params: ListTracesUrlParams) {
       const { before, errorOnly, limit, search } = params
 
       const filters = [sql`1 = 1`]

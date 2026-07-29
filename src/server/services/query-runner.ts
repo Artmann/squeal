@@ -252,7 +252,10 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
       return transformQueryRow(insertedRow)
     })
 
-    const get = Effect.fn('QueryRunner.get')(function* (id: string) {
+    // No named span here: this is the 250ms result poller's path, which is
+    // excluded from request tracing — a span would become a parentless root
+    // trace on every poll.
+    const get = Effect.fn(function* (id: string) {
       const rows = yield* appDatabase.execute((client) =>
         client
           .select()
