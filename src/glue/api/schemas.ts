@@ -9,16 +9,12 @@ import { Schema } from 'effect'
 // app versions are not guaranteed to be UUIDs.
 
 export const DatabaseId = Schema.String.pipe(Schema.minLength(1))
-export type DatabaseId = Schema.Schema.Type<typeof DatabaseId>
 
 export const QueryId = Schema.String.pipe(Schema.minLength(1))
-export type QueryId = Schema.Schema.Type<typeof QueryId>
 
 export const TraceId = Schema.String.pipe(Schema.pattern(/^[0-9a-f]{32}$/))
-export type TraceId = Schema.Schema.Type<typeof TraceId>
 
 export const WorksheetId = Schema.String.pipe(Schema.minLength(1))
-export type WorksheetId = Schema.Schema.Type<typeof WorksheetId>
 
 // --- Connection info ---------------------------------------------------------
 
@@ -163,9 +159,6 @@ export const ReorderDatabasesRequest = Schema.Struct({
     Schema.filter((ids) => uniqueIds(ids) || 'Database ids must be unique.')
   )
 })
-export type ReorderDatabasesRequest = Schema.Schema.Type<
-  typeof ReorderDatabasesRequest
->
 
 // --- Worksheets ----------------------------------------------------------------
 
@@ -207,9 +200,6 @@ export const ReorderWorksheetsRequest = Schema.Struct({
     Schema.filter((ids) => uniqueIds(ids) || 'Worksheet ids must be unique.')
   )
 })
-export type ReorderWorksheetsRequest = Schema.Schema.Type<
-  typeof ReorderWorksheetsRequest
->
 
 // --- Queries -------------------------------------------------------------------
 
@@ -359,7 +349,6 @@ export const maxIngestBatchSize = 200
 export const IngestSpansRequest = Schema.Struct({
   spans: Schema.Array(SpanDto).pipe(Schema.maxItems(maxIngestBatchSize))
 })
-export type IngestSpansRequest = Schema.Schema.Type<typeof IngestSpansRequest>
 
 export const TraceSummaryDto = Schema.Struct({
   durationMs: Schema.Number,
@@ -399,16 +388,12 @@ export const HealthResponse = Schema.Struct({
   encryptionAvailable: Schema.Boolean,
   status: Schema.Literal('ok')
 })
-export type HealthResponse = Schema.Schema.Type<typeof HealthResponse>
 
 // --- Response envelopes -----------------------------------------------------------
 
 export const ListDatabasesResponse = Schema.Struct({
   databases: Schema.mutable(Schema.Array(DatabaseDto))
 })
-export type ListDatabasesResponse = Schema.Schema.Type<
-  typeof ListDatabasesResponse
->
 
 export const CreateDatabaseResponse = Schema.Struct({
   database: DatabaseDto,
@@ -435,26 +420,18 @@ export type ReorderDatabasesResponse = Schema.Schema.Type<
 export const GetDatabaseSchemaResponse = Schema.Struct({
   schema: SchemaInfoDto
 })
-export type GetDatabaseSchemaResponse = Schema.Schema.Type<
-  typeof GetDatabaseSchemaResponse
->
 
 export const DeleteDatabaseResponse = Schema.Struct({
   success: Schema.Literal(true)
 })
-export type DeleteDatabaseResponse = Schema.Schema.Type<
-  typeof DeleteDatabaseResponse
->
 
 export const GetQueriesResponse = Schema.Struct({
   queries: Schema.mutable(Schema.Array(QueryDto))
 })
-export type GetQueriesResponse = Schema.Schema.Type<typeof GetQueriesResponse>
 
 export const GetQueryResponse = Schema.Struct({
   query: QueryDto
 })
-export type GetQueryResponse = Schema.Schema.Type<typeof GetQueryResponse>
 
 export const CreateQueryResponse = Schema.Struct({
   query: QueryDto
@@ -464,28 +441,18 @@ export type CreateQueryResponse = Schema.Schema.Type<typeof CreateQueryResponse>
 export const CancelQueryResponse = Schema.Struct({
   success: Schema.Literal(true)
 })
-export type CancelQueryResponse = Schema.Schema.Type<typeof CancelQueryResponse>
 
 export const ListWorksheetsResponse = Schema.Struct({
   worksheets: Schema.mutable(Schema.Array(WorksheetDto))
 })
-export type ListWorksheetsResponse = Schema.Schema.Type<
-  typeof ListWorksheetsResponse
->
 
 export const CreateWorksheetResponse = Schema.Struct({
   worksheet: WorksheetDto
 })
-export type CreateWorksheetResponse = Schema.Schema.Type<
-  typeof CreateWorksheetResponse
->
 
 export const UpdateWorksheetResponse = Schema.Struct({
   worksheet: WorksheetDto
 })
-export type UpdateWorksheetResponse = Schema.Schema.Type<
-  typeof UpdateWorksheetResponse
->
 
 export const ReorderWorksheetsResponse = Schema.Struct({
   worksheets: Schema.mutable(Schema.Array(WorksheetDto))
@@ -497,14 +464,11 @@ export type ReorderWorksheetsResponse = Schema.Schema.Type<
 export const GetTracesResponse = Schema.Struct({
   traces: Schema.mutable(Schema.Array(TraceSummaryDto))
 })
-export type GetTracesResponse = Schema.Schema.Type<typeof GetTracesResponse>
 
 export const GetTraceResponse = Schema.Struct({
   spans: Schema.mutable(Schema.Array(SpanDto))
 })
-export type GetTraceResponse = Schema.Schema.Type<typeof GetTraceResponse>
 
 export const IngestSpansResponse = Schema.Struct({
   insertedCount: Schema.Number
 })
-export type IngestSpansResponse = Schema.Schema.Type<typeof IngestSpansResponse>
