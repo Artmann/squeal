@@ -1,35 +1,16 @@
 import { drizzle, LibSQLDatabase } from 'drizzle-orm/libsql'
-import type { Hono } from 'hono'
 import { vi } from 'vitest'
 
 import { createTables } from '@/database/tables'
 import type { QueryResult, SchemaInfo } from '@/databases/adapter'
 
+// Module-mock harness for the handful of modules that still reach the
+// drizzle singleton directly (retention sweeps, span writer, boot
+// migrations). Service-level and HTTP tests use the layer-based
+// effect-test-helper instead.
+
 // The test database instance that will be used by tests.
 let testDatabase: LibSQLDatabase
-
-// The bearer token test apps are created with.
-export const testApiToken = 'test-api-token'
-
-/**
- * Wraps app.request so every test request carries the bearer token, keeping
- * route tests focused on behavior rather than auth plumbing. Requests that
- * pass their own Authorization header keep it.
- */
-export function authorizeApp(app: Hono): Hono {
-  const request = app.request.bind(app)
-
-  app.request = ((input: Parameters<Hono['request']>[0], init?: RequestInit) =>
-    request(input, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${testApiToken}`,
-        ...(init?.headers as Record<string, string> | undefined)
-      }
-    })) as Hono['request']
-
-  return app
-}
 
 // Mock adapter configuration that can be changed per test.
 export const mockAdapterConfig = {
