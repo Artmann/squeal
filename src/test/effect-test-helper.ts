@@ -15,7 +15,6 @@ import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
 
 import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
-import { QueryCanceledError } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
 import { ApiToken } from '@/server/http/api-token'
 import { ApiLive } from '@/server/http/server'
@@ -77,14 +76,14 @@ export interface TestAdapterState {
   lastType: string | null
 }
 
-export const defaultTestQueryResult: QueryResult = {
+const defaultTestQueryResult: QueryResult = {
   fields: [{ name: 'value' }],
   rowCount: 1,
   rows: [{ value: 1 }],
   truncated: false
 }
 
-export const defaultTestSchema: SchemaInfo = {
+const defaultTestSchema: SchemaInfo = {
   databaseName: 'test',
   tables: []
 }
@@ -107,8 +106,7 @@ export function makeTestAdapterFactory(config: TestAdapterConfig = {}) {
           getSchema:
             config.getSchema ?? (() => Promise.resolve(defaultTestSchema)),
           runQuery:
-            config.runQuery ??
-            (() => Promise.resolve(defaultTestQueryResult)),
+            config.runQuery ?? (() => Promise.resolve(defaultTestQueryResult)),
           testConnection: config.testConnection ?? (() => Promise.resolve())
         }
       }
@@ -116,12 +114,6 @@ export function makeTestAdapterFactory(config: TestAdapterConfig = {}) {
   )
 
   return { layer, state }
-}
-
-export { QueryCanceledError }
-
-export function runTest<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
-  return Effect.runPromise(effect)
 }
 
 // --- HTTP harness ------------------------------------------------------------
