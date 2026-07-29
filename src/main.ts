@@ -1,14 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { Effect } from 'effect'
+import { randomBytes } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import started from 'electron-squirrel-startup'
+import { log } from 'tiny-typescript-logger'
 
-import { apiPort, startServer } from './api'
-import { initializeDatabase } from './database'
-import { migrateConnectionInfoEncryption } from './main/databases/connection-info-migration'
-import { isEncryptionAvailable } from './main/databases/secret-storage'
-import { startQueryRetentionSchedule } from './main/queries/query-retention'
-import { markInterruptedQueries } from './main/queries/reconcile-queries'
-import { startTraceRetentionSchedule } from './main/tracing/trace-retention'
+import { makeMainRuntime, type MainRuntime } from './server/runtime'
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -55,6 +53,9 @@ if (started) {
 }
 
 export let mainWindow: BrowserWindow
+
+let runtime: MainRuntime | undefined
+let quitting = false
 
 const createWindow = async () => {
   mainWindow = new BrowserWindow({
@@ -109,17 +110,7 @@ app.on('ready', async () => {
     app.dock?.setIcon(path.join(app.getAppPath(), 'assets/icons/icon.png'))
   }
 
-  await initializeDatabase()
-
-  // Runs before the server accepts requests so the renderer never sees a
-  // stale "running" query from a previous process.
-  await markInterruptedQueries()
-
-  startQueryRetentionSchedule()
-  startTraceRetentionSchedule()
-
-  // safeStorage is only reliable once the app is ready.
-  await migrateConnectionInfoEncryption()
+  apiToken = randomBytes(32).toString('hex')
 
   const allowedOrigins = ['null']
 
@@ -127,16 +118,64 @@ app.on('ready', async () => {
     allowedOrigins.push(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
   }
 
-  const { token } = startServer(apiPort, {
+  runtime = makeMainRuntime({
     allowedOrigins,
-    encryptionAvailable: isEncryptionAvailable(),
     // Lets local agents read traces with plain curl during development.
-    publicTraceReads: !app.isPackaged
+    publicTraceReads: !app.isPackaged,
+    token: apiToken
   })
 
-  apiToken = token
+  try {
+    // Forces the runtime layer to build: the app database initializes,
+    // interrupted queries are reconciled, the encryption migration runs
+    // (safeStorage is only reliable once the app is ready), and only then
+    // does the HTTP server start listening.
+    await runtime.runPromise(Effect.void)
+  } catch (error) {
+    // Written synchronously: app.exit below terminates before buffered
+    // stdout would be flushed, and a boot failure with no trace is
+    // undebuggable.
+    writeFileSync(
+      path.join(app.getPath('temp'), 'squeal-boot-error.log'),
+      `${new Date().toISOString()}\n${
+        error instanceof Error ? (error.stack ?? error.message) : String(error)
+      }\n`
+    )
+    log.error(`The backend failed to boot: ${String(error)}`)
+
+    dialog.showErrorBox(
+      'Squeal could not start',
+      `The backend failed to boot: ${
+        error instanceof Error ? error.message : String(error)
+      }\n\nIf another Squeal instance is running, close it and try again.`
+    )
+    app.exit(1)
+
+    return
+  }
 
   createWindow()
+})
+
+// The first real shutdown path this app has had: disposing the runtime
+// closes the HTTP server, interrupts the retention fibers and any running
+// queries (best-effort canceling their server-side statements), and releases
+// the app database.
+app.on('before-quit', (event) => {
+  if (quitting || runtime === undefined) {
+    return
+  }
+
+  quitting = true
+  event.preventDefault()
+
+  const timeout = new Promise((resolve) => {
+    setTimeout(resolve, 3_000)
+  })
+
+  void Promise.race([runtime.dispose(), timeout]).finally(() => {
+    app.exit(0)
+  })
 })
 
 app.on('window-all-closed', () => {

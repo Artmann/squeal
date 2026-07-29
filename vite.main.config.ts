@@ -12,7 +12,13 @@ export default defineConfig({
         /^libsql(\/.*)?$/,
         /^mysql2(\/.*)?$/,
         /^pg(\/.*)?$/,
-        /^pg-cursor(\/.*)?$/
+        /^pg-cursor(\/.*)?$/,
+
+        // Optional native accelerators of `ws` (pulled in via
+        // @effect/platform-node). Not installed — ws catches the failed
+        // require at runtime, but Vite must not try to resolve them.
+        'bufferutil',
+        'utf-8-validate'
       ]
     }
   },
