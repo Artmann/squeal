@@ -7,8 +7,17 @@ import type {
   SchemaInfoDto,
   WorksheetDto
 } from '@/glue/api/schemas'
+import type { SpanRecord } from '@/glue/tracing/spans'
 
 const mockFetch = vi.fn()
+
+// Finished spans are observed at the exporter boundary so the assertions read
+// the record the renderer would actually ship.
+const { enqueueSpan } = vi.hoisted(() => ({
+  enqueueSpan: vi.fn<(record: SpanRecord) => void>()
+}))
+
+vi.mock('./tracing/exporter', () => ({ enqueueSpan }))
 
 vi.stubGlobal('fetch', mockFetch)
 
@@ -346,6 +355,107 @@ describe('apiClient', () => {
       mockFetch.mockRejectedValueOnce(new Error('Failed to fetch'))
 
       await expect(apiClient.getDatabases()).rejects.toBeInstanceOf(ApiError)
+    })
+
+    it('reports an unreachable backend without leaking the fetch message', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Failed to fetch'))
+
+      try {
+        await apiClient.getDatabases()
+        expect.fail('Expected the request to reject')
+      } catch (error) {
+        expect(error).toEqual(
+          expect.objectContaining({
+            message:
+              "Could not reach Squeal's backend. Restart Squeal and try again.",
+            statusCode: 503
+          })
+        )
+      }
+    })
+
+    it('reports a 500 without leaking the platform status message', async () => {
+      mockFetch.mockResolvedValueOnce(respondWith({}, { status: 500 }))
+
+      try {
+        await apiClient.getDatabases()
+        expect.fail('Expected the request to reject')
+      } catch (error) {
+        expect(error).toEqual(
+          expect.objectContaining({
+            message:
+              "Squeal's backend reported an error. Restart Squeal and try again.",
+            statusCode: 500
+          })
+        )
+      }
+    })
+
+    // An invalid payload never leaves the machine: the client encodes against
+    // the contract first. The failure has to arrive as field errors, not as the
+    // schema tree ParseError.message renders.
+    it('maps an encode failure to field errors and sends nothing', async () => {
+      try {
+        await apiClient.testConnection(
+          { database: 'testdb', host: '', username: 'admin' },
+          'postgres'
+        )
+        expect.fail('Expected the request to reject')
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError)
+        expect((error as ApiError).statusCode).toEqual(400)
+        expect((error as ApiError).details?.['connectionInfo.host']).toEqual(
+          'Host is required.'
+        )
+        expect((error as ApiError).message).toEqual(
+          'Please correct the highlighted fields.'
+        )
+      }
+
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('reports a response that does not match the contract as a bug', async () => {
+      mockFetch.mockResolvedValueOnce(
+        respondWith({ databases: [{ id: 123 }] }, { status: 200 })
+      )
+
+      try {
+        await apiClient.getDatabases()
+        expect.fail('Expected the request to reject')
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError)
+        expect((error as ApiError).message).toEqual(
+          'Squeal could not read the response from its backend. Please report this.'
+        )
+        expect((error as ApiError).details).toBeUndefined()
+      }
+    })
+  })
+
+  describe('spans', () => {
+    it('records the response status code on the client span', async () => {
+      mockFetch.mockResolvedValueOnce(respondWith({ databases: [] }))
+
+      await apiClient.getDatabases()
+
+      const spans = enqueueSpan.mock.calls.map(([record]) => record)
+      const request = spans.find((span) => span.name === 'HTTP GET /databases')
+
+      expect(request?.attributes['http.status_code']).toEqual(200)
+      expect(request?.status).toEqual('ok')
+    })
+
+    it('marks the span as errored when the request fails', async () => {
+      mockFetch.mockResolvedValueOnce(respondWith({}, { status: 500 }))
+
+      await expect(apiClient.getDatabases()).rejects.toBeInstanceOf(ApiError)
+
+      const spans = enqueueSpan.mock.calls.map(([record]) => record)
+      const request = spans.find((span) => span.name === 'HTTP GET /databases')
+
+      expect(request?.attributes['http.status_code']).toEqual(500)
+      expect(request?.status).toEqual('error')
     })
   })
 })
