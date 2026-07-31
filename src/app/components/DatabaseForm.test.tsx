@@ -409,6 +409,28 @@ describe('DatabaseForm', () => {
     })
   })
 
+  // Testing a connection skips the form's own validation, so the contract
+  // rejects the payload client-side. That has to surface as an inline field
+  // error rather than the schema tree ParseError.message renders.
+  it('shows an inline field error when testing an incomplete connection', async () => {
+    const user = userEvent.setup()
+
+    renderDatabaseForm()
+
+    await user.type(screen.getByLabelText('Name'), 'My Database')
+    await user.type(screen.getByLabelText('Username'), 'postgres')
+    await user.type(screen.getByLabelText('Password'), 'password')
+    await user.type(screen.getByLabelText('Database'), 'mydb')
+
+    await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Host is required.')).toBeInTheDocument()
+    })
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('disables buttons while testing connection', async () => {
     const user = userEvent.setup()
 

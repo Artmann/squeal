@@ -9,7 +9,15 @@ import {
   HttpClientRequest
 } from '@effect/platform'
 import { HttpApiDecodeError } from '@effect/platform/HttpApiError'
-import { Cause, Effect, Exit, FiberRef, ManagedRuntime, Option } from 'effect'
+import {
+  Cause,
+  Effect,
+  Exit,
+  FiberRef,
+  ManagedRuntime,
+  Option,
+  ParseResult
+} from 'effect'
 
 import { SquealApi } from '@/glue/api/api'
 import type {
@@ -37,7 +45,8 @@ import { ApiError } from '@/errors'
 import { SpanContext, SpanRecord } from '@/glue/tracing/spans'
 import { formatTraceparent } from '@/glue/tracing/traceparent'
 
-import { startSpan } from './tracing/tracer'
+import { memoizePromise } from './memoize-promise'
+import { Span, startSpan } from './tracing/tracer'
 
 const baseUrl = 'http://127.0.0.1:7847'
 
@@ -46,52 +55,86 @@ interface GetHealthResponse {
   status: string
 }
 
-let apiTokenPromise: Promise<string> | undefined
-
-function getApiToken(): Promise<string> {
-  apiTokenPromise ??= window.electron.getApiToken()
-
-  return apiTokenPromise
-}
+const getApiToken = memoizePromise(() => window.electron.getApiToken())
 
 // The renderer's tracer is hand-rolled (no fiber context to inherit), so the
 // traceparent for the current call travels through a FiberRef that the
 // request transform reads.
 const currentTraceparent = FiberRef.unsafeMake<string | undefined>(undefined)
 
+// Payload encoding happens strictly before the request is executed, so a
+// ParseError raised while `sent` is still false means the payload was invalid
+// and nothing left the machine, while one raised afterwards means the response
+// did not match the contract. `run` gives every call its own marker, so
+// concurrent requests never read each other's state.
+interface RequestPhase {
+  sent: boolean
+  status?: number
+}
+
+const currentRequestPhase = FiberRef.unsafeMake<RequestPhase | undefined>(
+  undefined
+)
+
 const runtime = ManagedRuntime.make(FetchHttpClient.layer)
 
-const client = HttpApiClient.make(SquealApi, {
-  baseUrl,
-  transformClient: (httpClient) =>
-    httpClient.pipe(
-      HttpClient.mapRequestEffect((request) =>
-        Effect.gen(function* () {
-          const token = yield* Effect.promise(getApiToken)
-          const traceparent = yield* FiberRef.get(currentTraceparent)
+// HttpApiClient.make reflects over every group and endpoint and builds a fresh
+// schema union, so it is resolved once rather than per call — the 250ms result
+// poller would otherwise rebuild the entire client four times a second.
+const getClient = memoizePromise(() =>
+  runtime.runPromise(
+    HttpApiClient.make(SquealApi, {
+      baseUrl,
+      transformClient: (httpClient) =>
+        httpClient.pipe(
+          HttpClient.mapRequestEffect((request) =>
+            Effect.gen(function* () {
+              const token = yield* Effect.promise(getApiToken)
+              const traceparent = yield* FiberRef.get(currentTraceparent)
+              const phase = yield* FiberRef.get(currentRequestPhase)
 
-          const authorized = HttpClientRequest.setHeader(
-            request,
-            'Authorization',
-            `Bearer ${token}`
-          )
+              if (phase !== undefined) {
+                phase.sent = true
+              }
 
-          if (traceparent === undefined) {
-            return authorized
-          }
+              const authorized = HttpClientRequest.setHeader(
+                request,
+                'Authorization',
+                `Bearer ${token}`
+              )
 
-          return HttpClientRequest.setHeader(
-            authorized,
-            'traceparent',
-            traceparent
-          )
-        })
-      ),
-      // The spans below carry the traceparent explicitly; the client's own
-      // propagation would inject a competing one.
-      HttpClient.withTracerPropagation(false)
-    )
-})
+              if (traceparent === undefined) {
+                return authorized
+              }
+
+              return HttpClientRequest.setHeader(
+                authorized,
+                'traceparent',
+                traceparent
+              )
+            })
+          ),
+          // Runs for every response the client receives, including non-2xx
+          // ones, so both the span attribute and the error message get the
+          // real status code.
+          HttpClient.tap((response) =>
+            Effect.gen(function* () {
+              const phase = yield* FiberRef.get(currentRequestPhase)
+
+              if (phase !== undefined) {
+                phase.status = response.status
+              }
+            })
+          ),
+          // The spans below carry the traceparent explicitly; the client's own
+          // propagation would inject a competing one.
+          HttpClient.withTracerPropagation(false)
+        )
+    })
+  )
+)
+
+const client = Effect.promise(getClient)
 
 // Infrastructure failures the API contract does not describe. They carry
 // `_tag` like domain errors but reference the whole request/response, so they
@@ -102,6 +145,11 @@ const infrastructureTags = new Set([
   'ResponseError'
 ])
 
+const validationMessage = 'Please correct the highlighted fields.'
+
+// Both the server's decode errors and the client's own encode errors carry
+// their issues in this shape, so the database form's field mapping consumes
+// either one unchanged.
 function toFieldDetails(
   issues: ReadonlyArray<{ message: string; path: ReadonlyArray<PropertyKey> }>
 ): Record<string, string> {
@@ -126,49 +174,85 @@ function isDomainError(error: unknown): boolean {
   )
 }
 
-function responseStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null || !('response' in error)) {
-    return undefined
-  }
-
-  const status = (error as { response?: { status?: number } }).response?.status
-
-  return typeof status === 'number' ? status : undefined
-}
-
 // Domain errors reach the caller as themselves so hooks can discriminate on
-// `_tag`; decode and transport failures become ApiError, which existing
-// catch-alls and the database form's field mapping already understand.
-function toThrowable(cause: Cause.Cause<unknown>): unknown {
+// `_tag`. Everything else becomes an ApiError carrying copy the user can act
+// on: the underlying ParseError/ResponseError/RequestError messages are
+// developer-facing (a schema tree, or `StatusCode: non 2xx status code …`) and
+// must never reach a toast. They go to the console instead.
+function toThrowable(
+  cause: Cause.Cause<unknown>,
+  phase: RequestPhase
+): unknown {
   const failure = Cause.failureOption(cause)
   const error = Option.isSome(failure) ? failure.value : Cause.squash(cause)
 
+  // The server rejected the payload and said which fields were wrong.
   if (error instanceof HttpApiDecodeError) {
-    return new ApiError(400, 'Validation error', toFieldDetails(error.issues))
+    return new ApiError(400, validationMessage, toFieldDetails(error.issues))
+  }
+
+  if (ParseResult.isParseError(error)) {
+    // Nothing was sent: the payload failed to encode against the contract, so
+    // this is invalid user input and the issues map onto form fields.
+    if (!phase.sent) {
+      return new ApiError(
+        400,
+        validationMessage,
+        toFieldDetails(ParseResult.ArrayFormatter.formatErrorSync(error))
+      )
+    }
+
+    console.error('The API response did not match the contract:', error.message)
+
+    return new ApiError(
+      phase.status ?? 500,
+      'Squeal could not read the response from its backend. Please report this.'
+    )
   }
 
   if (isDomainError(error)) {
     return error
   }
 
+  if (error instanceof Error) {
+    console.error('Squeal API request failed:', error)
+  }
+
+  // No response ever arrived, so the backend is unreachable rather than broken.
+  if (phase.status === undefined) {
+    return new ApiError(
+      503,
+      "Could not reach Squeal's backend. Restart Squeal and try again."
+    )
+  }
+
   return new ApiError(
-    responseStatus(error) ?? 500,
-    error instanceof Error
-      ? error.message
-      : 'The request could not be completed. Please try again.'
+    phase.status,
+    "Squeal's backend reported an error. Restart Squeal and try again."
   )
 }
 
 function run<A, E>(
-  effect: Effect.Effect<A, E, HttpClient.HttpClient>
+  effect: Effect.Effect<A, E, HttpClient.HttpClient>,
+  phase: RequestPhase = { sent: false }
 ): Promise<A> {
-  return runtime.runPromiseExit(effect).then((exit) => {
-    if (Exit.isSuccess(exit)) {
-      return exit.value
-    }
+  return runtime
+    .runPromiseExit(Effect.locally(effect, currentRequestPhase, phase))
+    .then((exit) => {
+      if (Exit.isSuccess(exit)) {
+        return exit.value
+      }
 
-    throw toThrowable(exit.cause)
-  })
+      throw toThrowable(exit.cause, phase)
+    })
+}
+
+function recordStatusCode(span: Span, status: number | undefined): void {
+  if (status === undefined) {
+    return
+  }
+
+  span.setAttribute('http.status_code', status)
 }
 
 // Requests the renderer traces get a client span whose context is sent as the
@@ -188,17 +272,29 @@ function traced<A, E>(
     kind: 'client',
     ...(parent === undefined ? {} : { parent })
   })
+  const phase: RequestPhase = { sent: false }
 
   return run(
-    Effect.locally(effect, currentTraceparent, formatTraceparent(span.context))
+    Effect.locally(effect, currentTraceparent, formatTraceparent(span.context)),
+    phase
   ).then(
     (value) => {
+      recordStatusCode(span, phase.status)
       span.setStatus('ok')
       span.end()
 
       return value
     },
     (error: unknown) => {
+      recordStatusCode(
+        span,
+        phase.status ??
+          (error instanceof ApiError ? error.statusCode : undefined)
+      )
+      span.setStatus(
+        'error',
+        error instanceof Error ? error.message : String(error)
+      )
       span.recordException(error)
       span.end()
 
