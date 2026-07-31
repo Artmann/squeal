@@ -1,9 +1,15 @@
-import { HttpApiBuilder, HttpMiddleware, HttpServer } from '@effect/platform'
-import type { HttpServerRequest } from '@effect/platform'
+import {
+  HttpApiBuilder,
+  HttpApp,
+  HttpMiddleware,
+  HttpServer,
+  HttpServerRequest,
+  HttpServerResponse
+} from '@effect/platform'
 // Subpath import on purpose: the package barrel pulls in cluster modules
 // whose optional peers are not installed.
 import * as NodeHttpServer from '@effect/platform-node/NodeHttpServer'
-import { Config, Effect, Layer } from 'effect'
+import { Config, Effect, Layer, Option } from 'effect'
 import { createServer } from 'node:http'
 
 import { SquealApi } from '@/glue/api/api'
@@ -41,18 +47,86 @@ export const ApiLive = HttpApiBuilder.api(SquealApi).pipe(
 // CORS runs before auth so OPTIONS preflights (which never carry an
 // Authorization header) still succeed for the allowed origins. 'null' is the
 // Origin a packaged renderer sends when loaded from file://.
-const CorsLive = Layer.unwrapEffect(
+export const CorsLive = Layer.unwrapEffect(
   Effect.gen(function* () {
     const allowedOrigins = yield* Config.string('ALLOWED_ORIGINS').pipe(
       Config.withDefault('null')
     )
+    const allowed = allowedOrigins.split(',')
 
     return HttpApiBuilder.middlewareCors({
       allowedHeaders: ['Authorization', 'Content-Type', 'traceparent'],
-      allowedOrigins: allowedOrigins.split(',')
+      // A predicate rather than the array: given exactly one allowed origin the
+      // middleware takes a fast path that emits a constant header without ever
+      // comparing the request's Origin, so a packaged build (whose only allowed
+      // origin is 'null') would answer every caller with
+      // `access-control-allow-origin: null`.
+      allowedOrigins: (origin) => allowed.includes(origin)
     })
   })
 )
+
+// Generous enough for any realistic SQL text or query result while still
+// bounding what a single request can buffer in the main process.
+const maxRequestBodyBytes = 8 * 1024 * 1024
+
+const allowedHostnames = new Set(['127.0.0.1', '::1', '[::1]', 'localhost'])
+
+// Only the hostname is checked, never the port: the port is whatever the
+// server bound (the test harness uses an ephemeral one), while the hostname is
+// what a rebinding attack has to get wrong.
+function hostnameOf(host: string): string {
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']')
+
+    return end === -1 ? host : host.slice(0, end + 1)
+  }
+
+  const colon = host.indexOf(':')
+
+  return colon === -1 ? host : host.slice(0, colon)
+}
+
+// CORS cannot defend against DNS rebinding: the browser sends a legitimate
+// Origin for the attacker's own page, and the request still arrives on
+// loopback. Checking Host does defend against it. This runs outside the CORS
+// layer, so it also covers OPTIONS preflights.
+function withRequestGuards(app: HttpApp.Default): HttpApp.Default {
+  return Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const host = request.headers.host
+
+    if (host === undefined || !allowedHostnames.has(hostnameOf(host))) {
+      return HttpServerResponse.unsafeJson(
+        {
+          message:
+            'Squeal only accepts requests addressed to 127.0.0.1. Use http://127.0.0.1:7847.'
+        },
+        { status: 403 }
+      )
+    }
+
+    // MaxBodySize below fails mid-stream rather than pre-checking, so a
+    // declared length is rejected up front to give a clear answer for the
+    // common case.
+    const declaredLength = Number(request.headers['content-length'] ?? '0')
+
+    if (Number.isFinite(declaredLength) && declaredLength > maxRequestBodyBytes) {
+      return HttpServerResponse.unsafeJson(
+        { message: 'The request body is too large.' },
+        { status: 413 }
+      )
+    }
+
+    return yield* app
+  }).pipe(
+    HttpServerRequest.withMaxBodySize(Option.some(maxRequestBodyBytes))
+  )
+}
+
+// Shared by the production server and the in-memory test harness so both run
+// the same guards.
+export const ServeLive = HttpApiBuilder.serve(withRequestGuards)
 
 function requestPath(request: HttpServerRequest.HttpServerRequest): string {
   const queryStart = request.url.indexOf('?')
@@ -64,7 +138,7 @@ function requestPath(request: HttpServerRequest.HttpServerRequest): string {
 // owns the socket: interrupting the layer closes the server. The platform
 // applies its request tracer automatically (parsing incoming traceparent
 // headers); withTracerDisabledWhen reproduces the legacy skip list.
-export const HttpLive = HttpApiBuilder.serve().pipe(
+export const HttpLive = ServeLive.pipe(
   HttpServer.withLogAddress,
   HttpMiddleware.withTracerDisabledWhen((request) =>
     shouldSkipTracing(request.method, requestPath(request))

@@ -1,12 +1,7 @@
 // Layer-based test substitutes for the Effect services — no vi.mock. Tests
 // compose these under the service layers they exercise and get a fresh
 // in-memory app database per layer build.
-import {
-  HttpApiBuilder,
-  HttpApiClient,
-  HttpClient,
-  HttpClientRequest
-} from '@effect/platform'
+import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 // Subpath import on purpose: the package barrel pulls in cluster modules
 // whose optional peers are not installed.
 import * as NodeHttpServer from '@effect/platform-node/NodeHttpServer'
@@ -17,7 +12,7 @@ import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
 import { ApiToken } from '@/server/http/api-token'
-import { ApiLive } from '@/server/http/server'
+import { ApiLive, CorsLive, ServeLive } from '@/server/http/server'
 import {
   AppDatabase,
   makeAppDatabaseService
@@ -125,6 +120,9 @@ export const testApiToken = 'test-api-token'
 
 export interface TestApiOptions {
   adapter?: TestAdapterConfig
+  // Defaults to the packaged profile: one allowed origin, so the CORS fast-path
+  // regression stays covered.
+  allowedOrigins?: string[]
   publicTraceReads?: boolean
 }
 
@@ -145,12 +143,16 @@ export function makeTestApi(options: TestApiOptions = {}) {
   const configuration = Layer.setConfigProvider(
     ConfigProvider.fromMap(
       new Map([
+        ['ALLOWED_ORIGINS', (options.allowedOrigins ?? ['null']).join(',')],
         ['PUBLIC_TRACE_READS', String(options.publicTraceReads ?? false)]
       ])
     )
   )
 
-  const layer = HttpApiBuilder.serve().pipe(
+  // ServeLive and CorsLive come from the production module so the harness runs
+  // the real host guard, body limit, and CORS behaviour.
+  const layer = ServeLive.pipe(
+    Layer.provide(CorsLive),
     Layer.provide(ApiLive),
     Layer.provideMerge(services),
     Layer.provide(Layer.succeed(ApiToken, Redacted.make(testApiToken))),
