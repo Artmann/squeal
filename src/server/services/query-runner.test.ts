@@ -1,6 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { queriesTable } from '@/database/schema'
 import { QueryCanceledError, type QueryResult } from '@/databases/adapter'
 import type { ConnectionInfo } from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
@@ -252,5 +253,75 @@ describe('QueryRunner', () => {
     // AsyncLocalStorage capture this replaces.
     expect(executeSpan?.parentSpanId).toEqual(createSpan?.id)
     expect(executeSpan?.traceId).toEqual(createSpan?.traceId)
+  })
+
+  // Results stored by earlier versions predate `truncated`. These used to be
+  // cast blindly, so a single legacy row failed *response* encoding and took
+  // down the whole history list with a 400.
+  it('reads a stored result written before truncated existed', async () => {
+    const queries = await run(
+      Effect.gen(function* () {
+        const appDatabase = yield* AppDatabase
+        const runner = yield* QueryRunner
+        const database = yield* createDatabase
+
+        yield* appDatabase.execute((client) =>
+          client.insert(queriesTable).values({
+            content: 'select 1',
+            databaseId: database.id,
+            finishedAt: 2_000,
+            id: 'legacy-query',
+            queriedAt: 1_000,
+            result: JSON.stringify({
+              fields: [{ name: 'value' }],
+              rowCount: 1,
+              rows: [{ value: 1 }]
+            }),
+            worksheetId: 'worksheet-1'
+          })
+        )
+
+        return yield* runner.list()
+      })
+    )
+
+    const legacy = queries.find((query) => query.id === 'legacy-query')
+
+    expect(legacy?.result).toEqual({
+      fields: [{ name: 'value' }],
+      rowCount: 1,
+      rows: [{ value: 1 }],
+      truncated: false
+    })
+    expect(legacy?.error).toEqual(null)
+  })
+
+  it('reports a structurally unusable stored result without failing the list', async () => {
+    const queries = await run(
+      Effect.gen(function* () {
+        const appDatabase = yield* AppDatabase
+        const runner = yield* QueryRunner
+        const database = yield* createDatabase
+
+        yield* appDatabase.execute((client) =>
+          client.insert(queriesTable).values({
+            content: 'select 1',
+            databaseId: database.id,
+            finishedAt: 2_000,
+            id: 'broken-query',
+            queriedAt: 1_000,
+            result: JSON.stringify({ unexpected: true }),
+            worksheetId: 'worksheet-1'
+          })
+        )
+
+        return yield* runner.list()
+      })
+    )
+
+    const broken = queries.find((query) => query.id === 'broken-query')
+
+    expect(broken?.result).toEqual(null)
+    expect(broken?.error).toEqual('Stored result could not be read.')
   })
 })
