@@ -351,6 +351,41 @@ function messageFromCause(cause: Cause.Cause<{ message: string }>): string {
   return extractErrorMessage(Cause.squash(cause))
 }
 
+// Stored results are historical data: rows written by earlier versions predate
+// fields the response schema now requires — `truncated` arrived later — and a
+// blind cast let one such row fail response *encoding*, which took down the
+// entire history list with a 400. Normalize to the contract shape rather than
+// asserting it.
+function toStoredQueryResult(value: unknown): QueryResult | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+
+  const candidate = value as Partial<QueryResult>
+
+  if (!Array.isArray(candidate.fields) || !Array.isArray(candidate.rows)) {
+    return null
+  }
+
+  if (
+    !candidate.rows.every((row) => typeof row === 'object' && row !== null)
+  ) {
+    return null
+  }
+
+  return {
+    fields: candidate.fields.map((field) => ({
+      name: String((field as { name?: unknown } | null)?.name ?? '')
+    })),
+    rowCount:
+      typeof candidate.rowCount === 'number'
+        ? candidate.rowCount
+        : candidate.rows.length,
+    rows: candidate.rows,
+    truncated: candidate.truncated === true
+  }
+}
+
 function transformQueryRow(row: QueryRow): QueryDto {
   let parsed: QueryResult | null = null
   let parseError: string | null = null
@@ -358,7 +393,11 @@ function transformQueryRow(row: QueryRow): QueryDto {
   // One unreadable stored result must not take down the whole history list.
   if (row.result) {
     try {
-      parsed = JSON.parse(row.result) as QueryResult
+      parsed = toStoredQueryResult(JSON.parse(row.result))
+
+      if (parsed === null) {
+        parseError = 'Stored result could not be read.'
+      }
     } catch {
       parseError = 'Stored result could not be read.'
     }
