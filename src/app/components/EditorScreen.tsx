@@ -44,7 +44,9 @@ export function EditorScreen({
 
   const defaultValues = database
     ? {
-        connectionInfo: database.connectionInfo,
+        // Null when the stored secret could not be decrypted; the form opens
+        // with empty connection fields so saving repairs the row.
+        connectionInfo: database.connectionInfo ?? undefined,
         name: database.name,
         type: database.type
       }

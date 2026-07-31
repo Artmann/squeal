@@ -16,6 +16,19 @@ export interface AppDatabaseService {
   ) => Effect.Effect<T, AppDatabaseError>
 }
 
+// A rejected write is not automatically a broken database: a constraint
+// violation is the database working correctly and refusing bad data. Reporting
+// both the same way made a duplicate primary key read as "restart Squeal".
+function isConstraintViolation(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause)
+
+  return (
+    message.includes('SQLITE_CONSTRAINT') ||
+    message.includes('UNIQUE constraint failed') ||
+    message.includes('No values to set')
+  )
+}
+
 export function makeAppDatabaseService(
   client: AppDatabaseClient
 ): AppDatabaseService {
@@ -26,8 +39,9 @@ export function makeAppDatabaseService(
         catch: (cause) =>
           new AppDatabaseError({
             cause: cause instanceof Error ? cause.message : String(cause),
-            message:
-              'The app database is unavailable. Restart Squeal and try again.'
+            message: isConstraintViolation(cause)
+              ? 'The app database rejected this change.'
+              : 'The app database is unavailable. Restart Squeal and try again.'
           }),
         try: () => run(client)
       })
@@ -49,12 +63,17 @@ export class AppDatabase extends Effect.Service<AppDatabase>()('AppDatabase', {
       try: () => initializeDatabase()
     })
 
+    // Closes the client this service was built over, not the module singleton:
+    // building the service across a different client would otherwise close the
+    // wrong handle.
+    const client = database
+
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
-        database.$client.close()
+        client.$client.close()
       })
     )
 
-    return makeAppDatabaseService(database)
+    return makeAppDatabaseService(client)
   })
 }) {}

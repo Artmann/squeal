@@ -115,11 +115,36 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
           ...(updates.name === undefined ? {} : { name: updates.name })
         }
 
+        const activeWorksheet = and(
+          eq(worksheetsTable.id, id),
+          isNull(worksheetsTable.deletedAt)
+        )
+
+        // Every field is optional, so an empty patch is a schema-valid request.
+        // Drizzle throws "No values to set" on an empty SET, which surfaced as
+        // a misleading 500 — a no-op request has to be a no-op.
+        if (Object.keys(changes).length === 0) {
+          const [existing] = yield* appDatabase.execute((client) =>
+            client.select().from(worksheetsTable).where(activeWorksheet).limit(1)
+          )
+
+          if (existing === undefined) {
+            return yield* new WorksheetNotFoundError({
+              message: 'This worksheet no longer exists.',
+              worksheetId: id
+            })
+          }
+
+          return transformWorksheet(existing)
+        }
+
         const [worksheet] = yield* appDatabase.execute((client) =>
           client
             .update(worksheetsTable)
             .set(changes)
-            .where(eq(worksheetsTable.id, id))
+            // Soft-deleted worksheets are excluded like they are in list and
+            // reorder; without this a PATCH would resurrect and return one.
+            .where(activeWorksheet)
             .returning()
         )
 

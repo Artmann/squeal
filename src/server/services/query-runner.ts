@@ -13,6 +13,11 @@ import { DatabaseService } from './database-service'
 
 type QueryRow = typeof queriesTable.$inferSelect
 
+// Canceling opens a fresh connection to the user's database, which can hang on
+// an unreachable host. There is deliberately no timeout on running a user
+// query, but shutdown must not wait on one.
+const cancelTimeout = '5 seconds'
+
 // Carries the raw adapter rejection so cancellation can be classified before
 // the error is flattened into a message. Never leaves this module.
 class AdapterQueryError {
@@ -103,10 +108,19 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
             })
         ),
         // Scope teardown (app quit) best-effort cancels the server-side
-        // statement before the fiber dies.
+        // statement before the fiber dies. Effect.ignore alone would not
+        // contain a rejecting cancel(), because Effect.promise turns a
+        // rejection into a defect; and cancel() opens a *new* connection, so it
+        // needs a timeout or a slow one would stall shutdown.
         Effect.onInterrupt(() =>
           Effect.promise(() => adapter.cancel?.() ?? Promise.resolve()).pipe(
-            Effect.ignore
+            Effect.timeout(cancelTimeout),
+            Effect.catchAllCause((cause) =>
+              Effect.logError(
+                `Could not cancel query ${query.id} during shutdown`,
+                cause
+              )
+            )
           )
         ),
         Effect.withSpan('db.query', {
