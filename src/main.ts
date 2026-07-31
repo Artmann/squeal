@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { Effect } from 'effect'
+import { Cause, Effect, Exit } from 'effect'
 import { randomBytes } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -52,10 +52,25 @@ if (started) {
   app.quit()
 }
 
+// Taken before anything can touch the app database. A second instance used to
+// run the boot effects against the shared SQLite file and only then fail on the
+// port bind — and reconciliation marks *every* unfinished query failed, with no
+// instance scoping, so it poisoned the running instance's in-flight queries.
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!hasSingleInstanceLock) {
+  app.quit()
+}
+
 export let mainWindow: BrowserWindow
 
 let runtime: MainRuntime | undefined
 let quitting = false
+let disposed = false
+
+// Long enough for a normal flush, short enough that a wedged dependency cannot
+// hold the app open.
+const disposeTimeoutMs = 3_000
 
 const createWindow = async () => {
   mainWindow = new BrowserWindow({
@@ -128,6 +143,13 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+// Quitting while the layer is still building interrupts it. That is a shutdown,
+// not a boot failure, so it must not raise a dialog racing the before-quit
+// handler's own exit.
+function isShutdownInterruption(cause: Cause.Cause<unknown>): boolean {
+  return quitting || Cause.isInterruptedOnly(cause)
+}
+
 function reportBootFailure(error: unknown): void {
   // Written synchronously: app.exit terminates before buffered stdout would be
   // flushed, and a boot failure with no trace is undebuggable.
@@ -148,6 +170,12 @@ function reportBootFailure(error: unknown): void {
 }
 
 app.on('ready', async () => {
+  // A losing second instance is already quitting; booting the backend here
+  // would still write to the shared database before the process goes away.
+  if (!hasSingleInstanceLock) {
+    return
+  }
+
   applyDevelopmentDockIcon()
 
   apiToken = randomBytes(32).toString('hex')
@@ -159,14 +187,18 @@ app.on('ready', async () => {
     token: apiToken
   })
 
-  try {
-    // Forces the runtime layer to build: the app database initializes,
-    // interrupted queries are reconciled, the encryption migration runs
-    // (safeStorage is only reliable once the app is ready), and only then
-    // does the HTTP server start listening.
-    await runtime.runPromise(Effect.void)
-  } catch (error) {
-    reportBootFailure(error)
+  // Forces the runtime layer to build: the app database initializes,
+  // interrupted queries are reconciled, the encryption migration runs
+  // (safeStorage is only reliable once the app is ready), and only then
+  // does the HTTP server start listening.
+  const bootExit = await runtime.runPromiseExit(Effect.void)
+
+  if (Exit.isFailure(bootExit)) {
+    if (isShutdownInterruption(bootExit.cause)) {
+      return
+    }
+
+    reportBootFailure(Cause.squash(bootExit.cause))
     app.exit(1)
 
     return
@@ -175,23 +207,51 @@ app.on('ready', async () => {
   createWindow()
 })
 
+app.on('second-instance', () => {
+  if (mainWindow === undefined) {
+    return
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+
+  mainWindow.focus()
+})
+
 // The first real shutdown path this app has had: disposing the runtime
 // closes the HTTP server, interrupts the retention fibers and any running
 // queries (best-effort canceling their server-side statements), and releases
 // the app database.
 app.on('before-quit', (event) => {
-  if (quitting || runtime === undefined) {
+  if (runtime === undefined || disposed) {
+    return
+  }
+
+  // Every quit signal arriving during the dispose window has to keep being
+  // prevented. Returning early without preventDefault let a second Cmd+Q — or
+  // window-all-closed firing app.quit() — complete the quit and kill the
+  // process mid-flush, defeating the whole point of this handler.
+  event.preventDefault()
+
+  if (quitting) {
     return
   }
 
   quitting = true
-  event.preventDefault()
+
+  let timer: ReturnType<typeof setTimeout> | undefined
 
   const timeout = new Promise((resolve) => {
-    setTimeout(resolve, 3_000)
+    timer = setTimeout(resolve, disposeTimeoutMs)
   })
 
   void Promise.race([runtime.dispose(), timeout]).finally(() => {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+    }
+
+    disposed = true
     app.exit(0)
   })
 })
