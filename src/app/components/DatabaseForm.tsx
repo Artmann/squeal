@@ -166,12 +166,27 @@ export function DatabaseForm({
 
   const isLoading = isSaving || isTestingConnection
 
+  // The row exists but its stored secret could not be decrypted — most often
+  // because the OS keychain was reset. Saving the form re-encrypts and repairs
+  // it, so say that rather than silently showing blank fields.
+  const connectionInfoUnreadable =
+    isEditMode &&
+    defaultValues !== undefined &&
+    defaultValues.connectionInfo === undefined
+
   return (
     <Form {...form}>
       <form
         className="flex flex-col gap-8"
         onSubmit={form.handleSubmit(handleSubmit)}
       >
+        {connectionInfoUnreadable && (
+          <p className="rounded-md border border-yellow/40 bg-yellow/10 px-3 py-2 text-xs text-yellow">
+            Squeal could not read this connection&apos;s stored details. Enter
+            them again and save to repair it.
+          </p>
+        )}
+
         {databaseType !== 'sqlite' && (
           <ConnectionStringSection
             form={form}

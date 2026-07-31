@@ -110,7 +110,10 @@ export type PublicConnectionInfo = Schema.Schema.Type<
 // --- Databases ---------------------------------------------------------------
 
 export const DatabaseDto = Schema.Struct({
-  connectionInfo: PublicConnectionInfo,
+  // Null when the stored secret could not be decrypted — for example after the
+  // OS keychain was reset. The row still has to be listed so the user can see
+  // it, repair it, or delete it.
+  connectionInfo: Schema.NullOr(PublicConnectionInfo),
   createdAt: Schema.Number,
   id: Schema.String,
   name: Schema.String,

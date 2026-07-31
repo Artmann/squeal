@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { worksheetsTable } from '@/database/schema'
 import {
   makeTestAppDatabase,
   TestSecretStorage
@@ -113,5 +115,47 @@ describe('WorksheetService', () => {
     )
 
     expect(names).toEqual(['Second', 'First'])
+  })
+
+  // Every field of the patch is optional, so an empty body is schema-valid.
+  // Drizzle rejects an empty SET, which used to surface as "the app database is
+  // unavailable".
+  it('treats an empty patch as a no-op', async () => {
+    const { after, before } = await run(
+      Effect.gen(function* () {
+        const service = yield* WorksheetService
+
+        const before = yield* service.create({ name: 'Untouched' })
+        const after = yield* service.update(before.id, {})
+
+        return { after, before }
+      })
+    )
+
+    expect(after).toEqual(before)
+  })
+
+  it('refuses to update a soft-deleted worksheet', async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        const service = yield* WorksheetService
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* service.create({ name: 'Doomed' })
+
+        yield* appDatabase.execute((client) =>
+          client
+            .update(worksheetsTable)
+            .set({ deletedAt: Date.now() })
+            .where(eq(worksheetsTable.id, created.id))
+        )
+
+        return yield* Effect.either(
+          service.update(created.id, { name: 'Resurrected' })
+        )
+      })
+    )
+
+    expect(result._tag).toEqual('Left')
   })
 })

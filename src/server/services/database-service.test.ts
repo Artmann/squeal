@@ -246,18 +246,99 @@ describe('DatabaseService', () => {
     ])
   })
 
+  // A keychain reset makes every stored secret unreadable. Failing the whole
+  // list would leave the user unable to see, repair, or delete anything.
+  it('lists a database whose stored connection info cannot be read', async () => {
+    const databases = await run(
+      Effect.gen(function* () {
+        const service = yield* DatabaseService
+        const appDatabase = yield* AppDatabase
+
+        yield* service.create('Readable', connectionInfo, 'postgres')
+
+        yield* appDatabase.execute((client) =>
+          client.insert(databasesTable).values({
+            connectionInfo: 'not-decryptable',
+            name: 'Unreadable',
+            type: 'postgres'
+          })
+        )
+
+        return yield* service.list()
+      })
+    )
+
+    expect(
+      databases
+        .map((database) => ({
+          connectionInfo: database.connectionInfo,
+          name: database.name
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name))
+    ).toEqual([
+      {
+        connectionInfo: {
+          database: 'pagila',
+          host: 'localhost',
+          username: 'postgres'
+        },
+        name: 'Readable'
+      },
+      { connectionInfo: null, name: 'Unreadable' }
+    ])
+  })
+
+  it('refuses to update a deleted database', async () => {
+    const outcome = await run(
+      Effect.gen(function* () {
+        const service = yield* DatabaseService
+
+        const created = yield* service.create(
+          'Pagila',
+          connectionInfo,
+          'postgres'
+        )
+
+        yield* service.remove(created.database.id)
+
+        const result = yield* Effect.either(
+          service.update(
+            created.database.id,
+            'Renamed',
+            { ...connectionInfo, password: 'new-secret' },
+            'postgres'
+          )
+        )
+
+        const [row] = yield* (yield* AppDatabase).execute((client) =>
+          client
+            .select()
+            .from(databasesTable)
+            .where(eq(databasesTable.id, created.database.id))
+        )
+
+        return { connectionInfo: row.connectionInfo, result }
+      })
+    )
+
+    expect(outcome.result._tag).toEqual('Left')
+
+    // The purged secret must stay purged.
+    expect(outcome.connectionInfo).toEqual(`${testEncryptionPrefix}{}`)
+  })
+
   it('returns none for a missing or deleted database', async () => {
     const { missing, deleted } = await run(
       Effect.gen(function* () {
         const service = yield* DatabaseService
 
-        const missing = yield* service.get('missing')
+        const missing = yield* service.getWithSecrets('missing')
 
         const created = yield* service.create('Pagila', connectionInfo, 'postgres')
 
         yield* service.remove(created.database.id)
 
-        const deleted = yield* service.get(created.database.id)
+        const deleted = yield* service.getWithSecrets(created.database.id)
 
         return { deleted, missing }
       })

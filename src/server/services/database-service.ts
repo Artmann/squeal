@@ -66,6 +66,15 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
           )
         )
 
+      const toUnreadableDatabase = (record: DatabaseRow): DatabaseDto => ({
+        connectionInfo: null,
+        createdAt: record.createdAt,
+        id: record.id,
+        name: record.name,
+        sortOrder: record.sortOrder ?? null,
+        type: record.type as DatabaseType
+      })
+
       const findActiveRecord = (id: string) =>
         appDatabase
           .execute((client) =>
@@ -92,7 +101,19 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
             )
         )
 
-        return yield* Effect.forEach(records, transformDatabase)
+        // Per row, not fail-fast: one unreadable secret must not take down the
+        // whole list, or a keychain reset would leave the user unable to see,
+        // repair, or delete any connection at all. Mirrors the same treatment
+        // stored query results already get in transformQueryRow.
+        return yield* Effect.forEach(records, (record) =>
+          transformDatabase(record).pipe(
+            Effect.catchTag('SecretDecryptError', (error) =>
+              Effect.logWarning(
+                `Could not read connection info for database ${record.id}: ${error.message}`
+              ).pipe(Effect.as(toUnreadableDatabase(record)))
+            )
+          )
+        )
       })
 
       const create = Effect.fn('DatabaseService.create')(function* (
@@ -162,16 +183,6 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
         }
 
         return result
-      })
-
-      const get = Effect.fn('DatabaseService.get')(function* (id: string) {
-        const record = yield* findActiveRecord(id)
-
-        if (Option.isNone(record)) {
-          return Option.none<DatabaseDto>()
-        }
-
-        return Option.some(yield* transformDatabase(record.value))
       })
 
       // Returns the decrypted connection info, password included. Main-
@@ -308,7 +319,13 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
           client
             .update(databasesTable)
             .set({ connectionInfo: encrypted, name, type })
-            .where(eq(databasesTable.id, id))
+            // Soft-deleted rows are excluded like everywhere else: without this
+            // a PATCH would re-encrypt a password onto a row whose secret
+            // remove() deliberately purged, and answer 200 for a database that
+            // appears in no list.
+            .where(
+              and(eq(databasesTable.id, id), isNull(databasesTable.deletedAt))
+            )
             .returning()
         )
 
@@ -324,7 +341,6 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
 
       return {
         create,
-        get,
         getWithSecrets,
         list,
         remove,
