@@ -105,4 +105,95 @@ describe('connection test route', () => {
     expect(result).toEqual({ success: true })
     expect(adapterState.lastConnectionInfo).toEqual(connectionInfo)
   })
+
+  // Otherwise an authenticated caller could aim a saved password at a server
+  // they control and read it off the handshake.
+  it('refuses to lend the stored password to a different host', async () => {
+    const { adapterState, result } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        return yield* client.connectionTests.create({
+          payload: {
+            connectionInfo: {
+              ...connectionInfo,
+              host: 'attacker.example',
+              password: ''
+            },
+            databaseId: created.database.id,
+            type: 'postgres'
+          }
+        })
+      })
+    )
+
+    expect(result).toEqual({
+      message: 'Enter the password to test a different server.',
+      success: false
+    })
+
+    // No adapter was built for the attacker's host, so nothing was sent.
+    expect(adapterState.lastConnectionInfo).toEqual(null)
+  })
+
+  it('refuses to lend the stored password to a different port', async () => {
+    const { result } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        return yield* client.connectionTests.create({
+          payload: {
+            connectionInfo: { ...connectionInfo, password: '', port: 6000 },
+            databaseId: created.database.id,
+            type: 'postgres'
+          }
+        })
+      })
+    )
+
+    expect(result).toEqual({
+      message: 'Enter the password to test a different server.',
+      success: false
+    })
+  })
+
+  // Editing the username or database still targets the same trusted server, so
+  // the borrow stays allowed there.
+  it('still borrows the stored password when only the database name changes', async () => {
+    const { adapterState, result } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        return yield* client.connectionTests.create({
+          payload: {
+            connectionInfo: {
+              ...connectionInfo,
+              database: 'other',
+              password: ''
+            },
+            databaseId: created.database.id,
+            type: 'postgres'
+          }
+        })
+      })
+    )
+
+    expect(result).toEqual({ success: true })
+    expect(adapterState.lastConnectionInfo).toEqual({
+      ...connectionInfo,
+      database: 'other'
+    })
+  })
 })

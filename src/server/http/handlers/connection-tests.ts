@@ -4,11 +4,36 @@ import { Effect, Option } from 'effect'
 import { SquealApi } from '@/glue/api/api'
 import type {
   ConnectionInfo,
-  ConnectionTestRequest
+  ConnectionTestRequest,
+  UpdateConnectionInfo
 } from '@/glue/api/schemas'
 import { AdapterFactory } from '@/server/services/adapter-factory'
 import { DatabaseService } from '@/server/services/database-service'
 import { orDieInternal } from '../internal-errors'
+
+type ResolvedConnection =
+  | { readonly _tag: 'resolved'; readonly connectionInfo: ConnectionInfo }
+  | { readonly _tag: 'differentServer' }
+  | { readonly _tag: 'passwordRequired' }
+
+// The stored password may only be lent back to the server it was saved for.
+// Only host and port are compared, because those decide where the secret is
+// actually sent: editing the username or database name still targets the same
+// trusted server, so requiring a re-typed password there would be friction
+// without a security gain.
+function targetsSameServer(
+  requested: UpdateConnectionInfo,
+  stored: ConnectionInfo
+): boolean {
+  if (!('username' in requested) || !('username' in stored)) {
+    return false
+  }
+
+  return (
+    requested.host === stored.host &&
+    (requested.port ?? undefined) === (stored.port ?? undefined)
+  )
+}
 
 // A test without a password uses the stored one — the renderer never sees
 // passwords, so testing an existing connection sends its databaseId instead.
@@ -19,11 +44,14 @@ const resolveTestConnectionInfo = (payload: ConnectionTestRequest) =>
       !('username' in connectionInfo) || connectionInfo.password
 
     if (hasPassword) {
-      return Option.some(connectionInfo as ConnectionInfo)
+      return {
+        _tag: 'resolved',
+        connectionInfo: connectionInfo as ConnectionInfo
+      } as const
     }
 
     if (databaseId === undefined) {
-      return Option.none<ConnectionInfo>()
+      return { _tag: 'passwordRequired' } as const
     }
 
     const service = yield* DatabaseService
@@ -34,13 +62,22 @@ const resolveTestConnectionInfo = (payload: ConnectionTestRequest) =>
       stored.value.type !== type ||
       !('password' in stored.value.connectionInfo)
     ) {
-      return Option.none<ConnectionInfo>()
+      return { _tag: 'passwordRequired' } as const
     }
 
-    return Option.some<ConnectionInfo>({
-      ...connectionInfo,
-      password: stored.value.connectionInfo.password
-    })
+    // Without this an authenticated caller could aim a saved password at a
+    // server they control and have the app hand it over during the handshake.
+    if (!targetsSameServer(connectionInfo, stored.value.connectionInfo)) {
+      return { _tag: 'differentServer' } as const
+    }
+
+    return {
+      _tag: 'resolved',
+      connectionInfo: {
+        ...connectionInfo,
+        password: stored.value.connectionInfo.password
+      }
+    } as const
   })
 
 export const ConnectionTestsLive = HttpApiBuilder.group(
@@ -51,15 +88,23 @@ export const ConnectionTestsLive = HttpApiBuilder.group(
       Effect.gen(function* () {
         const adapterFactory = yield* AdapterFactory
 
-        const connectionInfo = yield* resolveTestConnectionInfo(payload)
+        const resolved: ResolvedConnection =
+          yield* resolveTestConnectionInfo(payload)
 
-        if (Option.isNone(connectionInfo)) {
+        if (resolved._tag === 'passwordRequired') {
           return { message: 'Password is required.', success: false }
+        }
+
+        if (resolved._tag === 'differentServer') {
+          return {
+            message: 'Enter the password to test a different server.',
+            success: false
+          }
         }
 
         const adapter = adapterFactory.create(
           payload.type,
-          connectionInfo.value
+          resolved.connectionInfo
         )
 
         return yield* Effect.tryPromise(() => adapter.testConnection()).pipe(
