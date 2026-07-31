@@ -1,9 +1,12 @@
 import { Cause, Context, Effect, Exit, FiberId, Layer, Option, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { spansTable } from '@/database/schema'
 import { SpanRecord } from '@/glue/tracing/spans'
+import { AppDatabase } from '@/server/services/app-database'
+import { makeTestAppDatabase } from '@/test/effect-test-helper'
 
-import { makeSquealTracer } from './effect-tracer'
+import { makeSquealTracer, TracerLive } from './effect-tracer'
 
 const startNanos = 1_700_000_000_000_000_000n
 const endNanos = startNanos + 25_000_000n
@@ -138,6 +141,42 @@ describe('makeSquealTracer', () => {
     expect(written[0].traceId).toEqual('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
   })
 
+  // The platform's b3 fallback does not validate inbound ids at all, and an id
+  // the TraceId schema rejects would produce a trace the dashboard lists but
+  // cannot open.
+  it('ignores a parent whose trace id is not a usable W3C id', () => {
+    const { tracer, written } = makeCollector()
+    const external = Tracer.externalSpan({
+      spanId: 'aaaaaaaaaaaaaaaa',
+      traceId: 'junk'
+    })
+    const span = startSpan(tracer, { parent: Option.some(external) })
+
+    span.end(endNanos, Exit.succeed(undefined))
+
+    expect(written[0].parentSpanId).toEqual(null)
+    expect(written[0].traceId).toEqual(
+      expect.stringMatching(/^[0-9a-f]{32}$/)
+    )
+    expect(written[0].traceId).not.toEqual('junk')
+  })
+
+  it('ignores an all-zero parent so those spans do not merge into one trace', () => {
+    const { tracer, written } = makeCollector()
+    const external = Tracer.externalSpan({
+      spanId: '0000000000000000',
+      traceId: '00000000000000000000000000000000'
+    })
+    const span = startSpan(tracer, { parent: Option.some(external) })
+
+    span.end(endNanos, Exit.succeed(undefined))
+
+    expect(written[0].parentSpanId).toEqual(null)
+    expect(written[0].traceId).not.toEqual(
+      '00000000000000000000000000000000'
+    )
+  })
+
   it('coerces and truncates attribute values', () => {
     const { tracer, written } = makeCollector()
     const span = startSpan(tracer)
@@ -211,4 +250,32 @@ describe('makeSquealTracer', () => {
     expect(child.traceId).toEqual(parent.traceId)
     expect(child.parentSpanId).toEqual(parent.id)
   })
+})
+
+describe('TracerLive', () => {
+  // Spans are queued rather than written inline, so the shutdown flush is the
+  // only thing that keeps the spans explaining a shutdown from being lost.
+  it('flushes queued spans when its scope closes', async () => {
+    const rows = await Effect.runPromise(
+      Effect.gen(function* () {
+        const appDatabase = yield* AppDatabase
+
+        yield* Effect.void.pipe(
+          Effect.withSpan('queued.child'),
+          Effect.withSpan('queued.parent'),
+          Effect.provide(TracerLive)
+        )
+
+        return yield* Effect.promise(() =>
+          appDatabase.client.select().from(spansTable)
+        )
+      }).pipe(Effect.provide(makeTestAppDatabase()))
+    )
+
+    expect(rows.map((row) => row.name).sort()).toEqual([
+      'queued.child',
+      'queued.parent'
+    ])
+  })
+
 })

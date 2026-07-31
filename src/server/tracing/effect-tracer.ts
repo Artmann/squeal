@@ -2,11 +2,13 @@
 // Tracer whose spans persist straight into the spans table via writeSpans.
 // Effect already generates W3C-format ids, so the renderer's traceparent
 // propagation and the existing dashboard keep working unchanged.
-import { Cause, Exit, Layer, Option, Tracer } from 'effect'
+import { Cause, Chunk, Effect, Exit, Layer, Option, Queue, Tracer } from 'effect'
 import type { Context } from 'effect'
 import { log } from 'tiny-typescript-logger'
 
 import { generateTraceId, generateSpanId } from '@/glue/tracing/ids'
+import { isValidSpanId, isValidTraceId } from '@/glue/tracing/traceparent'
+import { AppDatabase } from '../services/app-database'
 import {
   maxAttributeValueLength,
   maxStacktraceLength,
@@ -36,7 +38,86 @@ export function makeSquealTracer(
   })
 }
 
-export const TracerLive = Layer.setTracer(makeSquealTracer())
+// Writes are batched, so one INSERT covers a whole burst rather than one per
+// span end.
+const spanBatchSize = 100
+const spanQueueCapacity = 2048
+const spanFlushTimeout = '2 seconds'
+const droppedSpanLogInterval = 100
+
+// Offering never blocks and never awaits: a span must not slow down the
+// operation it measures, and unbounded in-flight writes are exactly what this
+// queue exists to prevent. A full queue means the writer has fallen far
+// behind, so spans are dropped — loudly — instead of being retained.
+function makeQueuedPersist(
+  queue: Queue.Queue<SpanRecord>
+): (records: SpanRecord[]) => Promise<unknown> {
+  let dropped = 0
+
+  return (records) => {
+    for (const record of records) {
+      if (!Queue.unsafeOffer(queue, record)) {
+        dropped += 1
+
+        if (dropped % droppedSpanLogInterval === 1) {
+          log.warn(`Span queue is full; dropped ${dropped} span(s).`)
+        }
+      }
+    }
+
+    return Promise.resolve()
+  }
+}
+
+// Depends on AppDatabase for two reasons: spans are written through the service
+// rather than a direct `@/database` import, and the dependency forces this
+// layer to be torn down *before* the database handle closes — otherwise the
+// shutdown flush would race the closing client and lose exactly the spans that
+// explain the shutdown.
+export const TracerLive = Layer.unwrapScoped(
+  Effect.gen(function* () {
+    const appDatabase = yield* AppDatabase
+    const queue = yield* Queue.bounded<SpanRecord>(spanQueueCapacity)
+
+    const writeBatch = (records: ReadonlyArray<SpanRecord>) =>
+      appDatabase
+        .execute((client) => writeSpans([...records], client))
+        .pipe(
+          Effect.catchAllCause((cause) =>
+            Effect.logError('Could not write spans', cause)
+          ),
+          // Writing a span must never itself be traced.
+          Effect.withTracerEnabled(false)
+        )
+
+    // Registered before the drain fiber so teardown interrupts the fiber first
+    // (finalizers run last-in-first-out) and this then drains the remainder.
+    yield* Effect.addFinalizer(() =>
+      Queue.takeAll(queue).pipe(
+        Effect.flatMap((remaining) =>
+          Chunk.isEmpty(remaining)
+            ? Effect.void
+            : writeBatch(Chunk.toReadonlyArray(remaining))
+        ),
+        Effect.timeout(spanFlushTimeout),
+        Effect.catchAllCause((cause) =>
+          Effect.logError('Could not flush pending spans', cause)
+        )
+      )
+    )
+
+    yield* Effect.forkScoped(
+      Queue.takeBetween(queue, 1, spanBatchSize).pipe(
+        Effect.flatMap((records) => writeBatch(Chunk.toReadonlyArray(records))),
+        Effect.forever
+      )
+    )
+
+    return Layer.setTracer(
+      makeSquealTracer({ persist: makeQueuedPersist(queue) })
+    )
+  })
+)
 
 class SquealSpan implements Tracer.Span {
   readonly _tag = 'Span' as const
@@ -63,19 +144,29 @@ class SquealSpan implements Tracer.Span {
     kind: Tracer.SpanKind,
     persist: (records: SpanRecord[]) => Promise<unknown>
   ) {
+    // Inbound parents come from client headers, and the platform's b3 fallback
+    // does not validate them at all. An unusable id would produce a trace the
+    // dashboard lists but cannot open (GET /traces/:id rejects it), so a parent
+    // that fails validation is treated as absent and this span starts a fresh
+    // root trace.
+    const usableParent = Option.filter(
+      parent,
+      (span) => isValidTraceId(span.traceId) && isValidSpanId(span.spanId)
+    )
+
     this.context = context
     this.kind = kind
     this.links = links.slice()
     this.name = name
-    this.parent = parent
+    this.parent = usableParent
     this.persist = persist
-    this.sampled = Option.match(parent, {
+    this.sampled = Option.match(usableParent, {
       onNone: () => true,
       onSome: (span) => span.sampled
     })
     this.spanId = generateSpanId()
     this.status = { _tag: 'Started', startTime }
-    this.traceId = Option.match(parent, {
+    this.traceId = Option.match(usableParent, {
       onNone: () => generateTraceId(),
       onSome: (span) => span.traceId
     })
