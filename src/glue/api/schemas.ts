@@ -2,6 +2,8 @@
 // main-process imports — the renderer bundles it.
 import { Schema } from 'effect'
 
+import { isValidSpanId, isValidTraceId } from '../tracing/traceparent'
+
 // --- Request ids ---------------------------------------------------------------
 // Validated but deliberately unbranded: ids round-trip through DTOs and the
 // typed client as plain strings, and a brand here would force a decode at
@@ -12,7 +14,11 @@ export const DatabaseId = Schema.String.pipe(Schema.minLength(1))
 
 export const QueryId = Schema.String.pipe(Schema.minLength(1))
 
-export const TraceId = Schema.String.pipe(Schema.pattern(/^[0-9a-f]{32}$/))
+export const TraceId = Schema.String.pipe(
+  Schema.filter(isValidTraceId, {
+    message: () => 'Expected a 32-character hexadecimal trace id.'
+  })
+)
 
 export const WorksheetId = Schema.String.pipe(Schema.minLength(1))
 
@@ -305,8 +311,20 @@ export type ConnectionTestResponse = Schema.Schema.Type<
 
 // --- Traces ---------------------------------------------------------------------
 
-const spanIdPattern = /^[0-9a-f]{16}$/
-const traceIdPattern = /^[0-9a-f]{32}$/
+// All-zero ids are rejected as well as malformed ones: they are unusable as a
+// lookup key, so accepting them would merge unrelated spans into one
+// unopenable trace.
+const SpanIdField = Schema.String.pipe(
+  Schema.filter(isValidSpanId, {
+    message: () => 'Expected a 16-character hexadecimal span id.'
+  })
+)
+
+const TraceIdField = Schema.String.pipe(
+  Schema.filter(isValidTraceId, {
+    message: () => 'Expected a 32-character hexadecimal trace id.'
+  })
+)
 
 const SpanAttributesDto = Schema.mutable(
   Schema.Record({
@@ -325,17 +343,15 @@ const SpanDto = Schema.Struct({
   attributes: SpanAttributesDto,
   durationMs: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0)),
   events: Schema.mutable(Schema.Array(SpanEventDto)),
-  id: Schema.String.pipe(Schema.pattern(spanIdPattern)),
+  id: SpanIdField,
   kind: Schema.Literal('client', 'internal', 'server'),
   name: Schema.String.pipe(Schema.minLength(1)),
-  parentSpanId: Schema.NullOr(
-    Schema.String.pipe(Schema.pattern(spanIdPattern))
-  ),
+  parentSpanId: Schema.NullOr(SpanIdField),
   serviceName: Schema.Literal('main', 'renderer'),
   startedAt: Schema.Number,
   status: Schema.Literal('error', 'ok', 'unset'),
   statusMessage: Schema.NullOr(Schema.String),
-  traceId: Schema.String.pipe(Schema.pattern(traceIdPattern))
+  traceId: TraceIdField
 })
 export type SpanDto = Schema.Schema.Type<typeof SpanDto>
 

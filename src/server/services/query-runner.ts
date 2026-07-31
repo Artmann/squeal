@@ -182,7 +182,8 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
         )
 
         if (outcome._tag === 'canceled') {
-          yield* recordCanceledEvent
+          // The event is recorded on the db.query span inside runAdapterQuery,
+          // which is the span that represents the canceled statement.
           yield* writeFailure(query.id, canceledQueryMessage)
 
           return

@@ -48,14 +48,19 @@ export function makeMainRuntime(options: MainRuntimeOptions) {
     )
   )
 
+  // Order matters and is not obvious: `provideMerge` builds right to left, so
+  // ServicesLive (and with it AppDatabase) is acquired first and released last.
+  // TracerLive sits inside it deliberately — the tracer must flush its queued
+  // spans before the database handle closes, and finalizers run in reverse
+  // acquisition order.
   const MainLive = Layer.mergeAll(
     HttpLive.pipe(Layer.provide(BootLive)),
     RetentionLive
   ).pipe(
+    Layer.provideMerge(TracerLive),
     Layer.provideMerge(ServicesLive),
     Layer.provide(Layer.succeed(ApiToken, Redacted.make(options.token))),
-    Layer.provide(configuration),
-    Layer.provideMerge(TracerLive)
+    Layer.provide(configuration)
   )
 
   return ManagedRuntime.make(MainLive)

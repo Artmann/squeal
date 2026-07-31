@@ -3,10 +3,24 @@
 
 import { SpanContext } from './spans'
 
+const spanIdPattern = /^[0-9a-f]{16}$/
+const traceIdPattern = /^[0-9a-f]{32}$/
 const traceparentPattern = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/
 
 export function formatTraceparent(context: SpanContext): string {
   return `00-${context.traceId}-${context.spanId}-01`
+}
+
+// The single source of truth for what counts as a usable id. Ids can arrive
+// from anywhere — a traceparent, a b3 header, or the renderer's span ingest —
+// and an id that fails this check cannot be looked up again, so it must never
+// be stored.
+export function isValidSpanId(value: string): boolean {
+  return spanIdPattern.test(value) && !isAllZeros(value)
+}
+
+export function isValidTraceId(value: string): boolean {
+  return traceIdPattern.test(value) && !isAllZeros(value)
 }
 
 export function parseTraceparent(
@@ -24,7 +38,7 @@ export function parseTraceparent(
     return undefined
   }
 
-  if (isAllZeros(traceId) || isAllZeros(spanId)) {
+  if (!isValidTraceId(traceId) || !isValidSpanId(spanId)) {
     return undefined
   }
 
