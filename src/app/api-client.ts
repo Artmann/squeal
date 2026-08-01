@@ -102,6 +102,40 @@ const infrastructureTags = new Set([
   'ResponseError'
 ])
 
+function toFieldDetails(
+  issues: ReadonlyArray<{ message: string; path: ReadonlyArray<PropertyKey> }>
+): Record<string, string> {
+  const details: Record<string, string> = {}
+
+  for (const issue of issues) {
+    details[issue.path.join('.')] = issue.message
+  }
+
+  return details
+}
+
+// Contract errors carry a `_tag` the hooks discriminate on. Infrastructure
+// failures carry one too, but describe the request rather than the domain.
+function isDomainError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    '_tag' in error &&
+    typeof error._tag === 'string' &&
+    !infrastructureTags.has(error._tag)
+  )
+}
+
+function responseStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return undefined
+  }
+
+  const status = (error as { response?: { status?: number } }).response?.status
+
+  return typeof status === 'number' ? status : undefined
+}
+
 // Domain errors reach the caller as themselves so hooks can discriminate on
 // `_tag`; decode and transport failures become ApiError, which existing
 // catch-alls and the database form's field mapping already understand.
@@ -110,36 +144,15 @@ function toThrowable(cause: Cause.Cause<unknown>): unknown {
   const error = Option.isSome(failure) ? failure.value : Cause.squash(cause)
 
   if (error instanceof HttpApiDecodeError) {
-    const details: Record<string, string> = {}
-
-    for (const issue of error.issues) {
-      details[issue.path.join('.')] = issue.message
-    }
-
-    return new ApiError(400, 'Validation error', details)
+    return new ApiError(400, 'Validation error', toFieldDetails(error.issues))
   }
 
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    '_tag' in error &&
-    typeof error._tag === 'string' &&
-    !infrastructureTags.has(error._tag)
-  ) {
+  if (isDomainError(error)) {
     return error
   }
 
-  const status =
-    typeof error === 'object' &&
-    error !== null &&
-    'response' in error &&
-    typeof (error as { response?: { status?: number } }).response?.status ===
-      'number'
-      ? ((error as { response: { status: number } }).response.status ?? 500)
-      : 500
-
   return new ApiError(
-    status,
+    responseStatus(error) ?? 500,
     error instanceof Error
       ? error.message
       : 'The request could not be completed. Please try again.'

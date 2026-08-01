@@ -40,10 +40,6 @@ export class SpanDraft {
   private currentStatus: SpanStatus = 'unset'
   private statusMessage: string | null = null
 
-  get status(): SpanStatus {
-    return this.currentStatus
-  }
-
   constructor(name: string, options: SpanDraftOptions) {
     this.context = {
       spanId: generateSpanId(),

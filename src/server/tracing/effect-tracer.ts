@@ -15,7 +15,6 @@ import {
   SpanEvent,
   SpanKind as SpanRecordKind,
   SpanRecord,
-  SpanStatus as SpanRecordStatus,
   truncateValue
 } from '@/glue/tracing/spans'
 import { writeSpans } from '@/main/tracing/span-writer'
@@ -150,42 +149,14 @@ class SquealSpan implements Tracer.Span {
     endTime: bigint,
     exit: Exit.Exit<unknown, unknown>
   ): SpanRecord {
+    const failure = Exit.isFailure(exit)
+      ? describeFailure(exit.cause, endTime)
+      : undefined
+
     const events = [...this.events]
-    let status: SpanRecordStatus = 'ok'
-    let statusMessage: string | null = null
 
-    if (Exit.isFailure(exit)) {
-      status = 'error'
-
-      // Interruption is a lifecycle event (app shutdown), not a failure with
-      // an exception to show.
-      if (Cause.isInterruptedOnly(exit.cause)) {
-        statusMessage = 'Interrupted'
-      } else {
-        const failure = Cause.failureOption(exit.cause)
-        const error = Option.isSome(failure)
-          ? failure.value
-          : Cause.squash(exit.cause)
-        const message =
-          error instanceof Error ? error.message : String(error)
-        const stack = error instanceof Error ? (error.stack ?? '') : ''
-        const type = error instanceof Error ? error.name : typeof error
-
-        events.push({
-          attributes: {
-            'exception.message': truncateValue(
-              message,
-              maxAttributeValueLength
-            ),
-            'exception.stacktrace': truncateValue(stack, maxStacktraceLength),
-            'exception.type': type
-          },
-          name: 'exception',
-          time: nanosToMillis(endTime)
-        })
-
-        statusMessage = truncateValue(message, maxAttributeValueLength)
-      }
+    if (failure?.event !== undefined) {
+      events.push(failure.event)
     }
 
     const attributes: SpanAttributes = {}
@@ -207,10 +178,45 @@ class SquealSpan implements Tracer.Span {
       }),
       serviceName: 'main',
       startedAt: nanosToMillis(startTime),
-      status,
-      statusMessage,
+      status: failure === undefined ? 'ok' : 'error',
+      statusMessage: failure?.statusMessage ?? null,
       traceId: this.traceId
     }
+  }
+}
+
+interface SpanFailure {
+  // Absent for interruption, which carries no exception to show.
+  event: SpanEvent | undefined
+  statusMessage: string | null
+}
+
+function describeFailure(
+  cause: Cause.Cause<unknown>,
+  endTime: bigint
+): SpanFailure {
+  // Interruption is a lifecycle event (app shutdown), not a failure.
+  if (Cause.isInterruptedOnly(cause)) {
+    return { event: undefined, statusMessage: 'Interrupted' }
+  }
+
+  const failure = Cause.failureOption(cause)
+  const error = Option.isSome(failure) ? failure.value : Cause.squash(cause)
+  const message = error instanceof Error ? error.message : String(error)
+  const stack = error instanceof Error ? (error.stack ?? '') : ''
+  const type = error instanceof Error ? error.name : typeof error
+
+  return {
+    event: {
+      attributes: {
+        'exception.message': truncateValue(message, maxAttributeValueLength),
+        'exception.stacktrace': truncateValue(stack, maxStacktraceLength),
+        'exception.type': type
+      },
+      name: 'exception',
+      time: nanosToMillis(endTime)
+    },
+    statusMessage: truncateValue(message, maxAttributeValueLength)
   }
 }
 

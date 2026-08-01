@@ -101,25 +101,59 @@ const createWindow = async () => {
   }
 }
 
-app.on('ready', async () => {
-  // The packaged app gets its icon from the bundle, but in development macOS
-  // falls back to the Electron dock icon. The dock label still reads
-  // "Electron" — the OS takes the name from the dev binary's Info.plist,
-  // which only packaging can change.
-  if (!app.isPackaged && process.platform === 'darwin') {
-    app.dock?.setIcon(path.join(app.getAppPath(), 'assets/icons/icon.png'))
+// The packaged app gets its icon from the bundle, but in development macOS
+// falls back to the Electron dock icon. The dock label still reads "Electron" —
+// the OS takes the name from the dev binary's Info.plist, which only packaging
+// can change.
+function applyDevelopmentDockIcon(): void {
+  if (app.isPackaged || process.platform !== 'darwin') {
+    return
   }
+
+  app.dock?.setIcon(path.join(app.getAppPath(), 'assets/icons/icon.png'))
+}
+
+function corsAllowedOrigins(): string[] {
+  // 'null' is the Origin a packaged renderer sends when loaded from file://.
+  const origins = ['null']
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    origins.push(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
+  }
+
+  return origins
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function reportBootFailure(error: unknown): void {
+  // Written synchronously: app.exit terminates before buffered stdout would be
+  // flushed, and a boot failure with no trace is undebuggable.
+  writeFileSync(
+    path.join(app.getPath('temp'), 'squeal-boot-error.log'),
+    `${new Date().toISOString()}\n${
+      error instanceof Error ? (error.stack ?? error.message) : String(error)
+    }\n`
+  )
+  log.error(`The backend failed to boot: ${String(error)}`)
+
+  dialog.showErrorBox(
+    'Squeal could not start',
+    `The backend failed to boot: ${describeError(
+      error
+    )}\n\nIf another Squeal instance is running, close it and try again.`
+  )
+}
+
+app.on('ready', async () => {
+  applyDevelopmentDockIcon()
 
   apiToken = randomBytes(32).toString('hex')
 
-  const allowedOrigins = ['null']
-
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    allowedOrigins.push(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
-  }
-
   runtime = makeMainRuntime({
-    allowedOrigins,
+    allowedOrigins: corsAllowedOrigins(),
     // Lets local agents read traces with plain curl during development.
     publicTraceReads: !app.isPackaged,
     token: apiToken
@@ -132,23 +166,7 @@ app.on('ready', async () => {
     // does the HTTP server start listening.
     await runtime.runPromise(Effect.void)
   } catch (error) {
-    // Written synchronously: app.exit below terminates before buffered
-    // stdout would be flushed, and a boot failure with no trace is
-    // undebuggable.
-    writeFileSync(
-      path.join(app.getPath('temp'), 'squeal-boot-error.log'),
-      `${new Date().toISOString()}\n${
-        error instanceof Error ? (error.stack ?? error.message) : String(error)
-      }\n`
-    )
-    log.error(`The backend failed to boot: ${String(error)}`)
-
-    dialog.showErrorBox(
-      'Squeal could not start',
-      `The backend failed to boot: ${
-        error instanceof Error ? error.message : String(error)
-      }\n\nIf another Squeal instance is running, close it and try again.`
-    )
+    reportBootFailure(error)
     app.exit(1)
 
     return
