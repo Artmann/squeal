@@ -17,14 +17,18 @@ import databaseExplorerReducer, {
   DatabaseExplorerState
 } from './store/database-explorer-slice'
 import editorReducer, { EditorState } from './store/editor-slice'
+import tabsReducer, { type TabsState } from './store/tabs-slice'
 import uiReducer, { UiState } from './store/ui-slice'
 
 export interface RenderOptions {
   databaseExplorer?: Partial<DatabaseExplorerState>
   databases?: DatabaseDto[]
   editor?: Partial<EditorState>
+  /** Convenience for the common case of one open, active worksheet. */
+  openWorksheetId?: string
   queries?: QueryDto[]
   schemas?: Record<string, SchemaInfo>
+  tabs?: Partial<TabsState>
   ui?: UiState
   worksheets?: WorksheetDto[]
 }
@@ -64,10 +68,15 @@ export function renderWithProviders(
   // instead of fetching.
   const collections = createCollections(queryClient)
 
+  const openWorksheetIds =
+    options.tabs?.openWorksheetIds ??
+    (options.openWorksheetId ? [options.openWorksheetId] : [])
+
   const store = configureStore({
     reducer: {
       databaseExplorer: databaseExplorerReducer,
       editor: editorReducer,
+      tabs: tabsReducer,
       ui: uiReducer
     },
     preloadedState: {
@@ -77,8 +86,14 @@ export function renderWithProviders(
       },
       editor: {
         databaseSearchQuery: options.editor?.databaseSearchQuery ?? '',
-        openWorksheetId: options.editor?.openWorksheetId,
         worksheetSearchQuery: options.editor?.worksheetSearchQuery ?? ''
+      },
+      tabs: {
+        activeWorksheetId:
+          options.tabs?.activeWorksheetId ??
+          options.openWorksheetId ??
+          openWorksheetIds[openWorksheetIds.length - 1],
+        openWorksheetIds
       },
       ui: options.ui ?? {}
     }

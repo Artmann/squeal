@@ -12,10 +12,12 @@ import { v7 } from 'uuid'
 import { AppSidebar } from './components/AppSidebar'
 import { EditorScreen } from './components/EditorScreen'
 import { GettingStartedScreen } from './components/GettingStartedScreen'
-import { QueryResultContent } from './components/QueryResultContent'
-import { ResultSheet } from './components/ResultSheet'
+import { ResultsPane } from './components/ResultsPane'
+import { StatusBar } from './components/StatusBar'
 import { TitleBar } from './components/TitleBar'
-import { WorksheetHeader } from './components/WorksheetHeader'
+import type { CursorPosition } from './components/worksheet-editor-cursor'
+import { WorksheetTabs } from './components/WorksheetTabs'
+import { WorksheetToolbar } from './components/WorksheetToolbar'
 import { useCollections } from './collections-context'
 import {
   useDatabases,
@@ -27,6 +29,7 @@ import { useCancelQuery } from './hooks/mutations'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import type { QueryDto } from '@/glue/api/schemas'
 import { useAppSelector } from './store'
+import { selectActiveWorksheetId } from './store/tabs-slice'
 import { finishQueryTrace, startQueryTrace } from './tracing/query-traces'
 import { createAstFromSql, type Statement } from './sql-parser'
 import { findActiveStatementIndex } from './sql-parser/active-statement'
@@ -57,7 +60,10 @@ function createOptimisticQuery(
 
 function useActiveStatement(openWorksheetId: string | undefined) {
   const worksheets = useWorksheets()
-  const [cursorPosition, setCursorPosition] = useState<number>(0)
+
+  // The character offset drives statement detection; the status bar's line and
+  // column are reported separately so neither has to derive the other.
+  const [cursorOffset, setCursorOffset] = useState<number>(0)
 
   const currentWorksheet = useMemo(
     () => worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
@@ -73,8 +79,8 @@ function useActiveStatement(openWorksheetId: string | undefined) {
   }, [currentWorksheet?.content])
 
   const activeStatementIndex = useMemo(
-    () => findActiveStatementIndex(statements, cursorPosition),
-    [statements, cursorPosition]
+    () => findActiveStatementIndex(statements, cursorOffset),
+    [statements, cursorOffset]
   )
 
   const activeStatement =
@@ -84,7 +90,7 @@ function useActiveStatement(openWorksheetId: string | undefined) {
     activeStatement,
     activeStatementIndex,
     currentWorksheet,
-    setCursorPosition,
+    setCursorOffset,
     statements
   }
 }
@@ -153,18 +159,18 @@ function useRunQuery(
 export function App(): ReactElement {
   const databases = useDatabases()
 
-  const openWorksheetId = useAppSelector(
-    (state) => state.editor.openWorksheetId
-  )
+  const openWorksheetId = useAppSelector(selectActiveWorksheetId)
   const editorScreen = useAppSelector((state) => state.ui.editorScreen)
 
   const showGettingStartedScreen = databases.data.length === 0
+
+  const [cursorPosition, setCursorPosition] = useState<CursorPosition>()
 
   const {
     activeStatement,
     activeStatementIndex,
     currentWorksheet,
-    setCursorPosition,
+    setCursorOffset,
     statements
   } = useActiveStatement(openWorksheetId)
 
@@ -185,18 +191,16 @@ export function App(): ReactElement {
     openWorksheetId
   )
 
-  if (!currentWorksheet) {
-    return (
-      <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
-        {showGettingStartedScreen && <GettingStartedScreen />}
-
-        <TitleBar />
-      </main>
-    )
-  }
+  const currentDatabase = useMemo(
+    () =>
+      databases.data.find(
+        (database) => database.id === currentWorksheet?.databaseId
+      ),
+    [databases.data, currentWorksheet?.databaseId]
+  )
 
   return (
-    <main className="w-full h-screen flex flex-col bg-mantle overflow-hidden text-sm">
+    <main className="w-full h-screen flex flex-col bg-panel2 overflow-hidden text-sm">
       {showGettingStartedScreen && <GettingStartedScreen />}
 
       {editorScreen && (
@@ -209,44 +213,66 @@ export function App(): ReactElement {
       <TitleBar />
 
       <div className="flex-1 min-h-0 flex">
-        <div className="h-full flex flex-col border-r border-surface-0">
-          <AppSidebar />
-        </div>
+        <AppSidebar />
 
-        <div className="flex-1 min-h-0 flex flex-col">
-          <WorksheetHeader
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+          <WorksheetTabs />
+
+          <WorksheetToolbar
             activeStatement={activeStatement}
+            isCancelPending={isCancelPending}
             isQueryRunning={isQueryRunning}
-            saveState={saveState}
+            onCancelQuery={handleCancelQuery}
             onRunQuery={handleRunQuery}
           />
 
-          <div className="relative flex-1 min-h-0 bg-base">
-            <Suspense fallback={null}>
-              <WorksheetEditor
-                activeStatementIndex={activeStatementIndex}
-                content={currentWorksheet.content}
-                statements={statements}
-                onChange={handleUpdateContent}
-                onCursorPositionChange={setCursorPosition}
-                onRunQuery={handleRunQuery}
-              />
-            </Suspense>
-
-            <ResultSheet
-              isOpen={Boolean(query)}
-              query={query}
-            >
-              <QueryResultContent
-                isCancelPending={isCancelPending}
-                isQueryRunning={isQueryRunning}
-                query={query}
-                onCancelQuery={handleCancelQuery}
-              />
-            </ResultSheet>
+          <div className="flex-1 min-h-0 bg-panel">
+            {currentWorksheet ? (
+              <Suspense fallback={null}>
+                <WorksheetEditor
+                  activeStatementIndex={activeStatementIndex}
+                  content={currentWorksheet.content}
+                  databaseType={currentDatabase?.type}
+                  statements={statements}
+                  onChange={handleUpdateContent}
+                  onCursorChange={setCursorPosition}
+                  onCursorPositionChange={setCursorOffset}
+                  onRunQuery={handleRunQuery}
+                />
+              </Suspense>
+            ) : (
+              <NoWorksheetOpen />
+            )}
           </div>
+
+          <ResultsPane
+            databaseName={currentDatabase?.name}
+            isQueryRunning={isQueryRunning}
+            query={query}
+            worksheetId={openWorksheetId}
+          />
+
+          <StatusBar
+            cursorPosition={cursorPosition}
+            databaseId={currentWorksheet?.databaseId ?? undefined}
+            databaseName={currentDatabase?.name}
+            query={query}
+            saveState={saveState}
+          />
         </div>
       </div>
     </main>
+  )
+}
+
+function NoWorksheetOpen(): ReactElement {
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-[6px] text-center">
+      <p className="text-[13px] font-medium text-text2">No worksheet open</p>
+
+      <p className="text-[12px] text-text3">
+        Create a worksheet or pick one from the sidebar.
+      </p>
+    </div>
   )
 }
