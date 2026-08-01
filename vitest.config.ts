@@ -19,6 +19,10 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // The default 5s is generous for these tests in isolation but not under
+    // load: with several vitest processes competing for CPU, unrelated tests
+    // start timing out and look like a flake in whatever changed last.
+    testTimeout: 20000,
     projects: [
       {
         extends: true,
