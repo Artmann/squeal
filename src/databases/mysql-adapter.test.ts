@@ -153,6 +153,40 @@ describe('MysqlAdapter', () => {
     })
   })
 
+  describe('getServerVersion', () => {
+    it('asks the server and returns the major and minor release', async () => {
+      mockQuery.mockResolvedValueOnce([[{ version: '8.4.0' }], []])
+
+      const adapter = new MysqlAdapter(connectionInfo)
+
+      expect(await adapter.getServerVersion()).toEqual('MySQL 8.4')
+      expect(mockQuery).toHaveBeenCalledWith('SELECT VERSION() AS version')
+      expect(mockEnd).toHaveBeenCalled()
+    })
+
+    it('reports a MariaDB server under its own name', async () => {
+      mockQuery.mockResolvedValueOnce([
+        [{ version: '10.11.6-MariaDB-1:10.11.6+maria~ubu2204' }],
+        []
+      ])
+
+      const adapter = new MysqlAdapter(connectionInfo)
+
+      expect(await adapter.getServerVersion()).toEqual('MariaDB 10.11')
+    })
+
+    it('closes the connection even when the probe fails', async () => {
+      mockQuery.mockRejectedValueOnce(new Error('Connection lost'))
+
+      const adapter = new MysqlAdapter(connectionInfo)
+
+      await expect(adapter.getServerVersion()).rejects.toThrow(
+        'Connection lost'
+      )
+      expect(mockEnd).toHaveBeenCalled()
+    })
+  })
+
   describe('runQuery', () => {
     it('executes query and returns formatted results', async () => {
       emitQueryEvents([

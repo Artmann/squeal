@@ -221,6 +221,7 @@ const QueryResultDto = Schema.Struct({
   ),
   truncated: Schema.Boolean
 })
+export type QueryResultDto = Schema.Schema.Type<typeof QueryResultDto>
 
 const QueryDto = Schema.Struct({
   content: Schema.String,
@@ -284,6 +285,13 @@ const TableInfoDto = Schema.Struct({
 
 const SchemaInfoDto = Schema.Struct({
   databaseName: Schema.String,
+
+  // The database server's product and release ("PostgreSQL 16"), probed
+  // alongside the introspection. Optional in both directions on purpose: the
+  // probe is best effort, so a response that never carried the field must
+  // still decode.
+  serverVersion: Schema.optional(Schema.String),
+
   tables: Schema.mutable(Schema.Array(TableInfoDto))
 })
 export type SchemaInfoDto = Schema.Schema.Type<typeof SchemaInfoDto>

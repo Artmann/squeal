@@ -11,7 +11,15 @@ import {
   transformToSchemaInfo
 } from './schema-provider'
 import type { MysqlConnectionInfo } from './schemas'
+import {
+  formatMysqlServerVersion,
+  requireServerVersion
+} from './server-version'
 import { createSslOptions } from './ssl-options'
+
+// Matches the handler's own probe timeout, so the socket is released at roughly
+// the moment the caller stops waiting for the answer.
+const serverVersionTimeoutMs = 3000
 
 export class MysqlAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: MysqlConnectionInfo
@@ -34,6 +42,43 @@ export class MysqlAdapter implements DatabaseAdapter {
       )
     } finally {
       await connection.end()
+    }
+  }
+
+  // Opens its own short-lived connection rather than borrowing the query one:
+  // the probe must never share fate with a user query.
+  async getServerVersion(): Promise<string> {
+    const connection = await mysql.createConnection(this.getConnectionConfig())
+
+    // `connectTimeout` only bounds the handshake, and mysql2 has no per-query
+    // timeout. Without destroying the socket, a server that answers the
+    // handshake and then stalls leaves this query pending forever — so the
+    // `finally` never runs and the connection is retained for the life of the
+    // process.
+    let timedOut = false
+
+    const timeout = setTimeout(() => {
+      timedOut = true
+      connection.destroy()
+    }, serverVersionTimeoutMs)
+
+    try {
+      const [rows] = await connection.query('SELECT VERSION() AS version')
+      const [row] = rows as { version?: string }[]
+      const rawVersion = row?.version ?? ''
+
+      return requireServerVersion(
+        formatMysqlServerVersion(rawVersion),
+        rawVersion
+      )
+    } finally {
+      clearTimeout(timeout)
+
+      // `destroy()` has already torn the socket down; calling `end()` on top of
+      // it throws.
+      if (!timedOut) {
+        await connection.end()
+      }
     }
   }
 

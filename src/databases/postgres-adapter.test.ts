@@ -156,6 +156,31 @@ describe('PostgresAdapter', () => {
     })
   })
 
+  describe('getServerVersion', () => {
+    it('asks the server and returns the major release', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ server_version: '16.2 (Debian 16.2-1.pgdg120+2)' }]
+      })
+
+      const adapter = new PostgresAdapter(connectionInfo)
+
+      expect(await adapter.getServerVersion()).toEqual('PostgreSQL 16')
+      expect(mockQuery).toHaveBeenCalledWith('SHOW server_version')
+      expect(mockEnd).toHaveBeenCalled()
+    })
+
+    it('closes the connection even when the probe fails', async () => {
+      mockQuery.mockRejectedValueOnce(new Error('Connection terminated'))
+
+      const adapter = new PostgresAdapter(connectionInfo)
+
+      await expect(adapter.getServerVersion()).rejects.toThrow(
+        'Connection terminated'
+      )
+      expect(mockEnd).toHaveBeenCalled()
+    })
+  })
+
   describe('runQuery', () => {
     it('executes query and returns formatted results', async () => {
       cursorState.fixtures.push({

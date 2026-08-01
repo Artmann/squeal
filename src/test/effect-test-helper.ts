@@ -59,6 +59,7 @@ export function makeTestAppDatabase(): Layer.Layer<AppDatabase> {
 export interface TestAdapterConfig {
   cancel?: () => Promise<void>
   getSchema?: () => Promise<SchemaInfo>
+  getServerVersion?: () => Promise<string>
   runQuery?: (query: string) => Promise<QueryResult>
   testConnection?: () => Promise<void>
 }
@@ -100,6 +101,11 @@ export function makeTestAdapterFactory(config: TestAdapterConfig = {}) {
           cancel: config.cancel ?? (() => Promise.resolve()),
           getSchema:
             config.getSchema ?? (() => Promise.resolve(defaultTestSchema)),
+          // Left off entirely unless a test asks for it, so the default
+          // adapter keeps covering the "cannot report a version" path.
+          ...(config.getServerVersion === undefined
+            ? {}
+            : { getServerVersion: config.getServerVersion }),
           runQuery:
             config.runQuery ?? (() => Promise.resolve(defaultTestQueryResult)),
           testConnection: config.testConnection ?? (() => Promise.resolve())
