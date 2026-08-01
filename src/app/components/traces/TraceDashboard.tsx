@@ -49,7 +49,7 @@ function LoadingState({ label }: { label: string }): ReactElement {
     <CenteredState>
       <Loader2Icon
         aria-label={label}
-        className="size-6 animate-spin text-subtext-0"
+        className="size-6 animate-spin text-text2"
         role="status"
       />
     </CenteredState>
@@ -65,7 +65,7 @@ function ErrorState({
 }): ReactElement {
   return (
     <CenteredState>
-      <p className="text-sm text-subtext-0">{message}</p>
+      <p className="text-sm text-text2">{message}</p>
 
       <Button
         onClick={onRetry}
@@ -146,7 +146,7 @@ function TraceFilters({
       </Button>
 
       <div className="relative">
-        <SearchIcon className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtext-0" />
+        <SearchIcon className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-text2" />
 
         <Input
           className="h-8 w-56 pl-8"
@@ -176,8 +176,8 @@ function TraceIdentity({
 
   if (!selectedTraceId) {
     return (
-      <span className="flex items-center gap-1.5 rounded-full bg-surface-0 px-2 py-0.5 text-[11px] text-subtext-0">
-        <span className="size-1.5 animate-pulse rounded-full bg-green" />
+      <span className="flex items-center gap-1.5 rounded-full bg-hover px-2 py-0.5 text-[11px] text-text2">
+        <span className="size-1.5 animate-pulse rounded-full bg-ok" />
         Live
       </span>
     )
@@ -185,7 +185,7 @@ function TraceIdentity({
 
   return (
     <button
-      className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs text-subtext-0 hover:bg-surface-0 hover:text-text"
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs text-text2 hover:bg-hover hover:text-text"
       onClick={handleCopyTraceId}
       title="Copy trace ID"
       type="button"
@@ -216,7 +216,7 @@ function TraceDashboardHeader({
   selectedTraceId: string | undefined
 }): ReactElement {
   return (
-    <header className="flex items-center gap-3 border-b border-surface-0 px-6 py-4">
+    <header className="flex items-center gap-3 border-b border-border px-6 py-4">
       {selectedTraceId ? (
         <Button
           onClick={onBack}
@@ -227,12 +227,12 @@ function TraceDashboardHeader({
         </Button>
       ) : null}
 
-      <h1 className="font-display text-lg font-semibold">
+      <h1 className="text-lg font-semibold">
         {selectedTrace ? selectedTrace.name : 'Traces'}
       </h1>
 
       {selectedTrace ? (
-        <span className="font-mono text-xs text-subtext-0">
+        <span className="font-mono text-xs text-text2">
           {formatDuration(selectedTrace.durationMs)}
         </span>
       ) : null}
@@ -317,7 +317,7 @@ function TraceListPanel({
   if (traces.data.length === 0) {
     return (
       <CenteredState>
-        <p className="text-center text-sm text-subtext-0">
+        <p className="text-center text-sm text-text2">
           {hasActiveFilters
             ? 'No traces match your filters.'
             : 'No traces yet. Use the app — run a query, for example — and its trace will show up here.'}
@@ -379,7 +379,7 @@ export function TraceDashboard(): ReactElement {
   )
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-7 z-100 flex flex-col bg-base">
+    <div className="fixed inset-x-0 bottom-0 top-7 z-100 flex flex-col bg-panel">
       <TraceDashboardHeader
         errorOnly={errorOnly}
         onBack={handleBack}
