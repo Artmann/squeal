@@ -9,7 +9,7 @@ import tabsReducer, { TabsState } from './tabs-slice'
 import { readStoredTabs, writeStoredTabs } from './tabs-storage'
 import uiReducer, { UiState } from './ui-slice'
 
-export interface RootState {
+interface RootState {
   databaseExplorer: DatabaseExplorerState
   editor: EditorState
   tabs: TabsState

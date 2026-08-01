@@ -80,6 +80,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@codemirror/commands": "6.8.1",
     "@effect/language-service": "^0.87.1",
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",

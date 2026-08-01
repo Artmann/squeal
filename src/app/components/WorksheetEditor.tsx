@@ -10,7 +10,7 @@ import {
 } from '@codemirror/view'
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { Sparkles } from 'lucide-react'
-import { ReactElement, useCallback, useMemo, useRef } from 'react'
+import { ReactElement, useCallback, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 
 import type { DatabaseType } from '@/glue/api/schemas'
@@ -69,8 +69,14 @@ export function WorksheetEditor({
   const lastCursorPositionRef = useRef<CursorPosition | null>(null)
   const onRunQueryRef = useRef(onRunQuery)
 
-  databaseTypeRef.current = databaseType
-  onRunQueryRef.current = onRunQuery
+  // The keymap is built once, so it reads the current props through refs
+  // rather than being rebuilt on every change. Syncing them in an effect
+  // rather than during render keeps the render pure; the keymap only fires on
+  // user input, which is always after the effect has run.
+  useEffect(() => {
+    databaseTypeRef.current = databaseType
+    onRunQueryRef.current = onRunQuery
+  })
 
   const handleClickOutsideTheEditor = useCallback(() => {
     if (editorRef.current) {

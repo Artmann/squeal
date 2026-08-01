@@ -14,7 +14,9 @@ export type FormatOutcome =
 // and so does a bare state+dispatch pair, which keeps the tests off the DOM —
 // jsdom cannot measure a real view.
 export interface FormatTarget {
-  dispatch: (spec: TransactionSpec) => void
+  // Rest-typed to match `EditorView.dispatch`'s overloads; formatting only ever
+  // passes a single spec.
+  dispatch: (...specs: TransactionSpec[]) => void
   state: EditorState
 }
 

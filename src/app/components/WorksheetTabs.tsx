@@ -22,7 +22,13 @@ export function WorksheetTabs(): ReactElement {
   const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
   const openWorksheetIds = useAppSelector(selectOpenWorksheetIds)
 
-  const tabRefs = useRef(new Map<string, HTMLDivElement>())
+  // Lazily initialised: `useRef(new Map())` would allocate a throwaway Map on
+  // every render just to discard it.
+  const tabRefs = useRef<Map<string, HTMLDivElement> | null>(null)
+
+  tabRefs.current ??= new Map<string, HTMLDivElement>()
+
+  const tabElements = tabRefs.current
 
   const openTabs = openWorksheetIds.flatMap((id) => {
     const worksheet = worksheets.data.find((entry) => entry.id === id)
@@ -76,7 +82,7 @@ export function WorksheetTabs(): ReactElement {
       return
     }
 
-    tabRefs.current
+    tabElements
       .get(activeWorksheetId)
       ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [activeWorksheetId])
@@ -101,14 +107,14 @@ export function WorksheetTabs(): ReactElement {
               key={worksheet.id}
               ref={(element) => {
                 if (element) {
-                  tabRefs.current.set(worksheet.id, element)
+                  tabElements.set(worksheet.id, element)
 
                   return
                 }
 
                 // Dropping the entry keeps the map bounded by the open tabs
                 // rather than every worksheet ever opened this session.
-                tabRefs.current.delete(worksheet.id)
+                tabElements.delete(worksheet.id)
               }}
               role="presentation"
             >

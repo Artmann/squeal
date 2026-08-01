@@ -404,7 +404,7 @@ function useConnectionTest({
     if (connectTestResult?.success === true) {
       return (
         <CheckCircle2Icon
-          className="text-ok motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
+          className="text-ok motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:[animation-duration:300ms]"
           data-testid="connection-success-icon"
         />
       )
@@ -413,7 +413,7 @@ function useConnectionTest({
     if (connectTestResult?.success === false) {
       return (
         <XCircleIcon
-          className="text-err motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
+          className="text-err motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:[animation-duration:300ms]"
           data-testid="connection-error-icon"
         />
       )

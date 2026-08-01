@@ -61,9 +61,11 @@ export function ResultsPane({
   useEffect(() => {
     // Keeps the map bounded by the open tabs instead of every worksheet
     // visited this session.
+    const open = new Set(openWorksheetIds)
+
     setTabByWorksheet((current) => {
       const next = Object.fromEntries(
-        Object.entries(current).filter(([id]) => openWorksheetIds.includes(id))
+        Object.entries(current).filter(([id]) => open.has(id))
       )
 
       return Object.keys(next).length === Object.keys(current).length

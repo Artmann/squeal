@@ -5,7 +5,7 @@ export interface TabsState {
   openWorksheetIds: string[]
 }
 
-export interface TabsReconciliation {
+interface TabsReconciliation {
   /** Every worksheet id that still exists. */
   availableIds: string[]
   /** Opened when nothing survives reconciliation. */
@@ -23,7 +23,7 @@ function lastTab(openWorksheetIds: string[]): string | undefined {
   return openWorksheetIds[openWorksheetIds.length - 1]
 }
 
-export const tabsSlice = createSlice({
+const tabsSlice = createSlice({
   name: 'tabs',
   initialState: initialTabsState,
   reducers: {
@@ -63,8 +63,12 @@ export const tabsSlice = createSlice({
     tabsReconciled: (state, action: PayloadAction<TabsReconciliation>) => {
       const { availableIds, fallbackId } = action.payload
 
+      // A Set rather than repeated `includes`: this runs on every worksheets
+      // update, and the id list grows with the user's worksheets.
+      const available = new Set(availableIds)
+
       const surviving = state.openWorksheetIds.filter((id) =>
-        availableIds.includes(id)
+        available.has(id)
       )
 
       const openWorksheetIds =
@@ -95,9 +99,9 @@ export const tabsSlice = createSlice({
     },
 
     tabsReordered: (state, action: PayloadAction<string[]>) => {
-      const reordered = action.payload.filter((id) =>
-        state.openWorksheetIds.includes(id)
-      )
+      const open = new Set(state.openWorksheetIds)
+
+      const reordered = action.payload.filter((id) => open.has(id))
 
       // Ignore a reorder that does not describe exactly the open tabs rather
       // than silently dropping or duplicating one.

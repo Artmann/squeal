@@ -42,12 +42,11 @@ function createTestQueryClient(): QueryClient {
   })
 }
 
-export function renderWithProviders(
-  ui: ReactElement,
-  options: RenderOptions = {}
-) {
-  const queryClient = createTestQueryClient()
-
+/** Seeds the query cache so collections hydrate from it instead of fetching. */
+function seedQueryCache(
+  queryClient: QueryClient,
+  options: RenderOptions
+): void {
   if (options.databases) {
     queryClient.setQueryData(queryKeys.databases, options.databases)
   }
@@ -63,16 +62,40 @@ export function renderWithProviders(
   for (const [databaseId, schema] of Object.entries(options.schemas ?? {})) {
     queryClient.setQueryData(queryKeys.schema(databaseId), schema)
   }
+}
 
-  // Created after seeding so the collections hydrate from the query cache
-  // instead of fetching.
-  const collections = createCollections(queryClient)
-
+function createTabsState(options: RenderOptions): TabsState {
   const openWorksheetIds =
     options.tabs?.openWorksheetIds ??
     (options.openWorksheetId ? [options.openWorksheetId] : [])
 
-  const store = configureStore({
+  return {
+    activeWorksheetId:
+      options.tabs?.activeWorksheetId ??
+      options.openWorksheetId ??
+      openWorksheetIds[openWorksheetIds.length - 1],
+    openWorksheetIds
+  }
+}
+
+function createDatabaseExplorerState(
+  options: RenderOptions
+): DatabaseExplorerState {
+  return {
+    expandedDatabases: options.databaseExplorer?.expandedDatabases ?? {},
+    expandedTables: options.databaseExplorer?.expandedTables ?? {}
+  }
+}
+
+function createEditorState(options: RenderOptions): EditorState {
+  return {
+    databaseSearchQuery: options.editor?.databaseSearchQuery ?? '',
+    worksheetSearchQuery: options.editor?.worksheetSearchQuery ?? ''
+  }
+}
+
+function createTestStore(options: RenderOptions) {
+  return configureStore({
     reducer: {
       databaseExplorer: databaseExplorerReducer,
       editor: editorReducer,
@@ -80,24 +103,26 @@ export function renderWithProviders(
       ui: uiReducer
     },
     preloadedState: {
-      databaseExplorer: {
-        expandedDatabases: options.databaseExplorer?.expandedDatabases ?? {},
-        expandedTables: options.databaseExplorer?.expandedTables ?? {}
-      },
-      editor: {
-        databaseSearchQuery: options.editor?.databaseSearchQuery ?? '',
-        worksheetSearchQuery: options.editor?.worksheetSearchQuery ?? ''
-      },
-      tabs: {
-        activeWorksheetId:
-          options.tabs?.activeWorksheetId ??
-          options.openWorksheetId ??
-          openWorksheetIds[openWorksheetIds.length - 1],
-        openWorksheetIds
-      },
+      databaseExplorer: createDatabaseExplorerState(options),
+      editor: createEditorState(options),
+      tabs: createTabsState(options),
       ui: options.ui ?? {}
     }
   })
+}
+
+export function renderWithProviders(
+  ui: ReactElement,
+  options: RenderOptions = {}
+) {
+  const queryClient = createTestQueryClient()
+
+  seedQueryCache(queryClient, options)
+
+  // Created after seeding so the collections hydrate from the query cache
+  // instead of fetching.
+  const collections = createCollections(queryClient)
+  const store = createTestStore(options)
 
   const result = render(
     <QueryClientProvider client={queryClient}>

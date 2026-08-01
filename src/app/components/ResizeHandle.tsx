@@ -5,8 +5,8 @@ import { cn } from '../lib/utils'
 const resizeStep = 10
 const largeResizeStep = 40
 
-export type ResizeGrowth = 'end' | 'start'
-export type ResizeOrientation = 'col' | 'row'
+type ResizeGrowth = 'end' | 'start'
+type ResizeOrientation = 'col' | 'row'
 
 interface ResizeHandleProps {
   ariaLabel: string
