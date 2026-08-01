@@ -21,10 +21,10 @@ interface TraceWaterfallProps {
 
 function barColor(row: WaterfallRow): string {
   if (row.span.status === 'error') {
-    return 'bg-red'
+    return 'bg-err'
   }
 
-  return row.span.serviceName === 'renderer' ? 'bg-blue' : 'bg-green'
+  return row.span.serviceName === 'renderer' ? 'bg-accent' : 'bg-ok'
 }
 
 function Gridlines(): ReactElement {
@@ -32,7 +32,7 @@ function Gridlines(): ReactElement {
     <>
       {gridlinePercents.map((percent) => (
         <div
-          className="absolute inset-y-0 border-l border-surface-0/60"
+          className="absolute inset-y-0 border-l border-border/60"
           key={percent}
           style={{ left: `${percent}%` }}
         />
@@ -70,7 +70,7 @@ export function TraceWaterfall({
 
   return (
     <div className="flex flex-col text-xs">
-      <div className="mb-1 flex items-center gap-2 border-b border-surface-0 px-1 pb-1 text-[10px] text-subtext-0">
+      <div className="mb-1 flex items-center gap-2 border-b border-border px-1 pb-1 text-[10px] text-text2">
         <div className="w-64 shrink-0" />
 
         <div className="relative h-4 flex-1">
@@ -89,8 +89,8 @@ export function TraceWaterfall({
       {rows.map((row) => (
         <div
           className={cn(
-            'flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-surface-0/50',
-            row.span.id === selectedSpanId && 'bg-surface-0'
+            'flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-hover/50',
+            row.span.id === selectedSpanId && 'bg-hover'
           )}
           key={row.span.id}
           onClick={() =>
@@ -106,7 +106,7 @@ export function TraceWaterfall({
             {row.hasChildren ? (
               <button
                 aria-label={`${collapsed.has(row.span.id) ? 'Expand' : 'Collapse'} ${row.span.name}`}
-                className="shrink-0 rounded-sm text-subtext-0 hover:text-text"
+                className="shrink-0 rounded-sm text-text2 hover:text-text"
                 onClick={(event) => {
                   event.stopPropagation()
                   toggleCollapsed(row.span.id)
@@ -143,7 +143,7 @@ export function TraceWaterfall({
             />
           </div>
 
-          <span className="w-16 shrink-0 text-right font-mono text-subtext-0">
+          <span className="w-16 shrink-0 text-right font-mono text-text2">
             {formatDuration(row.span.durationMs)}
           </span>
         </div>

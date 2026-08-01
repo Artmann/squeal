@@ -115,7 +115,7 @@ function UnreadableConnectionNotice({
   }
 
   return (
-    <p className="rounded-md border border-yellow/40 bg-yellow/10 px-3 py-2 text-xs text-yellow">
+    <p className="rounded-md border border-err-border bg-err-bg px-3 py-2 text-xs text-err">
       Squeal could not read this connection&apos;s stored details. Enter them
       again and save to repair it.
     </p>
@@ -230,7 +230,7 @@ export function DatabaseForm({
             <SslSection form={form} />
           ) : (
             <button
-              className="flex items-center gap-1 self-start text-xs text-subtext-0 hover:text-text"
+              className="flex items-center gap-1 self-start text-xs text-text2 hover:text-text"
               type="button"
               onClick={() => setShowAdvanced(true)}
             >
@@ -404,7 +404,7 @@ function useConnectionTest({
     if (connectTestResult?.success === true) {
       return (
         <CheckCircle2Icon
-          className="text-green motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
+          className="text-ok motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
           data-testid="connection-success-icon"
         />
       )
@@ -413,7 +413,7 @@ function useConnectionTest({
     if (connectTestResult?.success === false) {
       return (
         <XCircleIcon
-          className="text-red motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
+          className="text-err motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:duration-300"
           data-testid="connection-error-icon"
         />
       )
@@ -486,7 +486,7 @@ function ConnectionStringSection({
   if (!showConnectionString) {
     return (
       <button
-        className="self-start text-xs text-blue underline-offset-4 hover:underline"
+        className="self-start text-xs text-accent underline-offset-4 hover:underline"
         type="button"
         onClick={() => setShowConnectionString(true)}
       >
@@ -497,7 +497,7 @@ function ConnectionStringSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs text-subtext-0">
+      <p className="text-xs text-text2">
         Paste a connection string to fill in the fields below.
       </p>
 
@@ -716,7 +716,7 @@ function AuthenticationSection({
       <Separator />
 
       {!encryptionAvailable && (
-        <p className="rounded-md border border-yellow/40 bg-yellow/10 px-3 py-2 text-xs text-yellow">
+        <p className="rounded-md border border-err-border bg-err-bg px-3 py-2 text-xs text-err">
           Your OS keychain is unavailable — this password will be stored
           unencrypted on this computer.
         </p>

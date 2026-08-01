@@ -31,8 +31,8 @@ export function EditorScreen({
 
   if (mode === 'edit' && !database) {
     return (
-      <div className="fixed inset-0 z-100 bg-crust/70 flex justify-center items-center">
-        <div className="rounded-lg border border-surface-0 bg-base px-6 py-5 text-subtext-0 shadow-lg">
+      <div className="fixed inset-0 z-100 bg-bg/70 flex justify-center items-center">
+        <div className="rounded-md border border-border bg-panel px-6 py-5 text-text2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
           Database not found.
         </div>
       </div>
@@ -53,8 +53,8 @@ export function EditorScreen({
     : undefined
 
   return (
-    <div className="fixed inset-0 z-100 bg-crust/70 flex justify-center items-center overflow-y-auto py-10">
-      <div className="w-full max-w-md flex flex-col gap-6 rounded-lg border border-surface-0 bg-base p-6 shadow-lg">
+    <div className="fixed inset-0 z-100 bg-bg/70 flex justify-center items-center overflow-y-auto py-10">
+      <div className="w-full max-w-md flex flex-col gap-6 rounded-md border border-border bg-panel p-6 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">{title}</h1>
 

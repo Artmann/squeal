@@ -22,7 +22,7 @@ interface TraceListProps {
 export function TraceList({ onSelect, traces }: TraceListProps): ReactElement {
   return (
     <Table>
-      <TableHeader className="sticky top-0 z-10 bg-base">
+      <TableHeader className="sticky top-0 z-10 bg-panel">
         <TableRow>
           <TableHead className="w-12 pl-6" />
           <TableHead>Name</TableHead>
@@ -44,13 +44,13 @@ export function TraceList({ onSelect, traces }: TraceListProps): ReactElement {
               {trace.hasError ? (
                 <CircleAlertIcon
                   aria-label="error"
-                  className="size-3.5 text-red"
+                  className="size-3.5 text-err"
                   role="status"
                 />
               ) : (
                 <span
                   aria-label="ok"
-                  className="inline-block size-2 rounded-full bg-green"
+                  className="inline-block size-2 rounded-full bg-ok"
                   role="status"
                 />
               )}
@@ -61,7 +61,7 @@ export function TraceList({ onSelect, traces }: TraceListProps): ReactElement {
 
                 {trace.errorMessage ? (
                   <span
-                    className="max-w-md truncate font-sans text-[11px] text-red"
+                    className="max-w-md truncate font-sans text-[11px] text-err"
                     title={trace.errorMessage}
                   >
                     {trace.errorMessage}
@@ -70,17 +70,17 @@ export function TraceList({ onSelect, traces }: TraceListProps): ReactElement {
               </div>
             </TableCell>
             <TableCell>
-              <span className="rounded-full bg-surface-0 px-2 py-0.5 text-[11px] text-subtext-0">
+              <span className="rounded-full bg-hover px-2 py-0.5 text-[11px] text-text2">
                 {trace.serviceName}
               </span>
             </TableCell>
-            <TableCell className="text-right text-subtext-0">
+            <TableCell className="text-right text-text2">
               {trace.spanCount}
             </TableCell>
             <TableCell className="text-right font-mono text-xs">
               {formatDuration(trace.durationMs)}
             </TableCell>
-            <TableCell className="pr-6 text-right text-subtext-0">
+            <TableCell className="pr-6 text-right text-text2">
               <TimeAgo timestamp={trace.startedAt} />
             </TableCell>
           </TableRow>

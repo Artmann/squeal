@@ -13,7 +13,7 @@ export function DropIndicatorLine({
   return (
     <div
       className={cn(
-        'absolute inset-x-0 h-0.5 rounded-full bg-mauve pointer-events-none z-10',
+        'absolute inset-x-0 h-0.5 rounded-full bg-accent pointer-events-none z-10',
         position === 'above' ? '-top-[3px]' : '-bottom-[3px]'
       )}
     />
