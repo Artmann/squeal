@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import {
   ArrowLeftIcon,
   CopyIcon,
@@ -6,7 +6,13 @@ import {
   SearchIcon,
   XIcon
 } from 'lucide-react'
-import { ReactElement, ReactNode, useCallback, useState } from 'react'
+import {
+  ComponentProps,
+  ReactElement,
+  ReactNode,
+  useCallback,
+  useState
+} from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 
@@ -23,6 +29,12 @@ import { TraceList } from './TraceList'
 import { TraceWaterfall } from './TraceWaterfall'
 
 const dashboardRefetchIntervalMs = 2000
+
+// Derived from the child components rather than imported, so this file does not
+// need to know where the DTOs live.
+type Spans = ComponentProps<typeof TraceWaterfall>['spans']
+type Traces = ComponentProps<typeof TraceList>['traces']
+type Trace = Traces[number]
 
 function CenteredState({ children }: { children: ReactNode }): ReactElement {
   return (
@@ -44,11 +56,33 @@ function LoadingState({ label }: { label: string }): ReactElement {
   )
 }
 
-export function TraceDashboard(): ReactElement {
+function ErrorState({
+  message,
+  onRetry
+}: {
+  message: string
+  onRetry: () => void
+}): ReactElement {
+  return (
+    <CenteredState>
+      <p className="text-sm text-subtext-0">{message}</p>
+
+      <Button
+        onClick={onRetry}
+        size="sm"
+        variant="outline"
+      >
+        Retry
+      </Button>
+    </CenteredState>
+  )
+}
+
+// Owns which trace and span are open, plus the escape behaviour that steps back
+// one level at a time instead of dropping the user out of the dashboard.
+function useTraceSelection() {
   const dispatch = useAppDispatch()
 
-  const [errorOnly, setErrorOnly] = useState(false)
-  const [search, setSearch] = useState('')
   const [selectedSpanId, setSelectedSpanId] = useState<string | undefined>()
   const [selectedTraceId, setSelectedTraceId] = useState<string | undefined>()
 
@@ -61,8 +95,6 @@ export function TraceDashboard(): ReactElement {
     setSelectedTraceId(undefined)
   }, [])
 
-  // Escape steps back one level at a time instead of dropping the user all
-  // the way out of the dashboard.
   const handleEscape = useCallback(() => {
     if (selectedSpanId) {
       setSelectedSpanId(undefined)
@@ -80,6 +112,240 @@ export function TraceDashboard(): ReactElement {
   }, [handleBack, handleClose, selectedSpanId, selectedTraceId])
 
   useHotkeys('escape', handleEscape, { enableOnFormTags: true })
+
+  return {
+    handleBack,
+    handleClose,
+    selectedSpanId,
+    selectedTraceId,
+    setSelectedSpanId,
+    setSelectedTraceId
+  }
+}
+
+function TraceFilters({
+  errorOnly,
+  onErrorOnlyChange,
+  onSearchChange,
+  search
+}: {
+  errorOnly: boolean
+  onErrorOnlyChange: (value: boolean) => void
+  onSearchChange: (value: string) => void
+  search: string
+}): ReactElement {
+  return (
+    <>
+      <Button
+        aria-pressed={errorOnly}
+        onClick={() => onErrorOnlyChange(!errorOnly)}
+        size="sm"
+        variant={errorOnly ? 'secondary' : 'outline'}
+      >
+        Errors only
+      </Button>
+
+      <div className="relative">
+        <SearchIcon className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtext-0" />
+
+        <Input
+          className="h-8 w-56 pl-8"
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search traces…"
+          value={search}
+        />
+      </div>
+    </>
+  )
+}
+
+function TraceIdentity({
+  selectedTraceId
+}: {
+  selectedTraceId: string | undefined
+}): ReactElement {
+  const handleCopyTraceId = useCallback(() => {
+    if (!selectedTraceId) {
+      return
+    }
+
+    void navigator.clipboard.writeText(selectedTraceId).then(() => {
+      toast('Trace ID copied')
+    })
+  }, [selectedTraceId])
+
+  if (!selectedTraceId) {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-surface-0 px-2 py-0.5 text-[11px] text-subtext-0">
+        <span className="size-1.5 animate-pulse rounded-full bg-green" />
+        Live
+      </span>
+    )
+  }
+
+  return (
+    <button
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs text-subtext-0 hover:bg-surface-0 hover:text-text"
+      onClick={handleCopyTraceId}
+      title="Copy trace ID"
+      type="button"
+    >
+      {selectedTraceId.slice(0, 16)}…
+      <CopyIcon className="size-3" />
+    </button>
+  )
+}
+
+function TraceDashboardHeader({
+  errorOnly,
+  onBack,
+  onClose,
+  onErrorOnlyChange,
+  onSearchChange,
+  search,
+  selectedTrace,
+  selectedTraceId
+}: {
+  errorOnly: boolean
+  onBack: () => void
+  onClose: () => void
+  onErrorOnlyChange: (value: boolean) => void
+  onSearchChange: (value: string) => void
+  search: string
+  selectedTrace: Trace | undefined
+  selectedTraceId: string | undefined
+}): ReactElement {
+  return (
+    <header className="flex items-center gap-3 border-b border-surface-0 px-6 py-4">
+      {selectedTraceId ? (
+        <Button
+          onClick={onBack}
+          size="icon-sm"
+          variant="ghost"
+        >
+          <ArrowLeftIcon className="size-4" />
+        </Button>
+      ) : null}
+
+      <h1 className="font-display text-lg font-semibold">
+        {selectedTrace ? selectedTrace.name : 'Traces'}
+      </h1>
+
+      {selectedTrace ? (
+        <span className="font-mono text-xs text-subtext-0">
+          {formatDuration(selectedTrace.durationMs)}
+        </span>
+      ) : null}
+
+      <TraceIdentity selectedTraceId={selectedTraceId} />
+
+      <div className="ml-auto flex items-center gap-2">
+        {selectedTraceId ? null : (
+          <TraceFilters
+            errorOnly={errorOnly}
+            onErrorOnlyChange={onErrorOnlyChange}
+            onSearchChange={onSearchChange}
+            search={search}
+          />
+        )}
+
+        <Button
+          onClick={onClose}
+          size="icon-sm"
+          variant="ghost"
+        >
+          <XIcon className="size-4" />
+        </Button>
+      </div>
+    </header>
+  )
+}
+
+function TraceSpansPanel({
+  onSelectSpan,
+  selectedSpanId,
+  traceSpans
+}: {
+  onSelectSpan: (spanId: string) => void
+  selectedSpanId: string | undefined
+  traceSpans: UseQueryResult<Spans>
+}): ReactElement {
+  if (traceSpans.isPending) {
+    return <LoadingState label="Loading trace" />
+  }
+
+  if (traceSpans.isError) {
+    return (
+      <ErrorState
+        message="Could not load this trace."
+        onRetry={() => void traceSpans.refetch()}
+      />
+    )
+  }
+
+  return (
+    <TraceWaterfall
+      onSelectSpan={onSelectSpan}
+      spans={traceSpans.data}
+      {...(selectedSpanId ? { selectedSpanId } : {})}
+    />
+  )
+}
+
+function TraceListPanel({
+  hasActiveFilters,
+  onSelect,
+  traces
+}: {
+  hasActiveFilters: boolean
+  onSelect: (traceId: string) => void
+  traces: UseQueryResult<Traces>
+}): ReactElement {
+  if (traces.isPending) {
+    return <LoadingState label="Loading traces" />
+  }
+
+  if (traces.isError) {
+    return (
+      <ErrorState
+        message="Could not load traces."
+        onRetry={() => void traces.refetch()}
+      />
+    )
+  }
+
+  if (traces.data.length === 0) {
+    return (
+      <CenteredState>
+        <p className="text-center text-sm text-subtext-0">
+          {hasActiveFilters
+            ? 'No traces match your filters.'
+            : 'No traces yet. Use the app — run a query, for example — and its trace will show up here.'}
+        </p>
+      </CenteredState>
+    )
+  }
+
+  return (
+    <TraceList
+      onSelect={onSelect}
+      traces={traces.data}
+    />
+  )
+}
+
+export function TraceDashboard(): ReactElement {
+  const [errorOnly, setErrorOnly] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const {
+    handleBack,
+    handleClose,
+    selectedSpanId,
+    selectedTraceId,
+    setSelectedSpanId,
+    setSelectedTraceId
+  } = useTraceSelection()
 
   const traces = useQuery({
     queryFn: () =>
@@ -105,17 +371,6 @@ export function TraceDashboard(): ReactElement {
     refetchInterval: dashboardRefetchIntervalMs
   })
 
-  const handleCopyTraceId = useCallback(() => {
-    if (!selectedTraceId) {
-      return
-    }
-
-    void navigator.clipboard.writeText(selectedTraceId).then(() => {
-      toast('Trace ID copied')
-    })
-  }, [selectedTraceId])
-
-  const hasActiveFilters = errorOnly || search !== ''
   const selectedSpan = traceSpans.data?.find(
     (span) => span.id === selectedSpanId
   )
@@ -125,140 +380,37 @@ export function TraceDashboard(): ReactElement {
 
   return (
     <div className="fixed inset-x-0 bottom-0 top-7 z-100 flex flex-col bg-base">
-      <header className="flex items-center gap-3 border-b border-surface-0 px-6 py-4">
-        {selectedTraceId ? (
-          <Button
-            onClick={handleBack}
-            size="icon-sm"
-            variant="ghost"
-          >
-            <ArrowLeftIcon className="size-4" />
-          </Button>
-        ) : null}
-
-        <h1 className="font-display text-lg font-semibold">
-          {selectedTrace ? selectedTrace.name : 'Traces'}
-        </h1>
-
-        {selectedTrace ? (
-          <span className="font-mono text-xs text-subtext-0">
-            {formatDuration(selectedTrace.durationMs)}
-          </span>
-        ) : null}
-
-        {selectedTraceId ? (
-          <button
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs text-subtext-0 hover:bg-surface-0 hover:text-text"
-            onClick={handleCopyTraceId}
-            title="Copy trace ID"
-            type="button"
-          >
-            {selectedTraceId.slice(0, 16)}…
-            <CopyIcon className="size-3" />
-          </button>
-        ) : (
-          <span className="flex items-center gap-1.5 rounded-full bg-surface-0 px-2 py-0.5 text-[11px] text-subtext-0">
-            <span className="size-1.5 animate-pulse rounded-full bg-green" />
-            Live
-          </span>
-        )}
-
-        <div className="ml-auto flex items-center gap-2">
-          {selectedTraceId ? null : (
-            <>
-              <Button
-                aria-pressed={errorOnly}
-                onClick={() => setErrorOnly((value) => !value)}
-                size="sm"
-                variant={errorOnly ? 'secondary' : 'outline'}
-              >
-                Errors only
-              </Button>
-
-              <div className="relative">
-                <SearchIcon className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtext-0" />
-
-                <Input
-                  className="h-8 w-56 pl-8"
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search traces…"
-                  value={search}
-                />
-              </div>
-            </>
-          )}
-
-          <Button
-            onClick={handleClose}
-            size="icon-sm"
-            variant="ghost"
-          >
-            <XIcon className="size-4" />
-          </Button>
-        </div>
-      </header>
+      <TraceDashboardHeader
+        errorOnly={errorOnly}
+        onBack={handleBack}
+        onClose={handleClose}
+        onErrorOnlyChange={setErrorOnly}
+        onSearchChange={setSearch}
+        search={search}
+        selectedTrace={selectedTrace}
+        selectedTraceId={selectedTraceId}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {selectedTraceId ? (
           <>
             <div className="flex-1 overflow-auto p-6">
-              {traceSpans.isPending ? (
-                <LoadingState label="Loading trace" />
-              ) : traceSpans.isError ? (
-                <CenteredState>
-                  <p className="text-sm text-subtext-0">
-                    Could not load this trace.
-                  </p>
-
-                  <Button
-                    onClick={() => void traceSpans.refetch()}
-                    size="sm"
-                    variant="outline"
-                  >
-                    Retry
-                  </Button>
-                </CenteredState>
-              ) : (
-                <TraceWaterfall
-                  onSelectSpan={setSelectedSpanId}
-                  spans={traceSpans.data}
-                  {...(selectedSpanId ? { selectedSpanId } : {})}
-                />
-              )}
+              <TraceSpansPanel
+                onSelectSpan={setSelectedSpanId}
+                selectedSpanId={selectedSpanId}
+                traceSpans={traceSpans}
+              />
             </div>
 
             {selectedSpan ? <SpanDetailPanel span={selectedSpan} /> : null}
           </>
         ) : (
           <div className="flex-1 overflow-auto">
-            {traces.isPending ? (
-              <LoadingState label="Loading traces" />
-            ) : traces.isError ? (
-              <CenteredState>
-                <p className="text-sm text-subtext-0">Could not load traces.</p>
-
-                <Button
-                  onClick={() => void traces.refetch()}
-                  size="sm"
-                  variant="outline"
-                >
-                  Retry
-                </Button>
-              </CenteredState>
-            ) : traces.data.length === 0 ? (
-              <CenteredState>
-                <p className="text-center text-sm text-subtext-0">
-                  {hasActiveFilters
-                    ? 'No traces match your filters.'
-                    : 'No traces yet. Use the app — run a query, for example — and its trace will show up here.'}
-                </p>
-              </CenteredState>
-            ) : (
-              <TraceList
-                onSelect={setSelectedTraceId}
-                traces={traces.data}
-              />
-            )}
+            <TraceListPanel
+              hasActiveFilters={errorOnly || search !== ''}
+              onSelect={setSelectedTraceId}
+              traces={traces}
+            />
           </div>
         )}
       </div>

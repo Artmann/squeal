@@ -7,10 +7,20 @@
     "vite.renderer.config.mjs"
   ],
   "ignoreDependencies": ["png-to-ico", "tailwindcss"],
+  "ignoreExports": [
+    {
+      "file": "src/app/tracing/exporter.ts",
+      "exports": ["flushSpans", "stopExporter"]
+    }
+  ],
   "usedClassMembers": [
     {
       "implements": "DatabaseAdapter",
       "members": ["cancel", "getSchema"]
-    }
+    },
+    "addEvent",
+    "context",
+    "setAttribute",
+    "setStatus"
   ]
 }
