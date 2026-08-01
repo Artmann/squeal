@@ -98,6 +98,34 @@ describe('SqliteAdapter', () => {
     })
   })
 
+  describe('getServerVersion', () => {
+    it('reports the SQLite library version', async () => {
+      mockExecute.mockResolvedValueOnce({
+        columns: ['version'],
+        rows: [{ version: '3.45.1' }]
+      })
+
+      const adapter = new SqliteAdapter(connectionInfo)
+
+      expect(await adapter.getServerVersion()).toEqual('SQLite 3.45')
+      expect(mockExecute).toHaveBeenCalledWith(
+        'select sqlite_version() as version'
+      )
+      expect(mockClose).toHaveBeenCalled()
+    })
+
+    it('closes the connection even when the probe fails', async () => {
+      mockExecute.mockRejectedValueOnce(new Error('Database not found'))
+
+      const adapter = new SqliteAdapter(connectionInfo)
+
+      await expect(adapter.getServerVersion()).rejects.toThrow(
+        'Database not found'
+      )
+      expect(mockClose).toHaveBeenCalled()
+    })
+  })
+
   describe('runQuery', () => {
     it('executes query and returns formatted results', async () => {
       const fixture = createSelectStatement(

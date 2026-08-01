@@ -130,6 +130,62 @@ describe('database routes', () => {
     })
   })
 
+  it('includes the server version the adapter reports', async () => {
+    const response = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        return yield* client.databases.schema({
+          path: { id: created.database.id }
+        })
+      }),
+      {
+        adapter: {
+          getServerVersion: () => Promise.resolve('PostgreSQL 16')
+        }
+      }
+    )
+
+    expect(response).toEqual({
+      schema: {
+        databaseName: 'test',
+        serverVersion: 'PostgreSQL 16',
+        tables: []
+      }
+    })
+  })
+
+  it('still returns the schema when the version probe fails', async () => {
+    const response = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        return yield* client.databases.schema({
+          path: { id: created.database.id }
+        })
+      }),
+      {
+        adapter: {
+          getServerVersion: () =>
+            Promise.reject(new Error('permission denied for function version'))
+        }
+      }
+    )
+
+    expect(response).toEqual({
+      schema: { databaseName: 'test', tables: [] }
+    })
+    expect('serverVersion' in response.schema).toEqual(false)
+  })
+
   it('answers 404 for a schema request on an unknown database', async () => {
     const error = await run(
       Effect.gen(function* () {

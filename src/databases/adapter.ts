@@ -62,4 +62,10 @@ export interface DatabaseAdapter {
   // adapter instance. Adapters that cannot abort a query in flight may leave
   // this undefined.
   cancel?(): Promise<void>
+
+  // The server's product and release, already formatted for display, for
+  // example "PostgreSQL 16". Decoration only: adapters that cannot ask leave
+  // this undefined, and callers must treat a rejection as "version unknown"
+  // rather than as a failure worth showing the user.
+  getServerVersion?(): Promise<string>
 }

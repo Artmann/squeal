@@ -10,6 +10,10 @@ import type {
   SchemaInfo
 } from './adapter'
 import type { SqliteConnectionInfo } from './schemas'
+import {
+  formatSqliteServerVersion,
+  requireServerVersion
+} from './server-version'
 
 export class SqliteAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: SqliteConnectionInfo
@@ -50,6 +54,24 @@ export class SqliteAdapter implements DatabaseAdapter {
         databaseName: this.getDatabaseName(),
         tables
       }
+    } finally {
+      client.close()
+    }
+  }
+
+  // There is no server here — the version is the library's, which is what the
+  // user cares about when their SQL depends on a recent SQLite feature.
+  async getServerVersion(): Promise<string> {
+    const client = createClient({ url: this.getConnectionUrl() })
+
+    try {
+      const result = await client.execute('select sqlite_version() as version')
+      const rawVersion = String(result.rows[0]?.version ?? '')
+
+      return requireServerVersion(
+        formatSqliteServerVersion(rawVersion),
+        rawVersion
+      )
     } finally {
       client.close()
     }

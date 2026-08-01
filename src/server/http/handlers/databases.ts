@@ -1,11 +1,18 @@
 import { HttpApiBuilder } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Cause, Effect, Option } from 'effect'
 
+import type { DatabaseAdapter } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
 import { DatabaseNotFoundError, SchemaLoadFailedError } from '@/glue/api/errors'
 import { AdapterFactory } from '@/server/services/adapter-factory'
 import { DatabaseService } from '@/server/services/database-service'
 import { orDieInternal } from '../internal-errors'
+
+// A version probe opens a second connection to the user's database, so it gets
+// a bound of its own: past this the schema response goes out without a
+// version instead of waiting on a server that may never answer. The driver
+// still closes its own connection when the call finally settles.
+const serverVersionTimeout = '3 seconds'
 
 export const DatabasesLive = HttpApiBuilder.group(
   SquealApi,
@@ -60,24 +67,20 @@ export const DatabasesLive = HttpApiBuilder.group(
             record.value.connectionInfo
           )
 
-          const schema = yield* Effect.tryPromise(() =>
-            adapter.getSchema()
-          ).pipe(
-            Effect.catchAll((error) =>
-              Effect.fail(
-                new SchemaLoadFailedError({
-                  databaseName: record.value.name,
-                  message: `Failed to load schema for "${record.value.name}": ${
-                    error.error instanceof Error
-                      ? error.error.message
-                      : 'Failed to connect to database'
-                  }`
-                })
-              )
-            )
-          )
+          // Deliberately sequential. Running the probe alongside introspection
+          // would double the connections every schema request opens, and
+          // `too_many_connections` is a real failure mode here — the adapter
+          // carries a retry for it. A cosmetic version label must never take
+          // the slot the retrying schema load is waiting for.
+          const schema = yield* loadSchema(adapter, record.value.name)
+          const serverVersion = yield* probeServerVersion(adapter)
 
-          return { schema }
+          return {
+            schema: {
+              ...schema,
+              ...(serverVersion === undefined ? {} : { serverVersion })
+            }
+          }
         }).pipe(orDieInternal)
       )
       .handle('remove', ({ path }) =>
@@ -104,3 +107,45 @@ export const DatabasesLive = HttpApiBuilder.group(
         }).pipe(orDieInternal)
       )
 )
+
+function loadSchema(adapter: DatabaseAdapter, databaseName: string) {
+  return Effect.tryPromise(() => adapter.getSchema()).pipe(
+    Effect.catchAll((error) =>
+      Effect.fail(
+        new SchemaLoadFailedError({
+          databaseName,
+          message: `Failed to load schema for "${databaseName}": ${
+            error.error instanceof Error
+              ? error.error.message
+              : 'Failed to connect to database'
+          }`
+        })
+      )
+    )
+  )
+}
+
+// Every way this can go wrong — an adapter that cannot ask, a driver that
+// rejects, a server that never answers — ends as "no version", because a
+// missing status-bar detail is not something to put in front of the user.
+function probeServerVersion(
+  adapter: DatabaseAdapter
+): Effect.Effect<string | undefined> {
+  const getServerVersion = adapter.getServerVersion
+
+  if (getServerVersion === undefined) {
+    return Effect.succeed(undefined)
+  }
+
+  return Effect.tryPromise(() => getServerVersion.call(adapter)).pipe(
+    Effect.timeout(serverVersionTimeout),
+    Effect.catchAllCause((cause) =>
+      // Only the pretty message: a full Effect stack trace on every timeout is
+      // a lot of log for a status-bar decoration.
+      Effect.logWarning(
+        `Could not read the database server version: ${Cause.pretty(cause)}`
+      ).pipe(Effect.as(undefined))
+    ),
+    Effect.withSpan('database.serverVersion')
+  )
+}

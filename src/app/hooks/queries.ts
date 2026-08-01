@@ -6,8 +6,7 @@ import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import { finishQueryTrace } from '../tracing/query-traces'
-import type { QueryDto } from '@/glue/api/schemas'
-import { SchemaInfo } from '@/databases/adapter'
+import type { QueryDto, SchemaInfoDto } from '@/glue/api/schemas'
 
 export const queryPollInterval = 250
 
@@ -67,7 +66,7 @@ export function useEncryptionAvailable(): boolean {
 }
 
 export function useDatabaseSchema(databaseId: string | undefined) {
-  return useQuery<SchemaInfo>({
+  return useQuery<SchemaInfoDto>({
     queryKey: databaseId ? queryKeys.schema(databaseId) : ['schema', 'noop'],
     queryFn: () => {
       if (!databaseId) {
@@ -94,6 +93,19 @@ export function useDatabaseSchemas(databaseIds: string[]) {
       staleTime: Infinity
     }))
   })
+}
+
+// The database server's product and release, for example "PostgreSQL 16". It
+// rides along with the schema response, so reading it here is a cache hit
+// rather than a request of its own. Undefined until the schema has loaded, and
+// whenever the probe could not answer — a database that reports no version is
+// normal, not an error.
+export function useServerVersion(
+  databaseId: string | undefined
+): string | undefined {
+  const schema = useDatabaseSchema(databaseId)
+
+  return schema.data?.serverVersion
 }
 
 // The backend finishes queries out-of-band, so while the given query is

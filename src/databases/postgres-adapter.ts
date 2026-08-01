@@ -20,6 +20,10 @@ import {
   transformToSchemaInfo
 } from './schema-provider'
 import type { PostgresConnectionInfo } from './schemas'
+import {
+  formatPostgresServerVersion,
+  requireServerVersion
+} from './server-version'
 import { createSslOptions } from './ssl-options'
 
 export class PostgresAdapter implements DatabaseAdapter {
@@ -93,6 +97,33 @@ export class PostgresAdapter implements DatabaseAdapter {
 
     try {
       return await this.getSchemaWithClient(client)
+    } finally {
+      await client.end()
+    }
+  }
+
+  // Opens its own short-lived connection rather than borrowing the query one:
+  // the probe runs alongside introspection and must never share fate with a
+  // user query. The statement timeout keeps a wedged server from holding the
+  // socket after the caller has already given up on the answer.
+  async getServerVersion(): Promise<string> {
+    const client = new Client({
+      ...createClientConfig(this.connectionInfo),
+      statement_timeout: 5000
+    })
+
+    try {
+      await client.connect()
+
+      const result = await client.query<{ server_version: string }>(
+        'SHOW server_version'
+      )
+      const rawVersion = result.rows[0]?.server_version ?? ''
+
+      return requireServerVersion(
+        formatPostgresServerVersion(rawVersion),
+        rawVersion
+      )
     } finally {
       await client.end()
     }
