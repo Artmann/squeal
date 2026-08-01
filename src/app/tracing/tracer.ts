@@ -51,10 +51,6 @@ export class Span {
     this.draft.setAttribute(key, value)
   }
 
-  setName(name: string): void {
-    this.draft.setName(name)
-  }
-
   setStatus(status: SpanStatus, message?: string): void {
     this.draft.setStatus(status, message)
   }

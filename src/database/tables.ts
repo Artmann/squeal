@@ -1,17 +1,18 @@
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 
-// Shared between the app database bootstrap and the in-memory test database.
-export async function createTables(database: LibSQLDatabase): Promise<void> {
-  await database.run(sql`
+// Order matters: a table carrying a foreign key has to come after the table it
+// references.
+const statements: SQL[] = [
+  sql`
     CREATE TABLE IF NOT EXISTS chats (
       id TEXT PRIMARY KEY NOT NULL,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     )
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY NOT NULL,
       chatId TEXT NOT NULL,
@@ -20,9 +21,9 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
       toolInvocations TEXT,
       FOREIGN KEY (chatId) REFERENCES chats(id) ON DELETE CASCADE
     )
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE TABLE IF NOT EXISTS databases (
       id TEXT PRIMARY KEY NOT NULL,
       connectionInfo TEXT NOT NULL,
@@ -33,9 +34,9 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
       sortOrder INTEGER,
       type TEXT NOT NULL
     )
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE TABLE IF NOT EXISTS queries (
       id TEXT PRIMARY KEY NOT NULL,
       content TEXT NOT NULL,
@@ -46,19 +47,19 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
       result TEXT,
       worksheetId TEXT NOT NULL
     )
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE INDEX IF NOT EXISTS queries_queried_at_index
     ON queries (queriedAt)
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE INDEX IF NOT EXISTS queries_worksheet_id_queried_at_index
     ON queries (worksheetId, queriedAt)
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE TABLE IF NOT EXISTS spans (
       id TEXT PRIMARY KEY NOT NULL,
       attributes TEXT,
@@ -73,19 +74,19 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
       statusMessage TEXT,
       traceId TEXT NOT NULL
     )
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE INDEX IF NOT EXISTS spans_started_at_index
     ON spans (startedAt)
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE INDEX IF NOT EXISTS spans_trace_id_index
     ON spans (traceId)
-  `)
+  `,
 
-  await database.run(sql`
+  sql`
     CREATE TABLE IF NOT EXISTS worksheets (
       id TEXT PRIMARY KEY NOT NULL,
       content TEXT NOT NULL DEFAULT '',
@@ -96,5 +97,12 @@ export async function createTables(database: LibSQLDatabase): Promise<void> {
       name TEXT NOT NULL DEFAULT 'Untitled Worksheet',
       sortOrder INTEGER
     )
-  `)
+  `
+]
+
+// Shared between the app database bootstrap and the in-memory test database.
+export async function createTables(database: LibSQLDatabase): Promise<void> {
+  for (const statement of statements) {
+    await database.run(statement)
+  }
 }
