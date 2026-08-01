@@ -1,14 +1,17 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { canceledQueryMessage } from '@/glue/queries'
 import type { QueryDto } from '@/glue/api/schemas'
+
+import { stubElementSize } from '../test-element-size'
 import { QueryResultContent } from './QueryResultContent'
 
-// jsdom does not implement scrollTo, which the result table uses.
-beforeAll(() => {
+beforeEach(() => {
+  // jsdom does not implement scrollTo, which the result table uses, and the
+  // virtualized rows need a viewport with a real height.
   Element.prototype.scrollTo = vi.fn()
+  stubElementSize()
 })
 
 const baseQuery: QueryDto = {
@@ -24,74 +27,109 @@ const baseQuery: QueryDto = {
 }
 
 describe('QueryResultContent', () => {
-  it('shows a running state with a cancel button', async () => {
-    const onCancelQuery = vi.fn()
-
+  it('shows the idle state before anything has run', () => {
     render(
       <QueryResultContent
-        isCancelPending={false}
-        isQueryRunning
-        query={{ ...baseQuery, finishedAt: null }}
-        onCancelQuery={onCancelQuery}
+        databaseName="Pagila"
+        isQueryRunning={false}
+        query={undefined}
       />
     )
 
-    expect(screen.getByText('Running query')).toBeInTheDocument()
+    expect(screen.getByText('No results yet')).toBeInTheDocument()
+  })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel query' }))
+  it('names the database it is running against', () => {
+    render(
+      <QueryResultContent
+        databaseName="Pagila"
+        isQueryRunning
+        query={{ ...baseQuery, finishedAt: null }}
+      />
+    )
 
-    expect(onCancelQuery).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Running on Pagila…')).toBeInTheDocument()
+  })
+
+  it('falls back to a generic running label without a database', () => {
+    render(
+      <QueryResultContent
+        databaseName={undefined}
+        isQueryRunning
+        query={{ ...baseQuery, finishedAt: null }}
+      />
+    )
+
+    expect(screen.getByText('Running…')).toBeInTheDocument()
   })
 
   it('shows the result table for a successful query', () => {
-    const query = {
-      ...baseQuery,
-      result: {
-        fields: [{ name: 'title' }],
-        rowCount: 1,
-        rows: [{ title: 'Alien' }],
-        truncated: false
-      }
-    }
-
     render(
       <QueryResultContent
-        isCancelPending={false}
+        databaseName="Pagila"
         isQueryRunning={false}
-        query={query}
-        onCancelQuery={() => undefined}
+        query={{
+          ...baseQuery,
+          result: {
+            fields: [{ name: 'title' }],
+            rowCount: 1,
+            rows: [{ title: 'Alien' }],
+            truncated: false
+          }
+        }}
       />
     )
 
     expect(screen.getByText('Alien')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'title' })).toBeInTheDocument()
   })
 
-  it('shows the error for a failed query', () => {
+  it('splits a driver error into a title and its detail', () => {
     render(
       <QueryResultContent
-        isCancelPending={false}
+        databaseName="Pagila"
         isQueryRunning={false}
-        query={{ ...baseQuery, error: 'syntax error at or near "FORM"' }}
-        onCancelQuery={() => undefined}
+        query={{
+          ...baseQuery,
+          error:
+            'ERROR 42P01: relation "Employes" does not exist\nHINT:  Perhaps you meant "Employees".'
+        }}
       />
     )
 
-    expect(screen.getByText('Query failed')).toBeInTheDocument()
+    expect(
+      screen.getByText('ERROR 42P01: relation "Employes" does not exist')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/HINT:\s+Perhaps you meant "Employees"\./)
+    ).toBeInTheDocument()
+    expect(screen.getByText('Failed after 200 ms')).toBeInTheDocument()
+  })
+
+  it('renders a single-line error without a detail block', () => {
+    render(
+      <QueryResultContent
+        databaseName="Pagila"
+        isQueryRunning={false}
+        query={{ ...baseQuery, error: 'syntax error at or near "FORM"' }}
+      />
+    )
+
     expect(
       screen.getByText('syntax error at or near "FORM"')
     ).toBeInTheDocument()
   })
 
-  it('shows a canceled state for a canceled query', () => {
+  it('shows a quiet canceled state rather than the error card', () => {
     render(
       <QueryResultContent
-        isCancelPending={false}
+        databaseName="Pagila"
         isQueryRunning={false}
         query={{ ...baseQuery, error: canceledQueryMessage }}
-        onCancelQuery={() => undefined}
       />
     )
 
     expect(screen.getByText('Query canceled.')).toBeInTheDocument()
+    expect(screen.queryByText(/Failed after/)).not.toBeInTheDocument()
   })
 })

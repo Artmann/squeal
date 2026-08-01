@@ -1,13 +1,9 @@
-import { memo, ReactElement, useEffect, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { memo, ReactElement, useMemo, useRef } from 'react'
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from './ui/table'
+import type { QueryResultDto } from '@/glue/api/schemas'
+
+import { cn } from '../lib/utils'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -18,81 +14,133 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger
 } from './ui/context-menu'
-import { cn } from '../lib/utils'
+import { getColumnWidths, rowNumberColumnWidth } from './query-result-columns'
 import {
   formatCellValue,
   formatRowAsCsv,
   formatRowAsJson
 } from './query-result-format'
 
-const pageSize = 100
+// Mirrors `--row-h`. The virtualizer needs a number, and every row is the same
+// height, so this is an exact size rather than an estimate.
+const rowHeight = 34
+
+// Rows rendered above and below the window, so a fast scroll does not show a
+// gap before the next measure.
+const overscan = 12
 
 export const QueryResultTable = memo(function QueryResultTable({
   result
 }: {
-  result: any
+  result: QueryResultDto
 }): ReactElement {
-  const [page, setPage] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo(0, 0)
-  }, [page])
 
   // Fall back to the row keys if the adapter returned rows without field
   // metadata, so a fields/rows desync can never blank out the columns.
-  const fieldNames =
-    result.fields.length > 0
-      ? result.fields.map((field: any) => field.name)
-      : Object.keys(result.rows[0] ?? {})
-  const totalRows: number = result.rows.length
-  const pageCount = Math.ceil(totalRows / pageSize)
-  const pageRows = result.rows.slice(page * pageSize, (page + 1) * pageSize)
-  const firstRow = page * pageSize + 1
-  const lastRow = Math.min((page + 1) * pageSize, totalRows)
+  const fieldNames = useMemo(
+    () =>
+      result.fields.length > 0
+        ? result.fields.map((field) => field.name)
+        : Object.keys(result.rows[0] ?? {}),
+    [result.fields, result.rows]
+  )
+
+  const columnWidths = useMemo(
+    () => getColumnWidths({ fieldNames, rows: result.rows }),
+    [fieldNames, result.rows]
+  )
+
+  const virtualizer = useVirtualizer({
+    count: result.rows.length,
+    estimateSize: () => rowHeight,
+    getScrollElement: () => scrollRef.current,
+    overscan
+  })
+
+  const virtualRows = virtualizer.getVirtualItems()
+  const totalSize = virtualizer.getTotalSize()
+
+  // Spacer rows keep the scroll height honest without rendering the rows in
+  // between, and keep the windowed rows inside a real <tbody>.
+  const paddingTop = virtualRows[0]?.start ?? 0
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - (virtualRows[virtualRows.length - 1]?.end ?? 0)
+      : 0
 
   return (
-    <div className="flex flex-col h-full">
-      <div
-        className="flex-1 overflow-auto"
-        ref={scrollRef}
-      >
-        <Table className="w-full text-xs">
-          <TableHeader className="sticky top-0 bg-base">
-            <TableRow className="bg-base">
-              <TableHead className="border-r border-surface-0"></TableHead>
-              {fieldNames.map((name: string) => (
-                <TableHead
-                  className="border-r border-surface-0 last:border-r-0 font-medium"
-                  key={name}
-                >
-                  {name}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pageRows.map((row: any, rowIndex: number) => (
-              <TableRow key={String(page * pageSize + rowIndex)}>
-                <TableCell className="border-r border-surface-0 px-2 text-center text-subtext-0">
-                  {page * pageSize + rowIndex + 1}
-                </TableCell>
-                {fieldNames.map((name: string) => {
-                  const value = row[name]
-                  const isNumber = typeof value === 'number'
+    <div
+      className="h-full overflow-auto"
+      ref={scrollRef}
+    >
+      <table className="min-w-full border-separate border-spacing-0">
+        <colgroup>
+          <col style={{ width: `${rowNumberColumnWidth}px` }} />
+
+          {fieldNames.map((name) => (
+            <col
+              key={name}
+              style={{ width: `${columnWidths[name]}px` }}
+            />
+          ))}
+        </colgroup>
+
+        <thead>
+          <tr>
+            <th className="sticky top-0 z-[5] h-[31px] border-b border-border bg-panel2" />
+
+            {fieldNames.map((name) => (
+              <th
+                className="sticky top-0 z-[5] h-[31px] whitespace-nowrap border-b border-border bg-panel2 px-[14px] text-left text-[12px] font-medium text-text2"
+                key={name}
+                scope="col"
+              >
+                {name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {paddingTop > 0 && (
+            <tr aria-hidden="true">
+              <td
+                colSpan={fieldNames.length + 1}
+                style={{ height: `${paddingTop}px` }}
+              />
+            </tr>
+          )}
+
+          {virtualRows.map((virtualRow) => {
+            const row = result.rows[virtualRow.index]
+
+            return (
+              <tr
+                className="group"
+                key={virtualRow.key}
+              >
+                <td className="h-[var(--row-h)] select-none border-b border-border2 px-[10px] text-right font-mono text-[11px] text-text3 group-hover:bg-hover">
+                  {virtualRow.index + 1}
+                </td>
+
+                {fieldNames.map((name) => {
+                  const value = row?.[name]
 
                   return (
-                    <ContextMenu key={`${rowIndex}-${name}`}>
+                    <ContextMenu key={`${virtualRow.key}-${name}`}>
                       <ContextMenuTrigger asChild>
-                        <TableCell
+                        <td
                           className={cn(
-                            'border-r border-surface-0 last:border-r-0',
-                            isNumber ? 'text-right' : 'text-left',
-                            value === null && 'text-subtext-0'
+                            'h-[var(--row-h)] whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
+                            typeof value === 'number'
+                              ? 'text-right'
+                              : 'text-left',
+                            value === null && 'text-text3 italic'
                           )}
                         >
                           {formatCellValue(value)}
-                        </TableCell>
+                        </td>
                       </ContextMenuTrigger>
 
                       <ContextMenuContent>
@@ -126,7 +174,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                               className="text-xs"
                               onSelect={() =>
                                 navigator.clipboard.writeText(
-                                  formatRowAsCsv(row, fieldNames)
+                                  formatRowAsCsv(row ?? {}, fieldNames)
                                 )
                               }
                             >
@@ -137,7 +185,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                               className="text-xs"
                               onSelect={() =>
                                 navigator.clipboard.writeText(
-                                  formatRowAsJson(row)
+                                  formatRowAsJson(row ?? {})
                                 )
                               }
                             >
@@ -149,43 +197,20 @@ export const QueryResultTable = memo(function QueryResultTable({
                     </ContextMenu>
                   )
                 })}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+              </tr>
+            )
+          })}
 
-      <div className="flex items-center justify-between border-t border-surface-0 px-3 py-1.5 text-xs text-subtext-0">
-        <span>
-          {result.truncated
-            ? `Showing first ${Intl.NumberFormat().format(result.rows.length)} rows (result was truncated)`
-            : `Rows ${firstRow}–${lastRow} of ${totalRows}`}
-        </span>
-
-        {pageCount > 1 && (
-          <div className="flex items-center gap-2">
-            <button
-              className="disabled:opacity-40"
-              disabled={page === 0}
-              onClick={() => setPage((p) => p - 1)}
-              type="button"
-            >
-              ← Prev
-            </button>
-            <span>
-              Page {page + 1} of {pageCount}
-            </span>
-            <button
-              className="disabled:opacity-40"
-              disabled={page >= pageCount - 1}
-              onClick={() => setPage((p) => p + 1)}
-              type="button"
-            >
-              Next →
-            </button>
-          </div>
-        )}
-      </div>
+          {paddingBottom > 0 && (
+            <tr aria-hidden="true">
+              <td
+                colSpan={fieldNames.length + 1}
+                style={{ height: `${paddingBottom}px` }}
+              />
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   )
 })

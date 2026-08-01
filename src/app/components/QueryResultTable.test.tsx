@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
+import { stubElementSize } from '../test-element-size'
 import {
   escapeCsvField,
   formatCellValue,
@@ -14,6 +15,8 @@ const writeText = vi.fn().mockResolvedValue(undefined)
 
 beforeEach(() => {
   Element.prototype.scrollTo = vi.fn()
+  // The row list is virtualized, so it needs a viewport with a real height.
+  stubElementSize()
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText },
     writable: true,
@@ -95,19 +98,64 @@ describe('QueryResultTable', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument()
   })
 
-  it('shows how many rows are displayed when the result is truncated', () => {
-    const truncatedResult = {
+  it('numbers rows from one in the gutter cell', () => {
+    render(<QueryResultTable result={result} />)
+
+    const [, firstRow, secondRow] = screen.getAllByRole('row')
+
+    expect(within(firstRow).getAllByRole('cell')[0]).toHaveTextContent('1')
+    expect(within(secondRow).getAllByRole('cell')[0]).toHaveTextContent('2')
+  })
+
+  it('renders NULL for null values', () => {
+    render(
+      <QueryResultTable
+        result={{
+          fields: [{ name: 'name' }],
+          rowCount: 1,
+          rows: [{ name: null }],
+          truncated: false
+        }}
+      />
+    )
+
+    expect(screen.getByText('null')).toBeInTheDocument()
+  })
+
+  it('windows a large result instead of rendering every row', () => {
+    const largeResult = {
       fields: [{ name: 'id' }],
-      rows: Array.from({ length: 150 }, (_, index) => ({ id: index })),
-      rowCount: 150,
+      rows: Array.from({ length: 10000 }, (_, index) => ({ id: index })),
+      rowCount: 10000,
       truncated: true
     }
 
-    render(<QueryResultTable result={truncatedResult} />)
+    render(<QueryResultTable result={largeResult} />)
+
+    // A 600px viewport of 34px rows plus overscan is nowhere near 10,000 —
+    // that is the whole point of virtualizing the 10,000-row cap.
+    const renderedRows = screen.getAllByRole('row')
+
+    expect(renderedRows.length).toBeLessThan(100)
+    expect(renderedRows.length).toBeGreaterThan(1)
+  })
+
+  it('falls back to the row keys when the adapter returned no field metadata', () => {
+    render(
+      <QueryResultTable
+        result={{
+          fields: [],
+          rowCount: 1,
+          rows: [{ title: 'Alien' }],
+          truncated: false
+        }}
+      />
+    )
 
     expect(
-      screen.getByText('Showing first 150 rows (result was truncated)')
+      screen.getByRole('columnheader', { name: 'title' })
     ).toBeInTheDocument()
+    expect(screen.getByText('Alien')).toBeInTheDocument()
   })
 
   it('shows context menu on right-click', async () => {

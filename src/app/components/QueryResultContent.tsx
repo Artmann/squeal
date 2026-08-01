@@ -1,93 +1,113 @@
-import dayjs from 'dayjs'
-import { BanIcon, Loader2Icon, XCircleIcon } from 'lucide-react'
+import { BanIcon } from 'lucide-react'
 import { ReactElement, useEffect, useState } from 'react'
 
-import { QueryResultTable } from './QueryResultTable'
-import { Button } from './ui/button'
-import { Separator } from './ui/separator'
 import { canceledQueryMessage } from '@/glue/queries'
 import type { QueryDto } from '@/glue/api/schemas'
 
+import { QueryResultEmpty } from './QueryResultEmpty'
+import { QueryResultTable } from './QueryResultTable'
+import { toQueryErrorParts } from './query-error-parts'
+
 interface QueryResultContentProps {
-  isCancelPending: boolean
+  databaseName: string | undefined
   isQueryRunning: boolean
   query: QueryDto | undefined
-  onCancelQuery: () => void
 }
 
 export function QueryResultContent({
-  isCancelPending,
+  databaseName,
   isQueryRunning,
-  query,
-  onCancelQuery
+  query
 }: QueryResultContentProps): ReactElement {
-  return (
-    <>
-      {isQueryRunning && (
-        <div className="w-full h-full flex justify-center items-center">
-          <div className="w-full max-w-sm flex flex-col gap-3">
-            <h2 className="flex items-center gap-2 text-lg font-medium">
-              <Loader2Icon className="size-4 animate-spin text-mauve" />
-              Running query
-            </h2>
+  if (isQueryRunning) {
+    return (
+      <RunningQuery
+        databaseName={databaseName}
+        since={query?.queriedAt}
+      />
+    )
+  }
 
-            <Separator />
+  if (query?.error !== undefined && query?.error !== null) {
+    return (
+      <FailedQuery
+        error={query.error}
+        durationMs={
+          query.finishedAt === null ? null : query.finishedAt - query.queriedAt
+        }
+      />
+    )
+  }
 
-            <div className="flex flex-col gap-1 text-subtext-0 text-sm">
-              <div className="flex items-center justify-between">
-                <div>Elapsed</div>
-                <div className="text-right font-mono tabular-nums text-text">
-                  {query?.queriedAt && <ElapsedTime since={query.queriedAt} />}
-                </div>
-              </div>
+  if (query?.result) {
+    return <QueryResultTable result={query.result} />
+  }
 
-              <div className="flex items-center justify-between">
-                <div>Started</div>
-                <div className="text-right">
-                  {query?.queriedAt &&
-                    dayjs(query.queriedAt).format('HH:mm:ss')}
-                </div>
-              </div>
-            </div>
+  return <QueryResultEmpty />
+}
 
-            <Button
-              className="self-start"
-              disabled={isCancelPending}
-              size="sm"
-              variant="outline"
-              onClick={onCancelQuery}
-            >
-              {isCancelPending ? 'Canceling…' : 'Cancel query'}
-            </Button>
-          </div>
+function FailedQuery({
+  durationMs,
+  error
+}: {
+  durationMs: number | null
+  error: string
+}): ReactElement {
+  if (error === canceledQueryMessage) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="flex items-center gap-2 text-[12.5px] text-text2">
+          <BanIcon className="size-4 shrink-0" />
+          Query canceled.
         </div>
+      </div>
+    )
+  }
+
+  const { detail, title } = toQueryErrorParts(error)
+
+  return (
+    <div className="p-4">
+      <div className="rounded-lg border border-[var(--err-border)] bg-[var(--err-bg)] px-4 py-[13px] font-mono text-[12px] leading-[1.6]">
+        <div className="mb-[6px] font-semibold text-[var(--err)]">{title}</div>
+
+        {detail !== undefined && (
+          <pre className="whitespace-pre-wrap text-text2">{detail}</pre>
+        )}
+      </div>
+
+      {durationMs !== null && (
+        <p className="mt-[10px] text-[11.5px] text-text3">
+          Failed after {Intl.NumberFormat().format(durationMs)} ms
+        </p>
       )}
+    </div>
+  )
+}
 
-      {query?.result && <QueryResultTable result={query.result} />}
+function RunningQuery({
+  databaseName,
+  since
+}: {
+  databaseName: string | undefined
+  since: number | undefined
+}): ReactElement {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3">
+      <div className="size-5 animate-spin rounded-full border-2 border-border border-t-accent" />
 
-      {query?.error &&
-        (query.error === canceledQueryMessage ? (
-          <div className="w-full h-full flex justify-center items-center p-6">
-            <div className="flex items-center gap-2 text-subtext-0 text-sm">
-              <BanIcon className="size-4 shrink-0" />
-              Query canceled.
-            </div>
-          </div>
-        ) : (
-          <div className="w-full h-full flex justify-center items-center p-6">
-            <div className="w-full max-w-lg flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-red font-medium text-sm">
-                <XCircleIcon className="size-4 shrink-0" />
-                Query failed
-              </div>
+      <p className="text-[12.5px] text-text2">
+        {databaseName ? `Running on ${databaseName}…` : 'Running…'}
+      </p>
 
-              <pre className="text-xs text-subtext-0 font-mono whitespace-pre-wrap bg-surface-0 rounded-md p-3 border border-surface-1">
-                {query.error}
-              </pre>
-            </div>
-          </div>
-        ))}
-    </>
+      {/* The design shows static text, but a long query with no sign of
+          progress reads as a hang. */}
+      {since !== undefined && (
+        <p className="text-[11.5px] text-text3">
+          <ElapsedTime since={since} />
+        </p>
+      )}
+    </div>
   )
 }
 
