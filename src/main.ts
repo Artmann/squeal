@@ -77,7 +77,7 @@ const createWindow = async () => {
     frame: false,
     height: 880,
     titleBarStyle: 'hidden',
-    trafficLightPosition: { x: 12, y: 8 },
+    trafficLightPosition: { x: 12, y: 14 },
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
