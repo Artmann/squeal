@@ -156,15 +156,13 @@ function useRunQuery(
   }, [activeStatement, databaseId, worksheetId, queriesCollection])
 }
 
-export function App(): ReactElement {
+/**
+ * Everything the shell needs about the active worksheet: its statements, its
+ * latest query, and the handlers that act on both. Bundled here so `App` itself
+ * stays a layout.
+ */
+function useWorksheetSession(openWorksheetId: string | undefined) {
   const databases = useDatabases()
-
-  const openWorksheetId = useAppSelector(selectActiveWorksheetId)
-  const editorScreen = useAppSelector((state) => state.ui.editorScreen)
-
-  const showGettingStartedScreen = databases.data.length === 0
-
-  const [cursorPosition, setCursorPosition] = useState<CursorPosition>()
 
   const {
     activeStatement,
@@ -177,8 +175,6 @@ export function App(): ReactElement {
   const query = useLatestQuery(openWorksheetId)
 
   useQueryResultSync(query)
-
-  const isQueryRunning = Boolean(query && !query.finishedAt)
 
   const { handleCancelQuery, isCancelPending } = useCancelRunningQuery(query)
 
@@ -198,6 +194,49 @@ export function App(): ReactElement {
       ),
     [databases.data, currentWorksheet?.databaseId]
   )
+
+  return {
+    activeStatement,
+    activeStatementIndex,
+    currentDatabase,
+    currentWorksheet,
+    handleCancelQuery,
+    handleRunQuery,
+    handleUpdateContent,
+    hasDatabases: databases.data.length > 0,
+    isCancelPending,
+    isQueryRunning: Boolean(query && !query.finishedAt),
+    query,
+    saveState,
+    setCursorOffset,
+    statements
+  }
+}
+
+export function App(): ReactElement {
+  const openWorksheetId = useAppSelector(selectActiveWorksheetId)
+  const editorScreen = useAppSelector((state) => state.ui.editorScreen)
+
+  const [cursorPosition, setCursorPosition] = useState<CursorPosition>()
+
+  const {
+    activeStatement,
+    activeStatementIndex,
+    currentDatabase,
+    currentWorksheet,
+    handleCancelQuery,
+    handleRunQuery,
+    handleUpdateContent,
+    hasDatabases,
+    isCancelPending,
+    isQueryRunning,
+    query,
+    saveState,
+    setCursorOffset,
+    statements
+  } = useWorksheetSession(openWorksheetId)
+
+  const showGettingStartedScreen = !hasDatabases
 
   return (
     <main className="w-full h-screen flex flex-col bg-panel2 overflow-hidden text-sm">

@@ -27,52 +27,64 @@ function firstLine(text: string): string {
  * stored — every line is derived from a query that already exists, so the log
  * survives a reload for free and cannot drift from the results.
  */
+/** The line logged when a query finishes, or none while it is still running. */
+function toOutcomeMessage(query: QueryDto): WorksheetMessage | undefined {
+  const timestamp = query.finishedAt ?? query.queriedAt
+
+  if (query.error !== null) {
+    return {
+      id: `${query.id}:error`,
+      text:
+        query.error === canceledQueryMessage
+          ? 'Query canceled.'
+          : toQueryErrorParts(query.error).title,
+      timestamp
+    }
+  }
+
+  if (query.result === null) {
+    return undefined
+  }
+
+  const duration = timestamp - query.queriedAt
+  const rowCount = Intl.NumberFormat().format(query.result.rowCount)
+  const suffix = query.result.truncated ? '+' : ''
+  const noun = query.result.rowCount === 1 ? 'row' : 'rows'
+
+  return {
+    id: `${query.id}:result`,
+    text: `${rowCount}${suffix} ${noun} in ${Intl.NumberFormat().format(duration)} ms`,
+    timestamp
+  }
+}
+
+function toQueryMessages(query: QueryDto): WorksheetMessage[] {
+  const messages: WorksheetMessage[] = []
+  const statement = firstLine(query.content)
+
+  if (statement !== '') {
+    messages.push({
+      id: `${query.id}:run`,
+      text: statement,
+      timestamp: query.queriedAt
+    })
+  }
+
+  const outcome = toOutcomeMessage(query)
+
+  if (outcome) {
+    messages.push(outcome)
+  }
+
+  return messages
+}
+
 export function buildWorksheetMessages(
   queries: QueryDto[]
 ): WorksheetMessage[] {
-  const messages: WorksheetMessage[] = []
-
-  const ordered = [...queries].sort((a, b) => a.queriedAt - b.queriedAt)
-
-  for (const query of ordered) {
-    const statement = firstLine(query.content)
-
-    if (statement !== '') {
-      messages.push({
-        id: `${query.id}:run`,
-        text: statement,
-        timestamp: query.queriedAt
-      })
-    }
-
-    if (query.error !== null) {
-      messages.push({
-        id: `${query.id}:error`,
-        text:
-          query.error === canceledQueryMessage
-            ? 'Query canceled.'
-            : toQueryErrorParts(query.error).title,
-        timestamp: query.finishedAt ?? query.queriedAt
-      })
-
-      continue
-    }
-
-    if (query.result === null) {
-      continue
-    }
-
-    const duration = (query.finishedAt ?? query.queriedAt) - query.queriedAt
-    const rowCount = Intl.NumberFormat().format(query.result.rowCount)
-    const suffix = query.result.truncated ? '+' : ''
-    const noun = query.result.rowCount === 1 ? 'row' : 'rows'
-
-    messages.push({
-      id: `${query.id}:result`,
-      text: `${rowCount}${suffix} ${noun} in ${Intl.NumberFormat().format(duration)} ms`,
-      timestamp: query.finishedAt ?? query.queriedAt
-    })
-  }
+  const messages = queries
+    .toSorted((a, b) => a.queriedAt - b.queriedAt)
+    .flatMap(toQueryMessages)
 
   // Newest last, so the freshest lines are the ones kept.
   return messages.slice(-maxWorksheetMessages)

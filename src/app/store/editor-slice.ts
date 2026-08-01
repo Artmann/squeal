@@ -12,7 +12,7 @@ const initialState: EditorState = {
   worksheetSearchQuery: ''
 }
 
-export const editorSlice = createSlice({
+const editorSlice = createSlice({
   name: 'editor',
   initialState,
   reducers: {
