@@ -31,10 +31,8 @@ import {
   type DropIndicator
 } from '../hooks/use-drop-indicator'
 import { useReorderDrag } from '../hooks/use-reorder-drag'
-import {
-  databaseSearchQueryUpdated,
-  worksheetSelected
-} from '../store/editor-slice'
+import { databaseSearchQueryUpdated } from '../store/editor-slice'
+import { tabsActions } from '../store/tabs-slice'
 import { uiActions } from '../store/ui-slice'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
@@ -147,7 +145,7 @@ function useQueryTableWorksheet(
         },
         {
           onSuccess: (worksheet) => {
-            dispatch(worksheetSelected(worksheet.id))
+            dispatch(tabsActions.tabOpened(worksheet.id))
 
             if (worksheetsCollection.status === 'ready') {
               const transaction = worksheetsCollection.update(
@@ -236,23 +234,26 @@ export function DatabaseExplorer(): ReactElement {
   }, [dispatch])
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-subtext-0">
-          Database Explorer
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-none items-center justify-between pt-[10px] pr-3 pb-2 pl-4">
+        <h2 className="text-[11px] font-semibold tracking-[0.08em] text-text3 uppercase">
+          Databases
         </h2>
 
-        <Button
-          size="icon-sm"
-          variant="ghost"
+        <button
+          aria-label="Add connection"
+          className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
+          title="Add connection"
+          type="button"
           onClick={handleCreateDatabase}
         >
           <Plus className="size-3" />
-        </Button>
+        </button>
       </div>
 
-      <div className="mb-2">
+      <div className="mx-3 mb-2 flex-none">
         <SearchInput
+          placeholder="Filter tables"
           value={databaseSearchQuery}
           onChange={(newValue) =>
             dispatch(databaseSearchQueryUpdated(newValue))
@@ -260,7 +261,7 @@ export function DatabaseExplorer(): ReactElement {
         />
       </div>
 
-      <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-[10px]">
         <DndContext
           collisionDetection={closestCenter}
           modifiers={[restrictToVerticalAxis]}
@@ -293,11 +294,11 @@ export function DatabaseExplorer(): ReactElement {
         {renderedRows.length === 0 &&
           !isLoadingSchemas &&
           (isSearching ? (
-            <p className="text-xs text-muted-foreground mt-2 px-1">
+            <p className="mt-2 px-1 text-xs text-text2">
               No matches for “{databaseSearchQuery}”.
             </p>
           ) : (
-            <div className="text-xs text-muted-foreground mt-2 px-1 leading-relaxed">
+            <div className="mt-2 px-1 text-xs leading-relaxed text-text2">
               <p>Connect a database to browse its tables and columns here.</p>
 
               <Button
@@ -359,7 +360,7 @@ function DatabaseRow({
     // row, while only the row button acts as the drag handle.
     <div
       ref={setNodeRef}
-      className={cn('relative', isDragging && 'opacity-50')}
+      className={cn('relative flex-none', isDragging && 'opacity-50')}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       {dropIndicator && <DropIndicatorLine position={dropIndicator} />}
@@ -406,22 +407,25 @@ function DatabaseRowHeader({
   return (
     <ContextMenu>
       <ContextMenuTrigger>
-        <Button
+        <button
           {...sortableProps}
-          className="flex justify-start items-center gap-1 -ml-2 px-0 py-1 cursor-default h-5 font-normal w-full"
-          size="sm"
-          variant="ghost"
+          className="flex h-[var(--item-h)] w-full cursor-default items-center gap-[6px] rounded-[6px] px-[6px] text-left text-text2 hover:bg-hover"
+          type="button"
           onClick={() => dispatch(expandDatabase(database.id))}
         >
           <ChevronRight
             className={cn(
-              'size-3 transition-transform duration-150',
+              'size-[10px] flex-none text-text3 transition-transform duration-150',
               isExpanded ? 'rotate-90' : ''
             )}
           />
-          <Database className="size-3" />
-          <span className="text-xs">{database.name}</span>
-        </Button>
+
+          <Database className="size-[13px] flex-none text-text3" />
+
+          <span className="min-w-0 truncate text-[12.5px] text-text">
+            {database.name}
+          </span>
+        </button>
       </ContextMenuTrigger>
 
       <ContextMenuContent>
@@ -471,7 +475,7 @@ function DatabaseTableList({
   const tables = searchMatch?.tables ?? schema.data?.tables ?? []
 
   return (
-    <div className="flex flex-col gap-0.5 pl-4 pt-1">
+    <div className="pt-[1px] pb-[3px]">
       {tables.map((table) => {
         // Table names repeat across schemas, so the key must include the
         // schema — otherwise same-named tables collide and expanding one
@@ -509,30 +513,33 @@ function DatabaseTableRow({
   table
 }: DatabaseTableRowProps): ReactElement {
   return (
-    <div className="border-l border-surface-0">
+    <div>
       <ContextMenu>
         <ContextMenuTrigger>
-          <Button
-            className="flex items-center gap-1 px-0 py-0 cursor-default h-5 font-normal"
-            size="sm"
-            variant="ghost"
+          <button
+            className="flex h-[26px] w-full cursor-default items-center gap-[6px] rounded-[6px] pr-[6px] pl-5 text-left text-text2 hover:bg-hover"
+            type="button"
             onClick={onToggle}
           >
             <ChevronRight
               className={cn(
-                'size-3 transition-transform duration-150',
+                'size-[9px] flex-none text-text3 transition-transform duration-150',
                 isExpanded ? 'rotate-90' : ''
               )}
             />
-            <Table2Icon className="size-3 shrink-0" />
-            <span className="truncate">{table.tableName}</span>
+
+            <Table2Icon className="size-3 flex-none text-text3" />
+
+            <span className="min-w-0 truncate font-mono text-xs">
+              {table.tableName}
+            </span>
 
             {hasMultipleSchemas && (
-              <span className="text-[10px] text-muted-foreground shrink-0">
+              <span className="max-w-[76px] flex-none truncate rounded-[4px] border border-border2 bg-bg px-[5px] py-[1.5px] font-mono text-[10px] text-text3">
                 {table.tableSchema}
               </span>
             )}
-          </Button>
+          </button>
         </ContextMenuTrigger>
 
         <ContextMenuContent>
@@ -547,14 +554,18 @@ function DatabaseTableRow({
       </ContextMenu>
 
       {isExpanded && (
-        <div className="flex flex-col pl-4">
+        <div className="pt-[1px] pb-[2px]">
           {table.columns.map((column) => (
             <div
               key={`${table.tableSchema}-${table.tableName}-${column.columnName}`}
-              className="flex items-center gap-1 px-3 py-0.5 border-l border-surface-0"
+              className="flex h-[23px] items-center gap-[7px] rounded-[6px] pr-[6px] pl-[46px] text-text2 hover:bg-hover"
             >
-              <span className="text-xs text-muted-foreground">
-                {column.columnName} ({column.dataType})
+              <span className="min-w-0 truncate font-mono text-[11.5px]">
+                {column.columnName}
+              </span>
+
+              <span className="ml-auto flex-none font-mono text-[10.5px] text-text3">
+                {column.dataType}
               </span>
             </div>
           ))}
