@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 
 import { renderWithProviders } from '../test-utils'
@@ -10,11 +11,26 @@ import { WorksheetExplorer } from './WorksheetExplorer'
 vi.mock('../api-client', () => ({
   apiClient: {
     createWorksheet: vi.fn(),
+    getDatabases: vi.fn(async () => []),
     updateWorksheet: vi.fn()
   }
 }))
 
 import { apiClient } from '../api-client'
+
+const testDatabase: DatabaseDto = {
+  connectionInfo: {
+    database: 'pagila',
+    host: 'localhost',
+    port: 5432,
+    username: 'admin'
+  },
+  createdAt: 1704067200000,
+  id: 'db-123',
+  name: 'Pagila',
+  sortOrder: null,
+  type: 'postgres'
+}
 
 const testWorksheet: WorksheetDto = {
   content: 'SELECT * FROM users',
@@ -33,27 +49,65 @@ describe('WorksheetExplorer', () => {
   })
 
   it('renders the header', () => {
-    renderWithProviders(<WorksheetExplorer />, { worksheets: [testWorksheet] })
+    renderWithProviders(<WorksheetExplorer />, {
+      databases: [],
+      worksheets: [testWorksheet]
+    })
 
     expect(screen.getByText('Worksheets')).toBeInTheDocument()
   })
 
   it('renders worksheet names', () => {
-    renderWithProviders(<WorksheetExplorer />, { worksheets: [testWorksheet] })
+    renderWithProviders(<WorksheetExplorer />, {
+      databases: [],
+      worksheets: [testWorksheet]
+    })
 
     expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
+  })
+
+  describe('database badge', () => {
+    it('names the database a worksheet runs against', () => {
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [testDatabase],
+        worksheets: [{ ...testWorksheet, databaseId: 'db-123' }]
+      })
+
+      expect(screen.getByText('Pagila')).toBeInTheDocument()
+    })
+
+    it('renders nothing when the worksheet has no database', () => {
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [testDatabase],
+        worksheets: [testWorksheet]
+      })
+
+      expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
+      expect(screen.queryByText('Pagila')).not.toBeInTheDocument()
+    })
+
+    it('renders nothing when the database is gone', () => {
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [{ ...testWorksheet, databaseId: 'db-removed' }]
+      })
+
+      expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
+      expect(screen.queryByText('db-removed')).not.toBeInTheDocument()
+    })
   })
 
   it('selects a worksheet on single click', async () => {
     const user = userEvent.setup()
 
     const { store } = renderWithProviders(<WorksheetExplorer />, {
+      databases: [],
       worksheets: [testWorksheet]
     })
 
     await user.click(screen.getByText('Test Worksheet'))
 
-    expect(store.getState().editor.openWorksheetId).toEqual('ws-123')
+    expect(store.getState().tabs.activeWorksheetId).toEqual('ws-123')
   })
 
   it('persists the last-opened time when a worksheet is selected', async () => {
@@ -69,7 +123,8 @@ describe('WorksheetExplorer', () => {
     }
 
     renderWithProviders(<WorksheetExplorer />, {
-      editor: { openWorksheetId: 'ws-123' },
+      databases: [],
+      openWorksheetId: 'ws-123',
       worksheets: [testWorksheet, secondWorksheet]
     })
 
@@ -87,6 +142,7 @@ describe('WorksheetExplorer', () => {
       const user = userEvent.setup()
 
       renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
         worksheets: [testWorksheet]
       })
 
@@ -102,6 +158,7 @@ describe('WorksheetExplorer', () => {
       const user = userEvent.setup()
 
       renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
         worksheets: [testWorksheet]
       })
 
@@ -123,6 +180,7 @@ describe('WorksheetExplorer', () => {
       const user = userEvent.setup()
 
       renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
         worksheets: [testWorksheet]
       })
 
@@ -145,6 +203,7 @@ describe('WorksheetExplorer', () => {
       const user = userEvent.setup()
 
       renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
         worksheets: [testWorksheet]
       })
 
@@ -167,6 +226,7 @@ describe('WorksheetExplorer', () => {
       const user = userEvent.setup()
 
       renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
         worksheets: [testWorksheet]
       })
 
@@ -188,6 +248,7 @@ describe('WorksheetExplorer', () => {
       const user = userEvent.setup()
 
       renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
         worksheets: [testWorksheet]
       })
 
@@ -218,7 +279,10 @@ describe('WorksheetExplorer', () => {
 
       vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)
 
-      renderWithProviders(<WorksheetExplorer />, { worksheets: [] })
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: []
+      })
 
       const addButton = screen
         .getAllByRole('button')
