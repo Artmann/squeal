@@ -1,0 +1,41 @@
+/* Squeal - dark mode theme.
+ *
+ * Only the tokens that differ from light live here. The accent and the density
+ * metrics are shared and are defined by the `[data-theme='squeal']` rule in
+ * `squeal-light.css`.
+ */
+
+[data-theme='squeal'][data-mode='dark'] {
+  /* Surfaces */
+  --bg: oklch(20.5% 0.018 268);
+  --hover: oklch(30% 0.022 268);
+  --panel: oklch(24.5% 0.018 268);
+  --panel2: oklch(22.5% 0.018 268);
+  --sel: color-mix(in oklab, var(--accent) 32%, var(--bg));
+
+  /* Borders */
+  --border: oklch(37% 0.025 268);
+  --border2: oklch(31.5% 0.022 268);
+
+  /* Text */
+  --text: oklch(90% 0.012 268);
+  --text2: oklch(79% 0.018 268);
+  --text3: oklch(64% 0.022 268);
+
+  /* Accent */
+  --accent-btn: oklch(from var(--accent) 58% calc(c * 1.35) h);
+  --accent-soft: color-mix(in oklab, var(--accent) 24%, var(--panel));
+
+  /* Status */
+  --err: oklch(74% 0.13 25);
+  --err-bg: oklch(28% 0.04 25);
+  --err-border: oklch(42% 0.07 25);
+  --ok: oklch(72% 0.12 152);
+
+  /* Syntax */
+  --syn-fn: oklch(78% 0.1 310);
+  --syn-kw: oklch(76% 0.1 262);
+  --syn-num: oklch(79% 0.11 50);
+  --syn-op: oklch(66% 0.03 265);
+  --syn-str: oklch(77% 0.1 152);
+}

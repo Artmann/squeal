@@ -1,0 +1,53 @@
+/* Squeal - light mode theme.
+ *
+ * The mode-independent tokens (the accent and the density metrics) live in the
+ * `[data-theme='squeal']` rule below so a density change stays a one-block
+ * edit; `squeal-dark.css` only overrides what actually differs per mode.
+ */
+
+[data-theme='squeal'] {
+  /* Accent - fixed, the alternate swatches are out of scope. */
+  --accent: #5b7699;
+
+  /* Metrics */
+  --code-lh: 21px;
+  --code-size: 12.5px;
+  --item-h: 30px;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --row-h: 34px;
+}
+
+[data-theme='squeal'][data-mode='light'] {
+  /* Surfaces */
+  --bg: oklch(96.2% 0.004 250);
+  --hover: oklch(94.2% 0.005 250);
+  --panel: oklch(99% 0.002 250);
+  --panel2: oklch(97.6% 0.003 250);
+  --sel: color-mix(in oklab, var(--accent) 13%, var(--bg));
+
+  /* Borders */
+  --border: oklch(89.5% 0.006 250);
+  --border2: oklch(93.5% 0.004 250);
+
+  /* Text */
+  --text: oklch(28% 0.015 260);
+  --text2: oklch(47% 0.015 260);
+  --text3: oklch(63% 0.012 260);
+
+  /* Accent */
+  --accent-btn: oklch(from var(--accent) 50% c h);
+  --accent-soft: color-mix(in oklab, var(--accent) 10%, var(--panel));
+
+  /* Status */
+  --err: oklch(52% 0.15 25);
+  --err-bg: oklch(96.5% 0.02 25);
+  --err-border: oklch(85% 0.06 25);
+  --ok: oklch(62% 0.13 152);
+
+  /* Syntax */
+  --syn-fn: oklch(51% 0.11 310);
+  --syn-kw: oklch(47% 0.11 262);
+  --syn-num: oklch(54% 0.12 45);
+  --syn-op: oklch(55% 0.03 260);
+  --syn-str: oklch(51% 0.1 152);
+}

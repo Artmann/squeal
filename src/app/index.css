@@ -1,20 +1,18 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import '@fontsource-variable/geist';
-@import '@fontsource/geist-mono';
-@import '@fontsource-variable/bricolage-grotesque';
-@import './styles/themes/catppuccin-latte.css';
-@import './styles/themes/catppuccin-frappe.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
+@import './styles/themes/squeal-light.css';
+@import './styles/themes/squeal-dark.css';
 
 * {
   box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: var(--overlay-1) transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 *::-webkit-scrollbar-track {
@@ -22,14 +20,10 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: var(--overlay-1);
-  border-radius: 4px;
+  background: var(--border);
+  border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background-color: var(--overlay-2);
 }
 
 *::-webkit-scrollbar-corner {
@@ -37,46 +31,37 @@
 }
 
 @theme inline {
-  /* Base colors */
-  --color-base: var(--base);
-  --color-crust: var(--crust);
-  --color-mantle: var(--mantle);
-  --color-surface-0: var(--surface-0);
-  --color-surface-1: var(--surface-1);
-  --color-surface-2: var(--surface-2);
+  /* Surfaces */
+  --color-bg: var(--bg);
+  --color-hover: var(--hover);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-sel: var(--sel);
 
-  /* Text colors */
+  /* Borders */
+  --color-border: var(--border);
+  --color-border2: var(--border2);
+
+  /* Text */
   --color-text: var(--text);
-  --color-subtext-0: var(--subtext-0);
-  --color-subtext-1: var(--subtext-1);
+  --color-text2: var(--text2);
+  --color-text3: var(--text3);
 
-  /* Overlay colors */
-  --color-overlay-0: var(--overlay-0);
-  --color-overlay-1: var(--overlay-1);
-  --color-overlay-2: var(--overlay-2);
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-btn: var(--accent-btn);
+  --color-accent-soft: var(--accent-soft);
 
-  /* Accent colors */
-  --color-blue: var(--blue);
-  --color-flamingo: var(--flamingo);
-  --color-green: var(--green);
-  --color-lavender: var(--lavender);
-  --color-maroon: var(--maroon);
-  --color-mauve: var(--mauve);
-  --color-peach: var(--peach);
-  --color-pink: var(--pink);
-  --color-red: var(--red);
-  --color-rosewater: var(--rosewater);
-  --color-sapphire: var(--sapphire);
-  --color-sky: var(--sky);
-  --color-teal: var(--teal);
-  --color-yellow: var(--yellow);
+  /* Status */
+  --color-err: var(--err);
+  --color-err-bg: var(--err-bg);
+  --color-err-border: var(--err-border);
+  --color-ok: var(--ok);
 
   /* Shadcn/ui compatibility */
-  --color-accent: var(--surface-0);
-  --color-accent-foreground: var(--text);
-  --color-border: var(--surface-0);
-  --color-muted-foreground: var(--subtext-0);
-  --color-popover: var(--base);
+  --color-destructive: var(--err);
+  --color-muted-foreground: var(--text2);
+  --color-popover: var(--panel);
   --color-popover-foreground: var(--text);
 
   /* Radius */
@@ -86,9 +71,8 @@
   --radius-xl: 1rem;
 
   /* Typography */
-  --font-sans: 'Geist Variable', sans-serif;
-  --font-mono: 'Geist Mono', monospace;
-  --font-display: 'Bricolage Grotesque Variable', 'Geist Variable', sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: var(--mono);
 }
 
 @layer base {
@@ -98,8 +82,9 @@
   }
 
   body {
-    @apply bg-base text-text;
+    @apply bg-bg text-text;
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
   }
 
   .cm-editor {
