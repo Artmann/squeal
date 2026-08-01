@@ -1,0 +1,80 @@
+import { useCallback, useState } from 'react'
+
+export interface PersistedSizeOptions {
+  defaultSize: number
+  maximum: number
+  minimum: number
+  storageKey: string
+}
+
+export type PersistedSize = [size: number, setSize: (size: number) => void]
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
+// Storage can be unavailable (or throw) in some Electron contexts, and a
+// panel size is never important enough to break rendering over.
+function readStorageItem(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStorageItem(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // A size that fails to persist is still usable for this session.
+  }
+}
+
+// A stored size only survives when it is a finite number inside the current
+// bounds. Hand-edited storage, or bounds that moved between releases, fall
+// back to the default rather than laying out a broken panel.
+function readStoredSize(options: PersistedSizeOptions): number {
+  const { defaultSize, maximum, minimum, storageKey } = options
+
+  const stored = readStorageItem(storageKey)
+
+  if (stored === null || stored.trim() === '') {
+    return defaultSize
+  }
+
+  const parsed = Number(stored)
+
+  if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
+    return defaultSize
+  }
+
+  return Math.round(parsed)
+}
+
+// Panel size in pixels, clamped to the given bounds and persisted under
+// `storageKey`. Shared by the sidebar and the results splitter, so it stays
+// free of any assumption about which axis it measures.
+export function usePersistedSize(options: PersistedSizeOptions): PersistedSize {
+  const { defaultSize, maximum, minimum, storageKey } = options
+
+  const [size, setStoredSize] = useState(() =>
+    readStoredSize({ defaultSize, maximum, minimum, storageKey })
+  )
+
+  const setSize = useCallback(
+    (nextSize: number) => {
+      if (!Number.isFinite(nextSize)) {
+        return
+      }
+
+      const clamped = clamp(Math.round(nextSize), minimum, maximum)
+
+      setStoredSize(clamped)
+      writeStorageItem(storageKey, String(clamped))
+    },
+    [maximum, minimum, storageKey]
+  )
+
+  return [size, setSize]
+}

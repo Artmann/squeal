@@ -5,20 +5,22 @@ import { describe, expect, it, vi } from 'vitest'
 import { SearchInput } from './SearchInput'
 
 describe('SearchInput', () => {
-  it('renders an input with placeholder', () => {
+  it('renders an input with the given placeholder', () => {
     render(
       <SearchInput
+        placeholder="Filter worksheets"
         value=""
         onChange={vi.fn()}
       />
     )
 
-    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Filter worksheets')).toBeInTheDocument()
   })
 
   it('displays the provided value', () => {
     render(
       <SearchInput
+        placeholder="Filter tables"
         value="test query"
         onChange={vi.fn()}
       />
@@ -33,12 +35,13 @@ describe('SearchInput', () => {
 
     render(
       <SearchInput
+        placeholder="Filter tables"
         value=""
         onChange={onChange}
       />
     )
 
-    await user.type(screen.getByPlaceholderText('Search...'), 'hello')
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'hello')
 
     expect(onChange).toHaveBeenCalledTimes(5)
     expect(onChange).toHaveBeenLastCalledWith('o')
@@ -50,15 +53,19 @@ describe('SearchInput', () => {
         value=""
         onChange={vi.fn()}
         className="custom-class"
+        placeholder="Filter tables"
       />
     )
 
-    expect(screen.getByPlaceholderText('Search...')).toHaveClass('custom-class')
+    expect(screen.getByPlaceholderText('Filter tables')).toHaveClass(
+      'custom-class'
+    )
   })
 
   it('renders search icon', () => {
     const { container } = render(
       <SearchInput
+        placeholder="Filter tables"
         value=""
         onChange={vi.fn()}
       />

@@ -1,45 +1,46 @@
-import { ActivityIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
-import { useAppDispatch } from '../store'
-import { uiActions } from '../store/ui-slice'
-import { Button } from './ui/button'
-import { Separator } from './ui/separator'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import { usePersistedSize } from '../hooks/use-persisted-size'
 import { DatabaseExplorer } from './DatabaseExplorer'
+import { ResizeHandle } from './ResizeHandle'
 import { WorksheetExplorer } from './WorksheetExplorer'
 
+const defaultSidebarWidth = 264
+const maximumSidebarWidth = 380
+const minimumSidebarWidth = 200
+
 export function AppSidebar(): ReactElement {
-  const dispatch = useAppDispatch()
+  const [width, setWidth] = usePersistedSize({
+    defaultSize: defaultSidebarWidth,
+    maximum: maximumSidebarWidth,
+    minimum: minimumSidebarWidth,
+    storageKey: 'ui:sidebarWidth'
+  })
 
   return (
-    <div className="flex flex-col gap-2 text-xs w-80 h-full">
-      <div className="flex-[2] min-h-0 p-3">
+    <div
+      className="relative flex h-full min-h-0 flex-none flex-col border-r border-border bg-panel2"
+      style={{ width: `${width}px` }}
+    >
+      <div className="flex max-h-[44%] min-h-0 flex-col">
         <WorksheetExplorer />
       </div>
 
-      <Separator />
+      <div className="my-1 h-px flex-none bg-border" />
 
-      <div className="flex-[3] min-h-0 p-3">
+      <div className="flex min-h-0 flex-1 flex-col">
         <DatabaseExplorer />
       </div>
 
-      <div className="flex items-center border-t border-surface-0 px-3 py-1.5">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              aria-label="Open traces"
-              onClick={() => dispatch(uiActions.toggleTraceDashboard())}
-              size="icon-sm"
-              variant="ghost"
-            >
-              <ActivityIcon className="size-3" />
-            </Button>
-          </TooltipTrigger>
-
-          <TooltipContent side="top">Traces ⌘⇧T</TooltipContent>
-        </Tooltip>
-      </div>
+      {/* Sits astride the right border so the 5px grab area straddles it,
+          matching the design's `margin: 0 -2px` on a flex sibling. */}
+      <ResizeHandle
+        ariaLabel="Resize sidebar"
+        className="absolute top-0 -right-[2px] h-full w-[5px]"
+        orientation="col"
+        size={width}
+        onResize={setWidth}
+      />
     </div>
   )
 }

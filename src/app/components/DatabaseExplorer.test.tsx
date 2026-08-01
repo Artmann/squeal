@@ -97,8 +97,8 @@ describe('DatabaseExplorer', () => {
   it('renders the header and search input', () => {
     renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
 
-    expect(screen.getByText('Database Explorer')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
+    expect(screen.getByText('Databases')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Filter tables')).toBeInTheDocument()
   })
 
   it('renders database names', () => {
@@ -127,7 +127,7 @@ describe('DatabaseExplorer', () => {
 
     renderWithProviders(<DatabaseExplorer />, { databases })
 
-    await user.type(screen.getByPlaceholderText('Search...'), 'prod')
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'prod')
 
     expect(screen.getByText('Production')).toBeInTheDocument()
     expect(screen.queryByText('Staging')).not.toBeInTheDocument()
@@ -159,6 +159,9 @@ describe('DatabaseExplorer', () => {
 
     expect(screen.getByText('users')).toBeInTheDocument()
     expect(screen.getByText('posts')).toBeInTheDocument()
+
+    // A single-schema database stays free of schema badges.
+    expect(screen.queryByText('public')).not.toBeInTheDocument()
   })
 
   it('expands a table when clicked to reveal its columns', async () => {
@@ -170,12 +173,58 @@ describe('DatabaseExplorer', () => {
       schemas: { 'db-123': testSchema }
     })
 
-    expect(screen.queryByText('id (integer)')).not.toBeInTheDocument()
+    expect(screen.queryByText('integer')).not.toBeInTheDocument()
 
     await user.click(screen.getByText('users'))
 
-    expect(screen.getByText('id (integer)')).toBeInTheDocument()
-    expect(screen.getByText('name (varchar)')).toBeInTheDocument()
+    // The column line splits into a name and a right-aligned type.
+    expect(screen.getByText('id')).toBeInTheDocument()
+    expect(screen.getByText('integer')).toBeInTheDocument()
+    expect(screen.getByText('name')).toBeInTheDocument()
+    expect(screen.getByText('varchar')).toBeInTheDocument()
+  })
+
+  it('renders a schema badge when a database spans several schemas', () => {
+    const multiSchemaTables = [
+      testSchema.tables[0],
+      { ...testSchema.tables[1], tableSchema: 'reporting' }
+    ]
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databases: [testDatabase],
+      schemas: {
+        'db-123': { ...testSchema, tables: multiSchemaTables }
+      }
+    })
+
+    expect(screen.getByText('public')).toBeInTheDocument()
+    expect(screen.getByText('reporting')).toBeInTheDocument()
+  })
+
+  it('keeps same-named tables from different schemas independent', async () => {
+    const user = userEvent.setup()
+    const duplicatedTables = [
+      testSchema.tables[0],
+      { ...testSchema.tables[0], tableSchema: 'reporting' }
+    ]
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databases: [testDatabase],
+      schemas: {
+        'db-123': { ...testSchema, tables: duplicatedTables }
+      }
+    })
+
+    const tableRows = screen.getAllByText('users')
+
+    expect(tableRows).toHaveLength(2)
+
+    await user.click(tableRows[0])
+
+    // Only the expanded row reveals its columns — the keys carry the schema.
+    expect(screen.getAllByText('integer')).toHaveLength(1)
   })
 
   it('collapses an expanded database when clicked again', async () => {
@@ -228,7 +277,7 @@ describe('DatabaseExplorer', () => {
     })
 
     await waitFor(() => {
-      expect(store.getState().editor.openWorksheetId).toEqual('ws-users')
+      expect(store.getState().tabs.activeWorksheetId).toEqual('ws-users')
     })
   })
 
