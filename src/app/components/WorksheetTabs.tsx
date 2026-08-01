@@ -82,8 +82,10 @@ export function WorksheetTabs(): ReactElement {
       return
     }
 
-    tabElements
-      .get(activeWorksheetId)
+    // Read through the ref rather than the render-scoped alias, so the effect
+    // depends only on which tab is active.
+    tabRefs.current
+      ?.get(activeWorksheetId)
       ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [activeWorksheetId])
 
