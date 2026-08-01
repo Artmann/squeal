@@ -2,82 +2,105 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 
-export const catppuccinTheme = EditorView.theme({
+export const squealEditorTheme = EditorView.theme({
   '&': {
-    backgroundColor: 'var(--color-base)',
-    color: 'var(--color-text)'
+    backgroundColor: 'var(--panel)',
+    color: 'var(--text)'
+  },
+  '.cm-scroller': {
+    fontFamily: 'var(--mono)',
+    fontSize: 'var(--code-size)',
+    lineHeight: 'var(--code-lh)'
   },
   '.cm-content': {
-    caretColor: 'var(--color-text)'
+    caretColor: 'var(--text)',
+    padding: '12px 0'
   },
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'var(--color-text)'
+    borderLeftColor: 'var(--text)'
   },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
     {
-      backgroundColor: 'color-mix(in srgb, var(--color-mauve) 30%, transparent)'
+      backgroundColor: 'var(--sel)'
     },
   '.cm-activeLine': {
     backgroundColor: 'transparent'
   },
+  // The gutter sits on the editor background — no fill, no divider.
   '.cm-gutters': {
-    backgroundColor: 'var(--color-mantle)',
-    color: 'var(--color-overlay-0)',
-    borderRight: 'none'
-  },
-  '.cm-activeLineGutter': {
-    backgroundColor: 'var(--color-surface-0)'
-  },
-  '.cm-activeStatementGutter': {
-    backgroundColor: 'color-mix(in srgb, var(--color-mauve) 20%, transparent)'
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: 'var(--text3)',
+    fontSize: '11.5px',
+    userSelect: 'none'
   },
   '.cm-lineNumbers .cm-gutterElement': {
-    color: 'var(--color-overlay-0)'
+    color: 'var(--text3)',
+    minWidth: '46px',
+    padding: '0 16px 0 0',
+    textAlign: 'right'
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'transparent'
+  },
+  '.cm-activeStatementGutter': {
+    backgroundColor: 'color-mix(in oklab, var(--accent) 20%, transparent)'
   },
   '.cm-matchingBracket, .cm-nonmatchingBracket': {
-    backgroundColor: 'var(--color-surface-2)',
-    outline: '1px solid var(--color-overlay-0)'
+    backgroundColor: 'var(--hover)',
+    outline: '1px solid var(--text3)'
   },
   '.cm-searchMatch': {
-    backgroundColor: 'var(--color-yellow)',
-    color: 'var(--color-base)'
+    backgroundColor: 'var(--sel)',
+    color: 'var(--text)'
   },
   '.cm-searchMatch.cm-searchMatch-selected': {
-    backgroundColor: 'var(--color-peach)'
+    backgroundColor: 'var(--accent)',
+    color: '#fff'
   },
+  // Matches the connection popover in the toolbar.
   '.cm-tooltip': {
-    backgroundColor: 'var(--color-surface-0)',
-    border: '1px solid var(--color-surface-2)',
-    color: 'var(--color-text)'
+    backgroundColor: 'var(--panel)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.14)',
+    color: 'var(--text)'
   },
   '.cm-tooltip-autocomplete': {
+    padding: '4px',
+    '& > ul': {
+      fontFamily: 'var(--mono)',
+      fontSize: '12px'
+    },
+    '& > ul > li': {
+      borderRadius: '5px',
+      padding: '5px 8px'
+    },
     '& > ul > li[aria-selected]': {
-      backgroundColor: 'var(--color-surface-1)',
-      color: 'var(--color-text)'
+      backgroundColor: 'var(--hover)',
+      color: 'var(--text)'
     }
   }
 })
 
-const catppuccinHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: 'var(--color-mauve)' },
-  { tag: tags.operator, color: 'var(--color-sky)' },
-  { tag: tags.special(tags.string), color: 'var(--color-green)' },
-  { tag: tags.string, color: 'var(--color-green)' },
-  { tag: tags.number, color: 'var(--color-peach)' },
-  { tag: tags.comment, color: 'var(--color-overlay-1)', fontStyle: 'italic' },
-  { tag: tags.function(tags.variableName), color: 'var(--color-blue)' },
-  { tag: tags.variableName, color: 'var(--color-text)' },
-  { tag: tags.typeName, color: 'var(--color-yellow)' },
-  { tag: tags.propertyName, color: 'var(--color-blue)' },
-  { tag: tags.punctuation, color: 'var(--color-overlay-2)' },
-  { tag: tags.bracket, color: 'var(--color-overlay-2)' },
-  { tag: tags.null, color: 'var(--color-peach)' },
-  { tag: tags.bool, color: 'var(--color-peach)' },
-  { tag: tags.className, color: 'var(--color-yellow)' },
-  { tag: tags.definition(tags.variableName), color: 'var(--color-flamingo)' },
-  { tag: tags.labelName, color: 'var(--color-blue)' }
+const squealHighlightStyle = HighlightStyle.define([
+  { tag: tags.keyword, color: 'var(--syn-kw)' },
+  { tag: tags.operator, color: 'var(--syn-op)' },
+  { tag: tags.special(tags.string), color: 'var(--syn-str)' },
+  { tag: tags.string, color: 'var(--syn-str)' },
+  { tag: tags.number, color: 'var(--syn-num)' },
+  { tag: tags.comment, color: 'var(--text3)', fontStyle: 'italic' },
+  { tag: tags.function(tags.variableName), color: 'var(--syn-fn)' },
+  { tag: tags.variableName, color: 'var(--text)' },
+  { tag: tags.typeName, color: 'var(--text)' },
+  { tag: tags.propertyName, color: 'var(--text)' },
+  { tag: tags.punctuation, color: 'var(--syn-op)' },
+  { tag: tags.bracket, color: 'var(--syn-op)' },
+  { tag: tags.null, color: 'var(--syn-num)' },
+  { tag: tags.bool, color: 'var(--syn-num)' },
+  { tag: tags.className, color: 'var(--text)' },
+  { tag: tags.definition(tags.variableName), color: 'var(--text)' },
+  { tag: tags.labelName, color: 'var(--text)' }
 ])
 
-export const catppuccinHighlighting = syntaxHighlighting(
-  catppuccinHighlightStyle
-)
+export const squealHighlighting = syntaxHighlighting(squealHighlightStyle)

@@ -9,32 +9,67 @@ import {
   keymap
 } from '@codemirror/view'
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror'
+import { Sparkles } from 'lucide-react'
 import { ReactElement, useCallback, useMemo, useRef } from 'react'
+import { toast } from 'sonner'
 
+import type { DatabaseType } from '@/glue/api/schemas'
 import { type Statement } from '../sql-parser'
-import { catppuccinHighlighting, catppuccinTheme } from './codemirror-theme'
+import { squealEditorTheme, squealHighlighting } from './codemirror-theme'
+import { formatEditorContent } from './worksheet-editor-format'
+import {
+  type CursorPosition,
+  isSameCursorPosition,
+  toCursorPosition
+} from './worksheet-editor-cursor'
 import { findGutterMarkerPositions } from './worksheet-editor-lines'
 
 export interface WorksheetEditorProps {
   activeStatementIndex: number | null
   content: string
+  databaseType?: DatabaseType
   statements: Statement[]
   onChange?: (value: string) => void
+  onCursorChange?: (position: CursorPosition) => void
   onCursorPositionChange?: (position: number) => void
   onRunQuery?: () => void
+}
+
+// Formatting itself lives in `worksheet-editor-format` so it can be tested
+// against a real EditorState without mounting the component; this only turns a
+// parse failure into something the user sees.
+function runFormatCommand(
+  view: EditorView,
+  databaseType: DatabaseType | undefined
+): void {
+  const outcome = formatEditorContent(view, databaseType)
+
+  if (outcome !== 'parse-error') {
+    return
+  }
+
+  toast.error('Could not format this SQL', {
+    description:
+      'The statement has a syntax error the formatter could not parse. Fix it and try again.'
+  })
 }
 
 export function WorksheetEditor({
   activeStatementIndex,
   content,
+  databaseType,
   statements,
   onChange,
+  onCursorChange,
   onCursorPositionChange,
   onRunQuery
 }: WorksheetEditorProps): ReactElement {
+  const databaseTypeRef = useRef(databaseType)
   const editorRef = useRef<ReactCodeMirrorRef>(null)
+  const lastCursorPositionRef = useRef<CursorPosition | null>(null)
   const onRunQueryRef = useRef(onRunQuery)
 
+  databaseTypeRef.current = databaseType
   onRunQueryRef.current = onRunQuery
 
   const handleClickOutsideTheEditor = useCallback(() => {
@@ -47,19 +82,38 @@ export function WorksheetEditor({
     }
   }, [])
 
+  const handleFormatQuery = useCallback(() => {
+    const view = editorRef.current?.view
+
+    if (!view) {
+      return
+    }
+
+    runFormatCommand(view, databaseTypeRef.current)
+    view.focus()
+  }, [])
+
   const handleUpdate = useCallback(
     (update: ViewUpdate) => {
-      const position = update.state.selection.main.head
+      const offset = update.state.selection.main.head
+      const position = toCursorPosition(update.state.doc.lineAt(offset), offset)
 
-      onCursorPositionChange?.(position)
+      if (isSameCursorPosition(lastCursorPositionRef.current, position)) {
+        return
+      }
+
+      lastCursorPositionRef.current = position
+
+      onCursorPositionChange?.(position.offset)
+      onCursorChange?.(position)
     },
-    [onCursorPositionChange]
+    [onCursorChange, onCursorPositionChange]
   )
 
   const extensions = useMemo(() => {
     return [
-      catppuccinTheme,
-      catppuccinHighlighting,
+      squealEditorTheme,
+      squealHighlighting,
       sql(),
       EditorView.lineWrapping,
       autocompletion(),
@@ -73,6 +127,16 @@ export function WorksheetEditor({
 
                 return true
               }
+
+              return false
+            }
+          },
+          {
+            key: 'Mod-Shift-f',
+            run: (view) => {
+              runFormatCommand(view, databaseTypeRef.current)
+
+              return true
             }
           }
         ])
@@ -105,7 +169,16 @@ export function WorksheetEditor({
   }, [activeStatement])
 
   return (
-    <div className="w-full h-full overflow-hidden text-xs flex flex-col">
+    <div className="relative w-full h-full overflow-hidden text-xs flex flex-col">
+      <button
+        className="absolute top-[10px] right-[14px] z-20 flex size-7 items-center justify-center rounded-sm border border-border bg-panel text-text3 opacity-75 hover:bg-hover hover:text-text hover:opacity-100"
+        onClick={handleFormatQuery}
+        title="Format query"
+        type="button"
+      >
+        <Sparkles className="size-3.5" />
+      </button>
+
       <CodeMirror
         ref={editorRef}
         basicSetup={{
