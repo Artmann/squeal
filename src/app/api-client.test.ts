@@ -22,6 +22,20 @@ interface CapturedRequest {
   url: string
 }
 
+function toHeaderRecord(source: HeadersInit | undefined): Record<string, string> {
+  const headers: Record<string, string> = {}
+
+  if (source === undefined) {
+    return headers
+  }
+
+  new Headers(source).forEach((value, key) => {
+    headers[key.toLowerCase()] = value
+  })
+
+  return headers
+}
+
 // The client hands fetch a Request object, so assertions read it back rather
 // than inspecting a plain options bag.
 function captured(callIndex = 0): CapturedRequest {
@@ -30,25 +44,18 @@ function captured(callIndex = 0): CapturedRequest {
     RequestInit | undefined
   ]
 
-  const request = input instanceof Request ? input : undefined
-  const headers: Record<string, string> = {}
-
-  if (request) {
-    request.headers.forEach((value, key) => {
-      headers[key.toLowerCase()] = value
-    })
-  } else if (init?.headers) {
-    const initHeaders = new Headers(init.headers)
-
-    initHeaders.forEach((value, key) => {
-      headers[key.toLowerCase()] = value
-    })
+  if (input instanceof Request) {
+    return {
+      headers: toHeaderRecord(input.headers),
+      method: input.method,
+      url: input.url
+    }
   }
 
   return {
-    headers,
-    method: request?.method ?? init?.method ?? 'GET',
-    url: request ? request.url : String(input)
+    headers: toHeaderRecord(init?.headers),
+    method: init?.method ?? 'GET',
+    url: String(input)
   }
 }
 
