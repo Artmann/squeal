@@ -4,7 +4,7 @@ import { QueryClient } from '@tanstack/react-query'
 
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
-import { QueryDto } from '@/main/queries'
+import type { QueryDto } from '@/glue/api/schemas'
 
 import { apiClient } from './api-client'
 import { queryKeys } from './query-keys'

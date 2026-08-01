@@ -2,14 +2,17 @@ import { database } from '@/database'
 import { spansTable } from '@/database/schema'
 import { SpanRecord } from '@/glue/tracing/spans'
 
-export async function writeSpans(records: SpanRecord[]): Promise<number> {
+export async function writeSpans(
+  records: SpanRecord[],
+  client: typeof database = database
+): Promise<number> {
   if (records.length === 0) {
     return 0
   }
 
   // The span id is the primary key, so re-ingested renderer batches dedupe
   // instead of failing the whole insert.
-  const result = await database
+  const result = await client
     .insert(spansTable)
     .values(records.map(toRow))
     .onConflictDoNothing()

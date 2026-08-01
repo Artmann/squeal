@@ -1,14 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { Cause, Effect, Exit } from 'effect'
+import { randomBytes } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import started from 'electron-squirrel-startup'
+import { log } from 'tiny-typescript-logger'
 
-import { apiPort, startServer } from './api'
-import { initializeDatabase } from './database'
-import { migrateConnectionInfoEncryption } from './main/databases/connection-info-migration'
-import { isEncryptionAvailable } from './main/databases/secret-storage'
-import { startQueryRetentionSchedule } from './main/queries/query-retention'
-import { markInterruptedQueries } from './main/queries/reconcile-queries'
-import { startTraceRetentionSchedule } from './main/tracing/trace-retention'
+import { makeMainRuntime, type MainRuntime } from './server/runtime'
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -54,7 +52,25 @@ if (started) {
   app.quit()
 }
 
+// Taken before anything can touch the app database. A second instance used to
+// run the boot effects against the shared SQLite file and only then fail on the
+// port bind — and reconciliation marks *every* unfinished query failed, with no
+// instance scoping, so it poisoned the running instance's in-flight queries.
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!hasSingleInstanceLock) {
+  app.quit()
+}
+
 export let mainWindow: BrowserWindow
+
+let runtime: MainRuntime | undefined
+let quitting = false
+let disposed = false
+
+// Long enough for a normal flush, short enough that a wedged dependency cannot
+// hold the app open.
+const disposeTimeoutMs = 3_000
 
 const createWindow = async () => {
   mainWindow = new BrowserWindow({
@@ -100,43 +116,144 @@ const createWindow = async () => {
   }
 }
 
-app.on('ready', async () => {
-  // The packaged app gets its icon from the bundle, but in development macOS
-  // falls back to the Electron dock icon. The dock label still reads
-  // "Electron" — the OS takes the name from the dev binary's Info.plist,
-  // which only packaging can change.
-  if (!app.isPackaged && process.platform === 'darwin') {
-    app.dock?.setIcon(path.join(app.getAppPath(), 'assets/icons/icon.png'))
+// The packaged app gets its icon from the bundle, but in development macOS
+// falls back to the Electron dock icon. The dock label still reads "Electron" —
+// the OS takes the name from the dev binary's Info.plist, which only packaging
+// can change.
+function applyDevelopmentDockIcon(): void {
+  if (app.isPackaged || process.platform !== 'darwin') {
+    return
   }
 
-  await initializeDatabase()
+  app.dock?.setIcon(path.join(app.getAppPath(), 'assets/icons/icon.png'))
+}
 
-  // Runs before the server accepts requests so the renderer never sees a
-  // stale "running" query from a previous process.
-  await markInterruptedQueries()
-
-  startQueryRetentionSchedule()
-  startTraceRetentionSchedule()
-
-  // safeStorage is only reliable once the app is ready.
-  await migrateConnectionInfoEncryption()
-
-  const allowedOrigins = ['null']
+function corsAllowedOrigins(): string[] {
+  // 'null' is the Origin a packaged renderer sends when loaded from file://.
+  const origins = ['null']
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    allowedOrigins.push(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
+    origins.push(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
   }
 
-  const { token } = startServer(apiPort, {
-    allowedOrigins,
-    encryptionAvailable: isEncryptionAvailable(),
+  return origins
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+// Quitting while the layer is still building interrupts it. That is a shutdown,
+// not a boot failure, so it must not raise a dialog racing the before-quit
+// handler's own exit.
+function isShutdownInterruption(cause: Cause.Cause<unknown>): boolean {
+  return quitting || Cause.isInterruptedOnly(cause)
+}
+
+function reportBootFailure(error: unknown): void {
+  // Written synchronously: app.exit terminates before buffered stdout would be
+  // flushed, and a boot failure with no trace is undebuggable.
+  writeFileSync(
+    path.join(app.getPath('temp'), 'squeal-boot-error.log'),
+    `${new Date().toISOString()}\n${
+      error instanceof Error ? (error.stack ?? error.message) : String(error)
+    }\n`
+  )
+  log.error(`The backend failed to boot: ${String(error)}`)
+
+  dialog.showErrorBox(
+    'Squeal could not start',
+    `The backend failed to boot: ${describeError(
+      error
+    )}\n\nIf another Squeal instance is running, close it and try again.`
+  )
+}
+
+app.on('ready', async () => {
+  // A losing second instance is already quitting; booting the backend here
+  // would still write to the shared database before the process goes away.
+  if (!hasSingleInstanceLock) {
+    return
+  }
+
+  applyDevelopmentDockIcon()
+
+  apiToken = randomBytes(32).toString('hex')
+
+  runtime = makeMainRuntime({
+    allowedOrigins: corsAllowedOrigins(),
     // Lets local agents read traces with plain curl during development.
-    publicTraceReads: !app.isPackaged
+    publicTraceReads: !app.isPackaged,
+    token: apiToken
   })
 
-  apiToken = token
+  // Forces the runtime layer to build: the app database initializes,
+  // interrupted queries are reconciled, the encryption migration runs
+  // (safeStorage is only reliable once the app is ready), and only then
+  // does the HTTP server start listening.
+  const bootExit = await runtime.runPromiseExit(Effect.void)
+
+  if (Exit.isFailure(bootExit)) {
+    if (isShutdownInterruption(bootExit.cause)) {
+      return
+    }
+
+    reportBootFailure(Cause.squash(bootExit.cause))
+    app.exit(1)
+
+    return
+  }
 
   createWindow()
+})
+
+app.on('second-instance', () => {
+  if (mainWindow === undefined) {
+    return
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+
+  mainWindow.focus()
+})
+
+// The first real shutdown path this app has had: disposing the runtime
+// closes the HTTP server, interrupts the retention fibers and any running
+// queries (best-effort canceling their server-side statements), and releases
+// the app database.
+app.on('before-quit', (event) => {
+  if (runtime === undefined || disposed) {
+    return
+  }
+
+  // Every quit signal arriving during the dispose window has to keep being
+  // prevented. Returning early without preventDefault let a second Cmd+Q — or
+  // window-all-closed firing app.quit() — complete the quit and kill the
+  // process mid-flush, defeating the whole point of this handler.
+  event.preventDefault()
+
+  if (quitting) {
+    return
+  }
+
+  quitting = true
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(resolve, disposeTimeoutMs)
+  })
+
+  void Promise.race([runtime.dispose(), timeout]).finally(() => {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+    }
+
+    disposed = true
+    app.exit(0)
+  })
 })
 
 app.on('window-all-closed', () => {

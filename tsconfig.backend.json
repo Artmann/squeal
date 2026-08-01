@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "@effect/language-service" }],
+    "strict": true,
+    "types": ["node"]
+  },
+  "include": ["src/glue/**/*", "src/server/**/*"]
+}

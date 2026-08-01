@@ -1,7 +1,7 @@
 import { ReactElement } from 'react'
 
 import { cn } from '@/app/lib/utils'
-import type { SpanDto } from '@/main/tracing/routes'
+import type { SpanDto } from '@/glue/api/schemas'
 
 import { Separator } from '../ui/separator'
 import { formatDuration } from './format-duration'

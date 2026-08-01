@@ -70,28 +70,46 @@ production leak. Rules for all TypeScript code:
 ## Prefered Tools
 
 - Bun
+- Effect-TS (the whole backend; also the renderer's API client)
 - Tailwind CSS
 - shadcn/ui
 - Lucide icons
 - React hook form
 - tiny-invariant
 - tiny-typescript-logger
-- Zod
+- Zod (renderer form validation only — the API contract uses Effect Schema)
 
 ## Architecture
 
-- **Main process** (`src/main.ts`): Electron app + Hono API server on port 7847
-- **Renderer process** (`src/app/`): React frontend
-- **API routes**: `src/databases/`, `src/main/chat/`, `src/main/queries/`,
-  `src/main/worksheets/`
-- **Database**: SQLite via Drizzle for app state, PostgreSQL for user queries
+The backend is written in Effect-TS. Services are `Effect.Service` classes
+with `accessors: true` that declare their own dependencies; the whole backend
+is one layer graph owned by a `ManagedRuntime` that Electron builds on `ready`
+and disposes on `before-quit`.
+
+- **Main process** (`src/main.ts`): Electron app; builds the runtime, mints
+  the session token, owns process exit
+- **Backend** (`src/server/`): HTTP layer, services, tracing, retention
+- **Shared contract** (`src/glue/api/`): the `HttpApi` definition, Effect
+  Schema request/response types, and the tagged error catalog — imported by
+  both processes, so it must stay free of main-process imports
+- **Renderer process** (`src/app/`): React frontend; its API client is derived
+  from the shared contract
+- **Database**: SQLite via Drizzle for app state, PostgreSQL/MySQL/SQLite
+  adapters for user queries (promise-based, wrapped in services)
 
 ## Key Files
 
-- `src/api.ts` - Hono server setup, mounts all routers
+- `src/glue/api/api.ts` - the `SquealApi` definition (single source of truth
+  for routes, payloads, and errors)
+- `src/glue/api/errors.ts` - tagged errors with their HTTP statuses
+- `src/server/runtime.ts` - the layer graph and `ManagedRuntime`
+- `src/server/http/server.ts` - handlers, CORS, and the loopback server layer
+- `src/server/services/query-runner.ts` - async query execution and cancel
+- `src/server/tracing/effect-tracer.ts` - Effect tracer writing to the spans
+  table
 - `src/database/schema.ts` - Drizzle schema definitions
-- `src/main/queries/query-runner.ts` - Executes queries against PostgreSQL
 - `src/databases/postgres-adapter.ts` - PostgreSQL connection handling
+- `src/app/api-client.ts` - typed client derived from the contract
 - `src/app/App.tsx` - Main React component
 
 ## Commands
@@ -99,6 +117,10 @@ production leak. Rules for all TypeScript code:
 - `yarn start` - Development mode
 - `yarn seed` - Seed PostgreSQL with Pagila sample data
 - `yarn lint` / `yarn format` - Code quality
+- `yarn typecheck` - Runs two projects: `tsconfig.backend.json` (strict,
+  covers `src/server` and `src/glue`) and `tsconfig.renderer.json`
+- `yarn test` - Vitest, split into a `backend` project (node environment) and
+  a `renderer` project (jsdom)
 - `npx drizzle-kit generate` - Generate migrations after schema changes
 
 ## Notes
@@ -108,9 +130,19 @@ production leak. Rules for all TypeScript code:
   only)
 - The API requires a per-session bearer token on every route except `/health`
   (and, in dev, GET `/traces*`). The renderer gets it via
-  `window.electron.getApiToken()`; the token is not printed at startup.
+  `window.electron.getApiToken()`; the token is not printed at startup. Auth
+  is an `HttpApiMiddleware`, applied per group — the trace-read carve-out is
+  a separate middleware tag rather than path matching.
+- Errors are `Schema.TaggedError`s: the body is the serialized error
+  (`{ _tag, message, ... }`) and the status comes from its annotation, so the
+  renderer discriminates on `_tag`. Errors internal to the backend
+  (`src/server/errors.ts`) are never in the contract — they become defects
+  and surface as a 500.
 - Query execution is async: POST creates query, poll GET `/queries/:id` for
-  results
+  results. The background fiber lives in a `FiberMap` owned by the runtime
+  scope, so shutdown interrupts it; user cancel goes through the adapter
+  (`pg_cancel_backend`), never fiber interruption, and there is deliberately
+  no timeout on user queries.
 - Database `connectionInfo` is encrypted at rest with Electron `safeStorage`
   (`enc:v1:` prefix in the `databases` table; see
   `src/main/databases/secret-storage.ts`). API responses never include passwords
@@ -124,7 +156,16 @@ production leak. Rules for all TypeScript code:
 
 OTEL-style tracing is built in: the renderer and main process emit spans (W3C
 `traceparent` propagation) into the `spans` table of the app SQLite database.
-Retention: 7 days / 50,000 spans (`src/main/tracing/`).
+Retention: 7 days / 50,000 spans, swept by scoped fibers in
+`src/server/retention.ts`.
+
+In the main process this is Effect's own tracing: a custom `Tracer`
+(`src/server/tracing/effect-tracer.ts`) writes finished spans straight into
+the table, so anything wrapped in `Effect.fn('Service.method')` or
+`Effect.withSpan` shows up in the dashboard for free. Server spans are
+renamed at write time to `METHOD /route` so the trace list keeps its
+familiar names. The renderer's tracer stays hand-rolled and batches spans to
+`POST /traces/spans`.
 
 - **Agent access (dev only, no token needed)**:
   `curl 'http://127.0.0.1:7847/traces?limit=20'` lists traces (filters:
@@ -138,11 +179,15 @@ Retention: 7 days / 50,000 spans (`src/main/tracing/`).
   including exception stack traces. `Esc` steps back one level at a time (span →
   trace → list → close).
 - Running a query produces one trace rooted in the renderer: `query.run` →
-  `HTTP POST /queries` → `POST /queries` (server) → `query.execute` →
-  `query.loadConnection` / `db.query` / `query.saveResult`.
+  `HTTP POST /queries` → `POST /queries` (server) →
+  `QueryRunner.createAndRun` → `query.execute` → `query.loadConnection` /
+  `db.query` / `query.saveResult`. The background fiber inherits the request
+  span as its parent automatically.
 - Deliberately untraced: `/health`, `/traces*`, and the 250ms result poller
-  (`GET /queries/:id`). Uncaught renderer errors and unhandled rejections appear
-  as `renderer.error` traces.
+  (`GET /queries/:id`) — see `src/server/tracing/trace-skip.ts`. Service
+  methods on those paths use an unnamed `Effect.fn` so they do not emit
+  parentless root traces. Uncaught renderer errors and unhandled rejections
+  appear as `renderer.error` traces.
 
 ## Testing the running app with agent-browser
 

@@ -8,11 +8,11 @@ import { queryPollInterval } from './queries'
 import { queryKeys } from '../query-keys'
 import {
   CreateDatabaseRequest,
+  type CreateWorksheetRequest,
+  type QueryDto,
   UpdateDatabaseRequest
-} from '@/databases/schemas'
+} from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
-import { CreateWorksheetRequest } from '@/glue/worksheets'
-import { QueryDto } from '@/main/queries'
 
 const cancelPollAttempts = 20
 

@@ -11,14 +11,19 @@ import { useForm, type Resolver, type UseFormReturn } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
-import { CreateConnectionTestResponse } from '@/databases'
-import {
+import type {
+  ConnectionTestResponse,
   CreateDatabaseRequest,
-  createDatabaseSchema,
   DatabaseType,
-  databaseTypeSchema,
   SslMode,
   UpdateConnectionInfo,
+  UpdateDatabaseRequest
+} from '@/glue/api/schemas'
+// The form is validated client-side with zod through react-hook-form's
+// resolver; the API contract itself is Effect Schema.
+import {
+  createDatabaseSchema,
+  databaseTypeSchema,
   updateDatabaseSchema
 } from '@/databases/schemas'
 import { ApiError } from '@/errors'
@@ -88,6 +93,33 @@ function getDefaultConnectionInfo(
     sslRootCert: stringOrEmpty(info.sslRootCert),
     username: stringOrEmpty(info.username)
   }
+}
+
+// The row exists but its stored secret could not be decrypted — most often
+// because the OS keychain was reset. Saving the form re-encrypts and repairs it,
+// so say that rather than silently showing blank fields.
+function UnreadableConnectionNotice({
+  defaultValues,
+  isEditMode
+}: {
+  defaultValues: DatabaseFormProps['defaultValues']
+  isEditMode: boolean
+}): ReactElement | null {
+  const unreadable =
+    isEditMode &&
+    defaultValues !== undefined &&
+    defaultValues.connectionInfo === undefined
+
+  if (!unreadable) {
+    return null
+  }
+
+  return (
+    <p className="rounded-md border border-yellow/40 bg-yellow/10 px-3 py-2 text-xs text-yellow">
+      Squeal could not read this connection&apos;s stored details. Enter them
+      again and save to repair it.
+    </p>
+  )
 }
 
 export function DatabaseForm({
@@ -167,6 +199,11 @@ export function DatabaseForm({
         className="flex flex-col gap-8"
         onSubmit={form.handleSubmit(handleSubmit)}
       >
+        <UnreadableConnectionNotice
+          defaultValues={defaultValues}
+          isEditMode={isEditMode}
+        />
+
         {databaseType !== 'sqlite' && (
           <ConnectionStringSection
             form={form}
@@ -259,7 +296,9 @@ function useSaveDatabase({
 
       if (isEditMode && databaseId) {
         updateDatabase.mutate(
-          { id: databaseId, request: values },
+          // The resolver validated connectionInfo, which zod's transform
+          // output types as optional.
+          { id: databaseId, request: values as UpdateDatabaseRequest },
           {
             onSuccess: handleSuccess,
             onError: handleFailure
@@ -296,7 +335,7 @@ function useConnectionTest({
   form
 }: UseConnectionTestOptions) {
   const [connectTestResult, setConnectTestResult] = useState<
-    CreateConnectionTestResponse | undefined
+    ConnectionTestResponse | undefined
   >()
   const [isTestingConnection, setIsTestingConnection] = useState(false)
 

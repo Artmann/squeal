@@ -1,4 +1,4 @@
-import type { SpanDto } from '@/main/tracing/routes'
+import type { SpanDto } from '@/glue/api/schemas'
 
 const minBarWidthPercent = 0.5
 

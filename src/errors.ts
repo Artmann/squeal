@@ -1,5 +1,7 @@
-import { ZodError } from 'zod'
-
+// The renderer's transport-level error. Failures declared in the API
+// contract arrive as their own tagged classes (`src/glue/api/errors.ts`);
+// this covers what the contract does not describe — decode failures and
+// network faults.
 export class ApiError extends Error {
   statusCode: number
   details?: Record<string, string>
@@ -13,26 +15,5 @@ export class ApiError extends Error {
     this.statusCode = statusCode
     this.details = details
     this.name = 'ApiError'
-  }
-}
-
-export class ValidationError extends ApiError {
-  constructor(zodError: ZodError) {
-    const details: Record<string, string> = {}
-
-    for (const issue of zodError.issues) {
-      const field = issue.path.join('.')
-      let message = issue.message
-
-      // Clean up the message format
-      if (!message.endsWith('.')) {
-        message = message + '.'
-      }
-
-      details[field] = message
-    }
-
-    super(400, 'Validation error', details)
-    this.name = 'ValidationError'
   }
 }
