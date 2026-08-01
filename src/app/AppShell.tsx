@@ -13,25 +13,25 @@ import { useCollections } from './collections-context'
 import { Button } from './components/ui/button'
 import { useQueriesList, useWorksheets } from './hooks/queries'
 import { useAppDispatch, useAppSelector } from './store'
-import { editorSlice } from './store/editor-slice'
+import { selectActiveWorksheetId, tabsActions } from './store/tabs-slice'
 import { captureRendererError } from './tracing/init'
 import { pickWorksheetToOpen } from './worksheet-selection'
 
 function FullScreenSpinner(): ReactNode {
   return (
-    <div className="w-full h-screen flex items-center justify-center bg-mantle">
-      <Loader2Icon className="size-6 animate-spin text-subtext-0" />
+    <div className="w-full h-screen flex items-center justify-center bg-panel2">
+      <Loader2Icon className="size-6 animate-spin text-text2" />
     </div>
   )
 }
 
 function DataLoadError({ onRetry }: { onRetry: () => void }): ReactNode {
   return (
-    <div className="w-full h-screen flex items-center justify-center bg-mantle">
+    <div className="w-full h-screen flex items-center justify-center bg-panel2">
       <div className="w-full max-w-sm flex flex-col gap-4 text-center">
         <h2 className="text-lg font-medium">Could not load your data</h2>
 
-        <p className="text-subtext-0 text-sm">
+        <p className="text-text2 text-sm">
           The app could not reach the local server. Make sure it is running and
           try again.
         </p>
@@ -84,17 +84,21 @@ function AppDataLoader({ children }: { children: ReactNode }): ReactNode {
   useQueriesList()
 
   const dispatch = useAppDispatch()
-  const openWorksheetId = useAppSelector(
-    (state) => state.editor.openWorksheetId
-  )
+  const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
 
   useEffect(() => {
-    const pick = pickWorksheetToOpen(worksheets.data, openWorksheetId)
+    // Tabs are restored from localStorage before the worksheets have loaded, so
+    // they can name worksheets deleted in another session. Reconciling here
+    // drops those and falls back to the usual pick when nothing survives.
+    const availableIds = worksheets.data.map((worksheet) => worksheet.id)
 
-    if (pick) {
-      dispatch(editorSlice.actions.worksheetSelected(pick))
-    }
-  }, [worksheets.data, openWorksheetId, dispatch])
+    dispatch(
+      tabsActions.tabsReconciled({
+        availableIds,
+        fallbackId: pickWorksheetToOpen(worksheets.data, activeWorksheetId)
+      })
+    )
+  }, [worksheets.data, activeWorksheetId, dispatch])
 
   return children
 }

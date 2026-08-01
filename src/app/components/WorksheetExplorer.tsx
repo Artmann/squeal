@@ -14,7 +14,7 @@ import {
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
-import { useWorksheets } from '../hooks/queries'
+import { useDatabases, useWorksheets } from '../hooks/queries'
 import { useCreateWorksheet, useReorderWorksheets } from '../hooks/mutations'
 import {
   staticListStrategy,
@@ -24,24 +24,13 @@ import {
 import { useReorderDrag } from '../hooks/use-reorder-drag'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
-import {
-  worksheetSearchQueryUpdated,
-  worksheetSelected
-} from '../store/editor-slice'
-import { Button } from './ui/button'
+import { worksheetSearchQueryUpdated } from '../store/editor-slice'
+import { selectActiveWorksheetId, tabsActions } from '../store/tabs-slice'
+import { getNextUntitledName } from '../worksheet-naming'
 import { Input } from './ui/input'
 import { DropIndicatorLine } from './DropIndicatorLine'
 import { SearchInput } from './SearchInput'
 import { WorksheetDto } from '@/glue/worksheets'
-
-function getNextUntitledName(worksheets: WorksheetDto[]): string {
-  const untitledCount = worksheets.filter(
-    (worksheet) =>
-      worksheet.name === 'Untitled' || /^Untitled \d+$/.test(worksheet.name)
-  ).length
-
-  return untitledCount === 0 ? 'Untitled' : `Untitled ${untitledCount + 1}`
-}
 
 function useWorksheetRename(worksheets: WorksheetDto[]) {
   const { worksheets: worksheetsCollection } = useCollections()
@@ -130,10 +119,9 @@ function useWorksheetRename(worksheets: WorksheetDto[]) {
 
 export function WorksheetExplorer(): ReactElement {
   const dispatch = useAppDispatch()
+  const databases = useDatabases()
   const worksheets = useWorksheets()
-  const openWorksheetId = useAppSelector(
-    (state) => state.editor.openWorksheetId
-  )
+  const openWorksheetId = useAppSelector(selectActiveWorksheetId)
   const worksheetSearchQuery = useAppSelector(
     (state) => state.editor.worksheetSearchQuery ?? ''
   )
@@ -191,7 +179,7 @@ export function WorksheetExplorer(): ReactElement {
 
   const handleSelectWorksheet = useCallback(
     (worksheetId: string) => {
-      dispatch(worksheetSelected(worksheetId))
+      dispatch(tabsActions.tabOpened(worksheetId))
       touchWorksheet(worksheetId)
     },
     [dispatch, touchWorksheet]
@@ -204,7 +192,7 @@ export function WorksheetExplorer(): ReactElement {
       { name },
       {
         onSuccess: (worksheet) => {
-          dispatch(worksheetSelected(worksheet.id))
+          dispatch(tabsActions.tabOpened(worksheet.id))
           touchWorksheet(worksheet.id)
           startEditing(worksheet)
         },
@@ -218,25 +206,33 @@ export function WorksheetExplorer(): ReactElement {
     )
   }, [createWorksheet, dispatch, startEditing, touchWorksheet, worksheets.data])
 
+  // Worksheets show which database they run against, so the names are looked
+  // up once per render instead of per row.
+  const databaseNames = new Map(
+    databases.data.map((database) => [database.id, database.name])
+  )
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="mb-2 flex justify-between items-center">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-subtext-0">
+    <div className="flex min-h-0 flex-col">
+      <div className="flex flex-none items-center justify-between pt-[14px] pr-3 pb-2 pl-4">
+        <h2 className="text-[11px] font-semibold tracking-[0.08em] text-text3 uppercase">
           Worksheets
         </h2>
-        <div>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={handleNewWorksheet}
-          >
-            <PlusIcon className="size-3" />
-          </Button>
-        </div>
+
+        <button
+          aria-label="New worksheet"
+          className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
+          title="New worksheet"
+          type="button"
+          onClick={handleNewWorksheet}
+        >
+          <PlusIcon className="size-3" />
+        </button>
       </div>
 
-      <div className="mb-2">
+      <div className="mx-3 mb-2 flex-none">
         <SearchInput
+          placeholder="Filter worksheets"
           value={worksheetSearchQuery}
           onChange={(newValue) =>
             dispatch(worksheetSearchQueryUpdated(newValue))
@@ -244,9 +240,9 @@ export function WorksheetExplorer(): ReactElement {
         />
       </div>
 
-      <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
+      <div className="flex min-h-0 flex-col gap-[1px] overflow-y-auto px-2 pb-2">
         {filteredWorksheets.length === 0 && (
-          <p className="text-xs text-subtext-0 px-1 mt-1 leading-relaxed">
+          <p className="mt-1 px-1 text-xs leading-relaxed text-text2">
             Worksheets are where you write and save SQL.{' '}
             <button
               className="underline underline-offset-2 hover:text-text transition-colors"
@@ -292,6 +288,11 @@ export function WorksheetExplorer(): ReactElement {
                   />
                 ) : (
                   <WorksheetListItem
+                    databaseName={
+                      worksheet.databaseId
+                        ? databaseNames.get(worksheet.databaseId)
+                        : undefined
+                    }
                     isOpen={worksheet.id === openWorksheetId}
                     worksheet={worksheet}
                     onDoubleClick={startEditing}
@@ -331,7 +332,7 @@ function WorksheetRow({
   return (
     <div
       ref={setNodeRef}
-      className={cn('relative', isDragging && 'opacity-50')}
+      className={cn('relative flex-none', isDragging && 'opacity-50')}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       {...(isSortingDisabled ? {} : listeners)}
     >
@@ -343,6 +344,7 @@ function WorksheetRow({
 }
 
 interface WorksheetListItemProps {
+  databaseName?: string
   isOpen: boolean
   worksheet: WorksheetDto
   onDoubleClick: (worksheet: WorksheetDto) => void
@@ -350,27 +352,39 @@ interface WorksheetListItemProps {
 }
 
 function WorksheetListItem({
+  databaseName,
   isOpen,
   worksheet,
   onDoubleClick,
   onSelect
 }: WorksheetListItemProps): ReactElement {
   return (
-    <Button
+    <button
       className={cn(
-        'w-full px-3 py-0.5 text-left flex justify-start items-center gap-2 text-xs font-normal',
-        isOpen
-          ? 'bg-mauve/10 text-mauve shadow-[inset_2px_0_0_var(--color-mauve)]'
-          : ''
+        'flex h-[var(--item-h)] w-full flex-none items-center gap-2 rounded-[6px] px-2 text-left hover:bg-hover',
+        isOpen ? 'bg-sel text-text' : 'text-text2'
       )}
-      size="sm"
-      variant="ghost"
+      type="button"
       onClick={() => onSelect(worksheet.id)}
       onDoubleClick={() => onDoubleClick(worksheet)}
     >
-      <FileBracesIcon />
-      {worksheet.name}
-    </Button>
+      <FileBracesIcon
+        className={cn(
+          'size-[13px] flex-none',
+          isOpen ? 'text-accent' : 'text-text3'
+        )}
+      />
+
+      <span className="min-w-0 flex-1 truncate text-[12.5px]">
+        {worksheet.name}
+      </span>
+
+      {databaseName !== undefined && (
+        <span className="max-w-[76px] flex-none truncate rounded-[4px] border border-border2 bg-bg px-[5px] py-[1.5px] font-mono text-[10px] text-text3">
+          {databaseName}
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -392,11 +406,12 @@ function WorksheetRenameInput({
   onRenameSubmit
 }: WorksheetRenameInputProps): ReactElement {
   return (
-    <div className="flex items-center gap-2 px-3 py-0.5">
-      <FileBracesIcon className="size-4 shrink-0" />
+    <div className="flex h-[var(--item-h)] items-center gap-2 px-2">
+      <FileBracesIcon className="size-[13px] flex-none text-text3" />
+
       <Input
         ref={inputRef}
-        className="h-5 text-[11px] px-1 py-0"
+        className="h-[22px] rounded-[4px] px-1 py-0 text-[12.5px] shadow-none md:text-[12.5px] focus-visible:ring-0"
         value={editingName}
         onBlur={() => onRenameSubmit(worksheetId)}
         onChange={(event) => onEditingNameChange(event.target.value)}

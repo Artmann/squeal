@@ -1,8 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
+// Which worksheet is open now lives in the tabs slice — `tabOpened` both opens
+// and activates, so there is no separate "selected" concept any more.
 export interface EditorState {
   databaseSearchQuery: string
-  openWorksheetId?: string
   worksheetSearchQuery: string
 }
 
@@ -18,19 +19,13 @@ export const editorSlice = createSlice({
     databaseSearchQueryUpdated: (state, action: PayloadAction<string>) => {
       state.databaseSearchQuery = action.payload
     },
-    worksheetSelected: (state, action: PayloadAction<string>) => {
-      state.openWorksheetId = action.payload
-    },
     worksheetSearchQueryUpdated: (state, action: PayloadAction<string>) => {
       state.worksheetSearchQuery = action.payload
     }
   }
 })
 
-export const {
-  databaseSearchQueryUpdated,
-  worksheetSearchQueryUpdated,
-  worksheetSelected
-} = editorSlice.actions
+export const { databaseSearchQueryUpdated, worksheetSearchQueryUpdated } =
+  editorSlice.actions
 
 export default editorSlice.reducer
