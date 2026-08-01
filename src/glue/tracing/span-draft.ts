@@ -32,7 +32,7 @@ export class SpanDraft {
   private readonly events: SpanEvent[] = []
   private finished = false
   private readonly kind: SpanKind
-  private name: string
+  private readonly name: string
   private readonly parentSpanId: string | null
   private readonly serviceName: TraceServiceName
   private readonly startedAt = Date.now()
@@ -104,14 +104,6 @@ export class SpanDraft {
       typeof value === 'string'
         ? truncateValue(value, maxAttributeValueLength)
         : value
-  }
-
-  setName(name: string): void {
-    if (this.finished) {
-      return
-    }
-
-    this.name = name
   }
 
   setStatus(status: SpanStatus, message?: string): void {
