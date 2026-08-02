@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,6 +11,7 @@ import { WorksheetExplorer } from './WorksheetExplorer'
 vi.mock('../api-client', () => ({
   apiClient: {
     createWorksheet: vi.fn(),
+    deleteWorksheet: vi.fn(),
     getDatabases: vi.fn(async () => []),
     updateWorksheet: vi.fn()
   }
@@ -304,6 +305,88 @@ describe('WorksheetExplorer', () => {
           name: 'My New Worksheet'
         })
       })
+    })
+  })
+  describe('deleting', () => {
+    const secondWorksheet: WorksheetDto = {
+      ...testWorksheet,
+      id: 'ws-456',
+      name: 'Second Worksheet'
+    }
+
+    it('deletes a worksheet after confirming via the action toast', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.deleteWorksheet).mockResolvedValue(undefined)
+
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [testWorksheet, secondWorksheet]
+      })
+
+      fireEvent.contextMenu(screen.getByText('Second Worksheet'))
+
+      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+
+      // The toast asks first; nothing is deleted until it is confirmed.
+      expect(apiClient.deleteWorksheet).not.toHaveBeenCalled()
+      expect(
+        await screen.findByText('Delete "Second Worksheet"?')
+      ).toBeVisible()
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+      await waitFor(() => {
+        expect(apiClient.deleteWorksheet).toHaveBeenCalledWith('ws-456')
+      })
+    })
+
+    it('does not delete when the confirmation is ignored', async () => {
+      const user = userEvent.setup()
+
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [testWorksheet, secondWorksheet]
+      })
+
+      fireEvent.contextMenu(screen.getByText('Second Worksheet'))
+
+      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+
+      expect(
+        await screen.findByText('Delete "Second Worksheet"?')
+      ).toBeVisible()
+      expect(apiClient.deleteWorksheet).not.toHaveBeenCalled()
+    })
+
+    // The app is built around always having a worksheet open, and the list
+    // endpoint would just recreate a default one.
+    it('disables delete for the last remaining worksheet', async () => {
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [testWorksheet]
+      })
+
+      fireEvent.contextMenu(screen.getByText('Test Worksheet'))
+
+      expect(
+        await screen.findByRole('menuitem', { name: 'Delete' })
+      ).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('offers Rename in the same menu', async () => {
+      const user = userEvent.setup()
+
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [testWorksheet, secondWorksheet]
+      })
+
+      fireEvent.contextMenu(screen.getByText('Second Worksheet'))
+
+      await user.click(await screen.findByRole('menuitem', { name: 'Rename' }))
+
+      expect(await screen.findByDisplayValue('Second Worksheet')).toBeVisible()
     })
   })
 })

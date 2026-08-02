@@ -62,6 +62,33 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
         return worksheets.map(transformWorksheet)
       })
 
+      const remove = Effect.fn('WorksheetService.remove')(function* (
+        id: string
+      ) {
+        // Soft delete, so the update returns the row only while it is still
+        // live — deleting twice is a 404 rather than a silent success.
+        const [worksheet] = yield* appDatabase.execute((client) =>
+          client
+            .update(worksheetsTable)
+            .set({ deletedAt: Date.now() })
+            .where(
+              and(eq(worksheetsTable.id, id), isNull(worksheetsTable.deletedAt))
+            )
+            .returning()
+        )
+
+        if (worksheet === undefined) {
+          return yield* new WorksheetNotFoundError({
+            message: 'This worksheet no longer exists.',
+            worksheetId: id
+          })
+        }
+
+        // Queries keep their worksheetId on purpose: the history is already
+        // bounded by retention, and the rows are unreachable once the
+        // worksheet is gone.
+      })
+
       // Only writes sortOrder so a reorder can never clobber content edits
       // that are in flight.
       const reorder = Effect.fn('WorksheetService.reorder')(function* (
@@ -105,7 +132,9 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
         updates: UpdateWorksheetRequest
       ) {
         const changes = {
-          ...(updates.content === undefined ? {} : { content: updates.content }),
+          ...(updates.content === undefined
+            ? {}
+            : { content: updates.content }),
           ...(updates.databaseId === undefined
             ? {}
             : { databaseId: updates.databaseId }),
@@ -125,7 +154,11 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
         // a misleading 500 — a no-op request has to be a no-op.
         if (Object.keys(changes).length === 0) {
           const [existing] = yield* appDatabase.execute((client) =>
-            client.select().from(worksheetsTable).where(activeWorksheet).limit(1)
+            client
+              .select()
+              .from(worksheetsTable)
+              .where(activeWorksheet)
+              .limit(1)
           )
 
           if (existing === undefined) {
@@ -158,7 +191,7 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
         return transformWorksheet(worksheet)
       })
 
-      return { create, list, reorder, update } as const
+      return { create, list, remove, reorder, update } as const
     })
   }
 ) {}

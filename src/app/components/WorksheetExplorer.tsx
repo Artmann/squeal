@@ -2,7 +2,7 @@ import { closestCenter, DndContext } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FileBracesIcon, PlusIcon } from 'lucide-react'
+import { FileBracesIcon, Pencil, PlusIcon, Trash2 } from 'lucide-react'
 import {
   ReactElement,
   ReactNode,
@@ -15,7 +15,11 @@ import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
 import { useDatabases, useWorksheets } from '../hooks/queries'
-import { useCreateWorksheet, useReorderWorksheets } from '../hooks/mutations'
+import {
+  useCreateWorksheet,
+  useDeleteWorksheet,
+  useReorderWorksheets
+} from '../hooks/mutations'
 import {
   staticListStrategy,
   useDropIndicator,
@@ -27,10 +31,50 @@ import { useAppDispatch, useAppSelector } from '../store'
 import { worksheetSearchQueryUpdated } from '../store/editor-slice'
 import { selectActiveWorksheetId, tabsActions } from '../store/tabs-slice'
 import { getNextUntitledName } from '../worksheet-naming'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from './ui/context-menu'
 import { Input } from './ui/input'
 import { DropIndicatorLine } from './DropIndicatorLine'
 import { SearchInput } from './SearchInput'
 import { WorksheetDto } from '@/glue/worksheets'
+
+// Deleting takes the editor content with it, so it asks first via an action
+// toast — ignoring it is a safe no. Mirrors the database explorer.
+function useConfirmedWorksheetDeletion(): (worksheet: WorksheetDto) => void {
+  const deleteWorksheet = useDeleteWorksheet()
+
+  return useCallback(
+    (worksheet: WorksheetDto) => {
+      toast(`Delete "${worksheet.name}"?`, {
+        action: {
+          label: 'Delete',
+          onClick: () => {
+            deleteWorksheet.mutate(worksheet.id, {
+              onError: (error) => {
+                const message =
+                  error instanceof Error ? error.message : 'Unknown error'
+
+                toast.error('Failed to delete worksheet', {
+                  description: message
+                })
+              },
+              onSuccess: () => {
+                toast.success(`Deleted "${worksheet.name}"`)
+              }
+            })
+          }
+        },
+        description:
+          'This worksheet and its editor content will be removed. Query history is kept.'
+      })
+    },
+    [deleteWorksheet]
+  )
+}
 
 function useWorksheetRename(worksheets: WorksheetDto[]) {
   const { worksheets: worksheetsCollection } = useCollections()
@@ -117,6 +161,62 @@ function useWorksheetRename(worksheets: WorksheetDto[]) {
   }
 }
 
+/**
+ * What the user can do to a worksheet from the explorer: open one (which also
+ * marks it most-recently-used) and create a new one. Both need the same tab
+ * dispatch and touch, so they live together rather than in the component body.
+ */
+function useWorksheetActions(
+  worksheets: WorksheetDto[],
+  startEditing: (worksheet: WorksheetDto) => void
+) {
+  const dispatch = useAppDispatch()
+  const createWorksheet = useCreateWorksheet()
+  const { worksheets: worksheetsCollection } = useCollections()
+
+  const touchWorksheet = useCallback(
+    (worksheetId: string) => {
+      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
+        draft.lastOpenedAt = Date.now()
+      })
+
+      void transaction.isPersisted.promise.catch((): void => undefined)
+    },
+    [worksheetsCollection]
+  )
+
+  const handleSelectWorksheet = useCallback(
+    (worksheetId: string) => {
+      dispatch(tabsActions.tabOpened(worksheetId))
+      touchWorksheet(worksheetId)
+    },
+    [dispatch, touchWorksheet]
+  )
+
+  const handleNewWorksheet = useCallback(() => {
+    const name = getNextUntitledName(worksheets)
+
+    createWorksheet.mutate(
+      { name },
+      {
+        onSuccess: (worksheet) => {
+          dispatch(tabsActions.tabOpened(worksheet.id))
+          touchWorksheet(worksheet.id)
+          startEditing(worksheet)
+        },
+        onError: (error) => {
+          const message =
+            error instanceof Error ? error.message : 'Unknown error'
+
+          toast.error('Failed to create worksheet', { description: message })
+        }
+      }
+    )
+  }, [createWorksheet, dispatch, startEditing, touchWorksheet, worksheets])
+
+  return { handleNewWorksheet, handleSelectWorksheet }
+}
+
 export function WorksheetExplorer(): ReactElement {
   const dispatch = useAppDispatch()
   const databases = useDatabases()
@@ -125,9 +225,6 @@ export function WorksheetExplorer(): ReactElement {
   const worksheetSearchQuery = useAppSelector(
     (state) => state.editor.worksheetSearchQuery ?? ''
   )
-
-  const createWorksheet = useCreateWorksheet()
-  const { worksheets: worksheetsCollection } = useCollections()
 
   const {
     editingName,
@@ -138,6 +235,13 @@ export function WorksheetExplorer(): ReactElement {
     setEditingName,
     startEditing
   } = useWorksheetRename(worksheets.data)
+
+  const { handleNewWorksheet, handleSelectWorksheet } = useWorksheetActions(
+    worksheets.data,
+    startEditing
+  )
+
+  const handleDeleteWorksheet = useConfirmedWorksheetDeletion()
 
   // The list order comes from the useWorksheets live query (sortOrder, then
   // newest first).
@@ -165,46 +269,6 @@ export function WorksheetExplorer(): ReactElement {
     onReorder: reorderWorksheets.mutate,
     resetDropIndicator
   })
-
-  const touchWorksheet = useCallback(
-    (worksheetId: string) => {
-      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
-        draft.lastOpenedAt = Date.now()
-      })
-
-      void transaction.isPersisted.promise.catch((): void => undefined)
-    },
-    [worksheetsCollection]
-  )
-
-  const handleSelectWorksheet = useCallback(
-    (worksheetId: string) => {
-      dispatch(tabsActions.tabOpened(worksheetId))
-      touchWorksheet(worksheetId)
-    },
-    [dispatch, touchWorksheet]
-  )
-
-  const handleNewWorksheet = useCallback(() => {
-    const name = getNextUntitledName(worksheets.data)
-
-    createWorksheet.mutate(
-      { name },
-      {
-        onSuccess: (worksheet) => {
-          dispatch(tabsActions.tabOpened(worksheet.id))
-          touchWorksheet(worksheet.id)
-          startEditing(worksheet)
-        },
-        onError: (error) => {
-          const message =
-            error instanceof Error ? error.message : 'Unknown error'
-
-          toast.error('Failed to create worksheet', { description: message })
-        }
-      }
-    )
-  }, [createWorksheet, dispatch, startEditing, touchWorksheet, worksheets.data])
 
   // Worksheets show which database they run against, so the names are looked
   // up once per render instead of per row.
@@ -288,6 +352,7 @@ export function WorksheetExplorer(): ReactElement {
                   />
                 ) : (
                   <WorksheetListItem
+                    canDelete={worksheets.data.length > 1}
                     databaseName={
                       worksheet.databaseId
                         ? databaseNames.get(worksheet.databaseId)
@@ -295,6 +360,7 @@ export function WorksheetExplorer(): ReactElement {
                     }
                     isOpen={worksheet.id === openWorksheetId}
                     worksheet={worksheet}
+                    onDelete={handleDeleteWorksheet}
                     onDoubleClick={startEditing}
                     onSelect={handleSelectWorksheet}
                   />
@@ -344,47 +410,76 @@ function WorksheetRow({
 }
 
 interface WorksheetListItemProps {
+  // False for the last remaining worksheet: the app is built around always
+  // having one open, and the list endpoint would just recreate a default.
+  canDelete: boolean
   databaseName?: string
   isOpen: boolean
   worksheet: WorksheetDto
+  onDelete: (worksheet: WorksheetDto) => void
   onDoubleClick: (worksheet: WorksheetDto) => void
   onSelect: (worksheetId: string) => void
 }
 
 function WorksheetListItem({
+  canDelete,
   databaseName,
   isOpen,
   worksheet,
+  onDelete,
   onDoubleClick,
   onSelect
 }: WorksheetListItemProps): ReactElement {
   return (
-    <button
-      className={cn(
-        'flex h-[var(--item-h)] w-full flex-none items-center gap-2 rounded-[6px] px-2 text-left hover:bg-hover',
-        isOpen ? 'bg-sel text-text' : 'text-text2'
-      )}
-      type="button"
-      onClick={() => onSelect(worksheet.id)}
-      onDoubleClick={() => onDoubleClick(worksheet)}
-    >
-      <FileBracesIcon
-        className={cn(
-          'size-[13px] flex-none',
-          isOpen ? 'text-accent' : 'text-text3'
-        )}
-      />
+    <ContextMenu>
+      <ContextMenuTrigger>
+        <button
+          className={cn(
+            'flex h-[var(--item-h)] w-full flex-none items-center gap-2 rounded-[6px] px-2 text-left hover:bg-hover',
+            isOpen ? 'bg-sel text-text' : 'text-text2'
+          )}
+          type="button"
+          onClick={() => onSelect(worksheet.id)}
+          onDoubleClick={() => onDoubleClick(worksheet)}
+        >
+          <FileBracesIcon
+            className={cn(
+              'size-[13px] flex-none',
+              isOpen ? 'text-accent' : 'text-text3'
+            )}
+          />
 
-      <span className="min-w-0 flex-1 truncate text-[12.5px]">
-        {worksheet.name}
-      </span>
+          <span className="min-w-0 flex-1 truncate text-[12.5px]">
+            {worksheet.name}
+          </span>
 
-      {databaseName !== undefined && (
-        <span className="max-w-[76px] flex-none truncate rounded-[4px] border border-border2 bg-bg px-[5px] py-[1.5px] font-mono text-[10px] text-text3">
-          {databaseName}
-        </span>
-      )}
-    </button>
+          {databaseName !== undefined && (
+            <span className="max-w-[76px] flex-none truncate rounded-[4px] border border-border2 bg-bg px-[5px] py-[1.5px] font-mono text-[10px] text-text3">
+              {databaseName}
+            </span>
+          )}
+        </button>
+      </ContextMenuTrigger>
+
+      <ContextMenuContent>
+        <ContextMenuItem
+          className="flex items-center gap-2 min-w-32 text-xs"
+          onClick={() => onDoubleClick(worksheet)}
+        >
+          <Pencil className="size-3" />
+          Rename
+        </ContextMenuItem>
+
+        <ContextMenuItem
+          className="flex items-center gap-2 min-w-32 text-xs text-destructive focus:text-destructive"
+          disabled={!canDelete}
+          onClick={() => onDelete(worksheet)}
+        >
+          <Trash2 className="size-3" />
+          Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

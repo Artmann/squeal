@@ -1,4 +1,5 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
+import { eq } from 'drizzle-orm'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -145,5 +146,106 @@ describe('worksheet routes', () => {
     )
 
     expect(names).toEqual(['Second', 'First'])
+  })
+
+  it('deletes a worksheet and drops it from the list', async () => {
+    const { remaining, removal, row } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const appDatabase = yield* AppDatabase
+
+        const kept = yield* client.worksheets.create({
+          payload: { name: 'Kept' }
+        })
+        const doomed = yield* client.worksheets.create({
+          payload: { name: 'Doomed' }
+        })
+
+        const removal = yield* client.worksheets.remove({
+          path: { id: doomed.worksheet.id }
+        })
+
+        const listed = yield* client.worksheets.list()
+
+        // The deleted row specifically — the table still holds "Kept" too.
+        const [row] = yield* appDatabase.execute((db) =>
+          db
+            .select()
+            .from(worksheetsTable)
+            .where(eq(worksheetsTable.id, doomed.worksheet.id))
+        )
+
+        return {
+          keptId: kept.worksheet.id,
+          remaining: listed.worksheets.map((worksheet) => worksheet.name),
+          removal,
+          row
+        }
+      })
+    )
+
+    expect(removal).toEqual({ success: true })
+    expect(remaining).toEqual(['Kept'])
+
+    // Soft delete, so the row survives with a deletedAt rather than vanishing.
+    expect(row.deletedAt).not.toBeNull()
+  })
+
+  it('answers 404 when deleting the same worksheet twice', async () => {
+    const error = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.worksheets.create({
+          payload: { name: 'Doomed' }
+        })
+
+        yield* client.worksheets.remove({ path: { id: created.worksheet.id } })
+
+        return yield* client.worksheets
+          .remove({ path: { id: created.worksheet.id } })
+          .pipe(Effect.flip)
+      })
+    )
+
+    expect(error._tag).toEqual('WorksheetNotFoundError')
+  })
+
+  it('answers 404 when deleting an unknown worksheet', async () => {
+    const error = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        return yield* client.worksheets
+          .remove({ path: { id: 'missing' } })
+          .pipe(Effect.flip)
+      })
+    )
+
+    expect(error._tag).toEqual('WorksheetNotFoundError')
+  })
+
+  // Guards against a PATCH resurrecting a deleted worksheet.
+  it('refuses to update a deleted worksheet', async () => {
+    const error = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.worksheets.create({
+          payload: { name: 'Doomed' }
+        })
+
+        yield* client.worksheets.remove({ path: { id: created.worksheet.id } })
+
+        return yield* client.worksheets
+          .update({
+            path: { id: created.worksheet.id },
+            payload: { name: 'Back from the dead' }
+          })
+          .pipe(Effect.flip)
+      })
+    )
+
+    expect(error._tag).toEqual('WorksheetNotFoundError')
   })
 })

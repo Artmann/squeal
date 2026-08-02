@@ -480,6 +480,10 @@ export type ReorderWorksheetsResponse = Schema.Schema.Type<
   typeof ReorderWorksheetsResponse
 >
 
+export const DeleteWorksheetResponse = Schema.Struct({
+  success: Schema.Literal(true)
+})
+
 export const GetTracesResponse = Schema.Struct({
   traces: Schema.mutable(Schema.Array(TraceSummaryDto))
 })
