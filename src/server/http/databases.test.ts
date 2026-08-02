@@ -1,4 +1,4 @@
-import { HttpClient } from '@effect/platform'
+import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -8,6 +8,7 @@ import { DatabaseService } from '@/server/services/database-service'
 import {
   makeAuthorizedClient,
   makeTestApi,
+  testApiToken,
   testEncryptionPrefix,
   type TestApiOptions
 } from '@/test/effect-test-helper'
@@ -28,6 +29,35 @@ function run<A, E>(
   const { layer } = makeTestApi(options)
 
   return Effect.runPromise(Effect.provide(effect, layer))
+}
+
+// The typed client cannot express a mismatched type/connectionInfo pair, which
+// is the point — so these go over raw HTTP to prove the server rejects what a
+// hand-rolled or older client could still send.
+function rawPost(
+  path: string,
+  body: unknown,
+  options: TestApiOptions = {}
+): Promise<{ body: unknown; status: number }> {
+  const { layer } = makeTestApi(options)
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const http = yield* HttpClient.HttpClient
+
+      const response = yield* http.execute(
+        HttpClientRequest.post(path).pipe(
+          HttpClientRequest.setHeader(
+            'authorization',
+            `Bearer ${testApiToken}`
+          ),
+          HttpClientRequest.bodyUnsafeJson(body)
+        )
+      )
+
+      return { body: yield* response.json, status: response.status }
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  )
 }
 
 describe('database routes', () => {
@@ -83,7 +113,7 @@ describe('database routes', () => {
     expect(Option.isSome(stored)).toEqual(true)
 
     if (Option.isSome(stored)) {
-      expect(stored.value.connectionInfo).toEqual(connectionInfo)
+      expect(stored.value.connection.connectionInfo).toEqual(connectionInfo)
       expect(stored.value.name).toEqual('Renamed')
     }
   })
@@ -257,5 +287,93 @@ describe('database routes', () => {
         unknownIds: ['missing']
       })
     )
+  })
+
+  // `type` and `connectionInfo` used to be validated independently, so a SQLite
+  // row could be saved with server connection info and then crashed the adapter
+  // on `pathToFileURL(undefined)` when anything tried to open it.
+  it('rejects a create whose type and connection info disagree', async () => {
+    const response = await rawPost('/databases', {
+      connectionInfo,
+      name: 'Mismatched',
+      type: 'sqlite'
+    })
+
+    expect(response.status).toEqual(400)
+  })
+
+  it('rejects a connection test whose type and connection info disagree', async () => {
+    const response = await rawPost('/connection-tests', {
+      connectionInfo: { path: '/tmp/pagila.sqlite3' },
+      type: 'postgres'
+    })
+
+    expect(response.status).toEqual(400)
+  })
+
+  it('stores nothing when the pair is rejected', async () => {
+    const { layer } = makeTestApi({})
+
+    // One layer for both halves, so the row check reads the same database the
+    // rejected request was aimed at.
+    const { rows, status } = await Effect.runPromise(
+      Effect.gen(function* () {
+        const http = yield* HttpClient.HttpClient
+        const appDatabase = yield* AppDatabase
+
+        const response = yield* http.execute(
+          HttpClientRequest.post('/databases').pipe(
+            HttpClientRequest.setHeader(
+              'authorization',
+              `Bearer ${testApiToken}`
+            ),
+            HttpClientRequest.bodyUnsafeJson({
+              connectionInfo,
+              name: 'Mismatched',
+              type: 'sqlite'
+            })
+          )
+        )
+
+        const rows = yield* appDatabase.execute((db) =>
+          db.select().from(databasesTable)
+        )
+
+        return { rows, status: response.status }
+      }).pipe(Effect.scoped, Effect.provide(layer))
+    )
+
+    expect(status).toEqual(400)
+    expect(rows).toEqual([])
+  })
+
+  it('builds a SQLite adapter from a SQLite pair', async () => {
+    const { adapterState, layer } = makeTestApi({})
+
+    await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const client = yield* makeAuthorizedClient
+
+          const created = yield* client.databases.create({
+            payload: {
+              connectionInfo: { path: '/tmp/pagila.sqlite3' },
+              name: 'Local',
+              type: 'sqlite'
+            }
+          })
+
+          return yield* client.databases.schema({
+            path: { id: created.database.id }
+          })
+        }),
+        layer
+      )
+    )
+
+    expect(adapterState.lastType).toEqual('sqlite')
+    expect(adapterState.lastConnectionInfo).toEqual({
+      path: '/tmp/pagila.sqlite3'
+    })
   })
 })

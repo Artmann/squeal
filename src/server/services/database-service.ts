@@ -2,13 +2,17 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { Effect, Option } from 'effect'
 
 import { databasesTable, worksheetsTable } from '@/database/schema'
-import { DatabaseNotFoundError, UnknownDatabaseIdsError } from '@/glue/api/errors'
+import {
+  DatabaseNotFoundError,
+  UnknownDatabaseIdsError
+} from '@/glue/api/errors'
 import type {
   ConnectionInfo,
+  DatabaseConnection,
   DatabaseDto,
   DatabaseType,
   PublicConnectionInfo,
-  UpdateConnectionInfo,
+  UpdateDatabaseConnection,
   WorksheetDto
 } from '@/glue/api/schemas'
 import { SecretDecryptError } from '../errors'
@@ -21,10 +25,9 @@ interface CreateDatabaseResult {
 }
 
 interface DatabaseWithSecrets {
-  connectionInfo: ConnectionInfo
+  connection: DatabaseConnection
   id: string
   name: string
-  type: DatabaseType
 }
 
 type DatabaseRow = typeof databasesTable.$inferSelect
@@ -51,6 +54,39 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
             })
           )
         )
+
+      // The stored blob is only JSON.parsed, never decoded against a schema, so
+      // its shape can disagree with the row's `type` — a row saved as SQLite
+      // whose info carries a host instead of a path. Check just enough to build
+      // the adapter safely: validating the whole shape here would reject rows
+      // that older builds wrote with fields this one no longer requires.
+      const toDatabaseConnection = (
+        type: DatabaseType,
+        connectionInfo: ConnectionInfo
+      ): Effect.Effect<DatabaseConnection, SecretDecryptError> => {
+        if (type === 'sqlite') {
+          if ('path' in connectionInfo && connectionInfo.path) {
+            return Effect.succeed({ connectionInfo, type })
+          }
+
+          return Effect.fail(
+            new SecretDecryptError({
+              message:
+                'This connection is saved as SQLite but has no database file. Edit the connection and choose a file.'
+            })
+          )
+        }
+
+        if ('host' in connectionInfo) {
+          return Effect.succeed({ connectionInfo, type })
+        }
+
+        return Effect.fail(
+          new SecretDecryptError({
+            message: `This connection is saved as ${type} but has no host. Edit the connection and save it again.`
+          })
+        )
+      }
 
       const transformDatabase = (record: DatabaseRow) =>
         parseConnectionInfo(record.connectionInfo).pipe(
@@ -118,15 +154,16 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
 
       const create = Effect.fn('DatabaseService.create')(function* (
         name: string,
-        connectionInfo: ConnectionInfo,
-        type: DatabaseType
+        connection: DatabaseConnection
       ) {
-        const encrypted = yield* secrets.encrypt(JSON.stringify(connectionInfo))
+        const encrypted = yield* secrets.encrypt(
+          JSON.stringify(connection.connectionInfo)
+        )
 
         const [record] = yield* appDatabase.execute((client) =>
           client
             .insert(databasesTable)
-            .values({ connectionInfo: encrypted, name, type })
+            .values({ connectionInfo: encrypted, name, type: connection.type })
             .returning()
         )
 
@@ -144,16 +181,17 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
         let updatedWorksheet: WorksheetDto | undefined
 
         if (existingDatabases.length === 1) {
-          const worksheetsWithoutDatabase = yield* appDatabase.execute((client) =>
-            client
-              .select()
-              .from(worksheetsTable)
-              .where(
-                and(
-                  isNull(worksheetsTable.deletedAt),
-                  isNull(worksheetsTable.databaseId)
+          const worksheetsWithoutDatabase = yield* appDatabase.execute(
+            (client) =>
+              client
+                .select()
+                .from(worksheetsTable)
+                .where(
+                  and(
+                    isNull(worksheetsTable.deletedAt),
+                    isNull(worksheetsTable.databaseId)
+                  )
                 )
-              )
           )
 
           if (worksheetsWithoutDatabase.length === 1) {
@@ -200,11 +238,15 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
             record.value.connectionInfo
           )
 
+          const connection = yield* toDatabaseConnection(
+            record.value.type as DatabaseType,
+            connectionInfo
+          )
+
           return Option.some<DatabaseWithSecrets>({
-            connectionInfo,
+            connection,
             id: record.value.id,
-            name: record.value.name,
-            type: record.value.type as DatabaseType
+            name: record.value.name
           })
         }
       )
@@ -285,40 +327,66 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
 
       // An update without a password means "keep the stored one" — the
       // renderer never sees passwords, so edits can't send them back.
-      const resolveConnectionInfo = (
+      const resolveConnection = (
         id: string,
-        connectionInfo: UpdateConnectionInfo,
-        type: DatabaseType
+        connection: UpdateDatabaseConnection
       ) =>
         Effect.gen(function* () {
-          if (!('username' in connectionInfo) || connectionInfo.password) {
-            return connectionInfo as ConnectionInfo
+          // SQLite has no password to merge back in.
+          if (connection.type === 'sqlite') {
+            return connection
           }
 
-          const existing = yield* getWithSecrets(id)
+          const { connectionInfo, type } = connection
+
+          if (connectionInfo.password) {
+            return {
+              connectionInfo: {
+                ...connectionInfo,
+                password: connectionInfo.password
+              },
+              type
+            }
+          }
+
+          // A stored secret this build cannot read must not block the edit that
+          // repairs it, so an unreadable row behaves like one with no stored
+          // password rather than failing the update.
+          const existing = yield* getWithSecrets(id).pipe(
+            Effect.catchTag('SecretDecryptError', () =>
+              Effect.succeed(Option.none<DatabaseWithSecrets>())
+            )
+          )
           const storedPassword =
             Option.isSome(existing) &&
-            existing.value.type === type &&
-            'password' in existing.value.connectionInfo
-              ? existing.value.connectionInfo.password
+            existing.value.connection.type === type &&
+            'password' in existing.value.connection.connectionInfo
+              ? existing.value.connection.connectionInfo.password
               : ''
 
-          return { ...connectionInfo, password: storedPassword }
+          return {
+            connectionInfo: { ...connectionInfo, password: storedPassword },
+            type
+          }
         })
 
       const update = Effect.fn('DatabaseService.update')(function* (
         id: string,
         name: string,
-        connectionInfo: UpdateConnectionInfo,
-        type: DatabaseType
+        connection: UpdateDatabaseConnection
       ) {
-        const resolved = yield* resolveConnectionInfo(id, connectionInfo, type)
-        const encrypted = yield* secrets.encrypt(JSON.stringify(resolved))
+        const resolved: DatabaseConnection = yield* resolveConnection(
+          id,
+          connection
+        )
+        const encrypted = yield* secrets.encrypt(
+          JSON.stringify(resolved.connectionInfo)
+        )
 
         const [record] = yield* appDatabase.execute((client) =>
           client
             .update(databasesTable)
-            .set({ connectionInfo: encrypted, name, type })
+            .set({ connectionInfo: encrypted, name, type: resolved.type })
             // Soft-deleted rows are excluded like everywhere else: without this
             // a PATCH would re-encrypt a password onto a row whose secret
             // remove() deliberately purged, and answer 200 for a database that

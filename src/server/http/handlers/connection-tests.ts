@@ -3,18 +3,22 @@ import { Effect, Option } from 'effect'
 
 import { SquealApi } from '@/glue/api/api'
 import type {
-  ConnectionInfo,
   ConnectionTestRequest,
-  UpdateConnectionInfo
+  DatabaseConnection
 } from '@/glue/api/schemas'
 import { AdapterFactory } from '@/server/services/adapter-factory'
 import { DatabaseService } from '@/server/services/database-service'
 import { orDieInternal } from '../internal-errors'
 
 type ResolvedConnection =
-  | { readonly _tag: 'resolved'; readonly connectionInfo: ConnectionInfo }
+  | { readonly _tag: 'resolved'; readonly connection: DatabaseConnection }
   | { readonly _tag: 'differentServer' }
   | { readonly _tag: 'passwordRequired' }
+
+interface ServerTarget {
+  readonly host: string
+  readonly port?: number | undefined
+}
 
 // The stored password may only be lent back to the server it was saved for.
 // Only host and port are compared, because those decide where the secret is
@@ -22,13 +26,9 @@ type ResolvedConnection =
 // trusted server, so requiring a re-typed password there would be friction
 // without a security gain.
 function targetsSameServer(
-  requested: UpdateConnectionInfo,
-  stored: ConnectionInfo
+  requested: ServerTarget,
+  stored: ServerTarget
 ): boolean {
-  if (!('username' in requested) || !('username' in stored)) {
-    return false
-  }
-
   return (
     requested.host === stored.host &&
     (requested.port ?? undefined) === (stored.port ?? undefined)
@@ -37,16 +37,31 @@ function targetsSameServer(
 
 // A test without a password uses the stored one — the renderer never sees
 // passwords, so testing an existing connection sends its databaseId instead.
-const resolveTestConnectionInfo = (payload: ConnectionTestRequest) =>
+const resolveTestConnection = (payload: ConnectionTestRequest) =>
   Effect.gen(function* () {
-    const { connectionInfo, databaseId, type } = payload
-    const hasPassword =
-      !('username' in connectionInfo) || connectionInfo.password
-
-    if (hasPassword) {
+    // SQLite carries no password, so there is nothing to look up.
+    if (payload.type === 'sqlite') {
       return {
         _tag: 'resolved',
-        connectionInfo: connectionInfo as ConnectionInfo
+        connection: {
+          connectionInfo: payload.connectionInfo,
+          type: payload.type
+        }
+      } as const
+    }
+
+    const { connectionInfo, databaseId, type } = payload
+
+    if (connectionInfo.password) {
+      return {
+        _tag: 'resolved',
+        connection: {
+          connectionInfo: {
+            ...connectionInfo,
+            password: connectionInfo.password
+          },
+          type
+        }
       } as const
     }
 
@@ -57,25 +72,32 @@ const resolveTestConnectionInfo = (payload: ConnectionTestRequest) =>
     const service = yield* DatabaseService
     const stored = yield* service.getWithSecrets(databaseId)
 
-    if (
-      Option.isNone(stored) ||
-      stored.value.type !== type ||
-      !('password' in stored.value.connectionInfo)
-    ) {
+    if (Option.isNone(stored)) {
+      return { _tag: 'passwordRequired' } as const
+    }
+
+    const storedConnection = stored.value.connection
+
+    // Excluding sqlite also narrows the stored info to the server shape, which
+    // is the only one carrying a password to lend.
+    if (storedConnection.type === 'sqlite' || storedConnection.type !== type) {
       return { _tag: 'passwordRequired' } as const
     }
 
     // Without this an authenticated caller could aim a saved password at a
     // server they control and have the app hand it over during the handshake.
-    if (!targetsSameServer(connectionInfo, stored.value.connectionInfo)) {
+    if (!targetsSameServer(connectionInfo, storedConnection.connectionInfo)) {
       return { _tag: 'differentServer' } as const
     }
 
     return {
       _tag: 'resolved',
-      connectionInfo: {
-        ...connectionInfo,
-        password: stored.value.connectionInfo.password
+      connection: {
+        connectionInfo: {
+          ...connectionInfo,
+          password: storedConnection.connectionInfo.password
+        },
+        type
       }
     } as const
   })
@@ -89,7 +111,7 @@ export const ConnectionTestsLive = HttpApiBuilder.group(
         const adapterFactory = yield* AdapterFactory
 
         const resolved: ResolvedConnection =
-          yield* resolveTestConnectionInfo(payload)
+          yield* resolveTestConnection(payload)
 
         if (resolved._tag === 'passwordRequired') {
           return { message: 'Password is required.', success: false }
@@ -102,10 +124,7 @@ export const ConnectionTestsLive = HttpApiBuilder.group(
           }
         }
 
-        const adapter = adapterFactory.create(
-          payload.type,
-          resolved.connectionInfo
-        )
+        const adapter = adapterFactory.create(resolved.connection)
 
         return yield* Effect.tryPromise(() => adapter.testConnection()).pipe(
           Effect.as({ success: true }),

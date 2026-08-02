@@ -93,12 +93,43 @@ const UpdateServerConnectionInfo = Schema.Struct({
   password: Schema.optional(Schema.String)
 })
 
-const UpdateConnectionInfo = Schema.Union(
-  UpdateServerConnectionInfo,
-  SqliteConnectionInfo
+// --- Database connections ------------------------------------------------------
+
+// `type` and `connectionInfo` only mean anything as a pair: SQLite needs a file
+// path, a server needs a host and credentials. Validating them independently let
+// `{ type: 'sqlite', connectionInfo: { host, … } }` decode cleanly and then
+// reach the SQLite adapter with no path at all. Discriminating on `type` turns
+// that into a decode failure at the boundary instead of a crash deeper in.
+const serverConnectionFields = {
+  connectionInfo: ServerConnectionInfo,
+  type: Schema.Literal('mysql', 'postgres')
+} as const
+
+const sqliteConnectionFields = {
+  connectionInfo: SqliteConnectionInfo,
+  type: Schema.Literal('sqlite')
+} as const
+
+// SQLite has no password to omit, so it reuses the same member here.
+const updateServerConnectionFields = {
+  connectionInfo: UpdateServerConnectionInfo,
+  type: Schema.Literal('mysql', 'postgres')
+} as const
+
+// Only the types are consumed — the payload schemas below are what the routes
+// decode against, so these two stay module-private like ConnectionInfo above.
+const DatabaseConnection = Schema.Union(
+  Schema.Struct(serverConnectionFields),
+  Schema.Struct(sqliteConnectionFields)
 )
-export type UpdateConnectionInfo = Schema.Schema.Type<
-  typeof UpdateConnectionInfo
+export type DatabaseConnection = Schema.Schema.Type<typeof DatabaseConnection>
+
+const UpdateDatabaseConnection = Schema.Union(
+  Schema.Struct(updateServerConnectionFields),
+  Schema.Struct(sqliteConnectionFields)
+)
+export type UpdateDatabaseConnection = Schema.Schema.Type<
+  typeof UpdateDatabaseConnection
 >
 
 // The renderer never receives stored passwords — API responses use this
@@ -128,24 +159,22 @@ export const DatabaseDto = Schema.Struct({
 })
 export type DatabaseDto = Schema.Schema.Type<typeof DatabaseDto>
 
-export const CreateDatabaseRequest = Schema.Struct({
-  connectionInfo: ConnectionInfo,
-  name: Schema.String.pipe(
-    Schema.minLength(1, { message: () => 'Name is required.' })
-  ),
-  type: DatabaseType
-})
+const databaseName = Schema.String.pipe(
+  Schema.minLength(1, { message: () => 'Name is required.' })
+)
+
+export const CreateDatabaseRequest = Schema.Union(
+  Schema.Struct({ ...serverConnectionFields, name: databaseName }),
+  Schema.Struct({ ...sqliteConnectionFields, name: databaseName })
+)
 export type CreateDatabaseRequest = Schema.Schema.Type<
   typeof CreateDatabaseRequest
 >
 
-export const UpdateDatabaseRequest = Schema.Struct({
-  connectionInfo: UpdateConnectionInfo,
-  name: Schema.String.pipe(
-    Schema.minLength(1, { message: () => 'Name is required.' })
-  ),
-  type: DatabaseType
-})
+export const UpdateDatabaseRequest = Schema.Union(
+  Schema.Struct({ ...updateServerConnectionFields, name: databaseName }),
+  Schema.Struct({ ...sqliteConnectionFields, name: databaseName })
+)
 export type UpdateDatabaseRequest = Schema.Schema.Type<
   typeof UpdateDatabaseRequest
 >
@@ -298,11 +327,16 @@ export type SchemaInfoDto = Schema.Schema.Type<typeof SchemaInfoDto>
 
 // --- Connection tests ------------------------------------------------------------
 
-export const ConnectionTestRequest = Schema.Struct({
-  connectionInfo: UpdateConnectionInfo,
-  databaseId: Schema.optional(Schema.String),
-  type: DatabaseType
-})
+export const ConnectionTestRequest = Schema.Union(
+  Schema.Struct({
+    ...updateServerConnectionFields,
+    databaseId: Schema.optional(Schema.String)
+  }),
+  Schema.Struct({
+    ...sqliteConnectionFields,
+    databaseId: Schema.optional(Schema.String)
+  })
+)
 export type ConnectionTestRequest = Schema.Schema.Type<
   typeof ConnectionTestRequest
 >

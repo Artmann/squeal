@@ -1,27 +1,27 @@
 import type { DatabaseAdapter } from './adapter'
 import { MysqlAdapter } from './mysql-adapter'
 import { PostgresAdapter } from './postgres-adapter'
+import type { DatabaseConnection } from './schemas'
 import { SqliteAdapter } from './sqlite-adapter'
-import type {
-  ConnectionInfo,
-  DatabaseType,
-  MysqlConnectionInfo,
-  PostgresConnectionInfo,
-  SqliteConnectionInfo
-} from './schemas'
 
-export function createAdapter(
-  type: DatabaseType,
-  connectionInfo: ConnectionInfo
-): DatabaseAdapter {
-  switch (type) {
+// Takes the type and its connection info as one discriminated value rather than
+// two independent arguments, so `switch` narrows the shape and no cast is
+// needed: a SQLite connection can only arrive carrying a SQLite path.
+export function createAdapter(connection: DatabaseConnection): DatabaseAdapter {
+  switch (connection.type) {
     case 'mysql':
-      return new MysqlAdapter(connectionInfo as MysqlConnectionInfo)
+      return new MysqlAdapter(connection.connectionInfo)
     case 'postgres':
-      return new PostgresAdapter(connectionInfo as PostgresConnectionInfo)
+      return new PostgresAdapter(connection.connectionInfo)
     case 'sqlite':
-      return new SqliteAdapter(connectionInfo as SqliteConnectionInfo)
+      return new SqliteAdapter(connection.connectionInfo)
     default:
-      throw new Error(`Unsupported database type: ${type}`)
+      // Unreachable for validated input. It still guards a stored row whose
+      // `type` column holds something this build does not know about.
+      throw new Error(
+        `Unsupported database type: ${String(
+          (connection as { type: unknown }).type
+        )}`
+      )
   }
 }

@@ -2,7 +2,11 @@ import { desc, eq, isNull } from 'drizzle-orm'
 import { Cause, Clock, Effect, FiberMap, Option } from 'effect'
 
 import { databasesTable, queriesTable } from '@/database/schema'
-import { QueryCanceledError, type DatabaseAdapter, type QueryResult } from '@/databases/adapter'
+import {
+  QueryCanceledError,
+  type DatabaseAdapter,
+  type QueryResult
+} from '@/databases/adapter'
 import { NoDatabaseAvailableError, QueryNotFoundError } from '@/glue/api/errors'
 import type { CreateQueryRequest, QueryDto } from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
@@ -62,11 +66,8 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
         }
 
         return {
-          adapter: adapterFactory.create(
-            record.value.type,
-            record.value.connectionInfo
-          ),
-          databaseType: record.value.type
+          adapter: adapterFactory.create(record.value.connection),
+          databaseType: record.value.connection.type
         }
       }).pipe(
         Effect.withSpan('query.loadConnection', {
@@ -91,9 +92,7 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
         catch: (cause) => new AdapterQueryError(cause),
         try: () => adapter.runQuery(query.content)
       }).pipe(
-        Effect.map(
-          (result): AdapterOutcome => ({ _tag: 'completed', result })
-        ),
+        Effect.map((result): AdapterOutcome => ({ _tag: 'completed', result })),
         Effect.catchIf(
           (error) => isCancellationError(error.cause),
           () =>
@@ -177,9 +176,7 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
           adapter,
           databaseType,
           query
-        ).pipe(
-          Effect.ensuring(Effect.sync(() => adapters.delete(query.id)))
-        )
+        ).pipe(Effect.ensuring(Effect.sync(() => adapters.delete(query.id))))
 
         if (outcome._tag === 'canceled') {
           // The event is recorded on the db.query span inside runAdapterQuery,
@@ -368,9 +365,7 @@ function toStoredQueryResult(value: unknown): QueryResult | null {
     return null
   }
 
-  if (
-    !candidate.rows.every((row) => typeof row === 'object' && row !== null)
-  ) {
+  if (!candidate.rows.every((row) => typeof row === 'object' && row !== null)) {
     return null
   }
 

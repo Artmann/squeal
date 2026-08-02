@@ -16,7 +16,7 @@ import type {
   CreateDatabaseRequest,
   DatabaseType,
   SslMode,
-  UpdateConnectionInfo,
+  UpdateDatabaseConnection,
   UpdateDatabaseRequest
 } from '@/glue/api/schemas'
 // The form is validated client-side with zod through react-hook-form's
@@ -366,14 +366,15 @@ function useConnectionTest({
 
       const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 100))
 
-      Promise.all([
-        apiClient.testConnection(
-          normalizedConnectionInfo as UpdateConnectionInfo,
-          databaseType,
-          databaseId
-        ),
-        minDelay
-      ])
+      // The type and its info travel as one value to the API, which validates
+      // the pair. Narrowed here for the same reason the submit path does it:
+      // zod types the transformed connectionInfo as optional.
+      const connection = {
+        connectionInfo: normalizedConnectionInfo,
+        type: databaseType
+      } as UpdateDatabaseConnection
+
+      Promise.all([apiClient.testConnection(connection, databaseId), minDelay])
         .then(([result]) => {
           if (result.success) {
             toast.success('Connection successful!')

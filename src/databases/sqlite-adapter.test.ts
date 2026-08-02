@@ -71,6 +71,24 @@ describe('SqliteAdapter', () => {
     vi.clearAllMocks()
   })
 
+  // Requests are validated against the contract, but stored rows are only
+  // JSON.parsed, so a row an older build saved as SQLite with server connection
+  // info can still reach the constructor. It used to fail as
+  // `pathToFileURL(undefined)` deep inside the driver.
+  describe('a connection with no file path', () => {
+    it('fails with an actionable message instead of a driver error', () => {
+      expect(() => new SqliteAdapter({ path: '' })).toThrow(
+        'This connection is saved as SQLite but has no database file. Edit the connection and choose a file.'
+      )
+    })
+
+    it('rejects a missing path as well as an empty one', () => {
+      expect(() => new SqliteAdapter({} as { path: string })).toThrow(
+        /has no database file/
+      )
+    })
+  })
+
   describe('testConnection', () => {
     it('connects and executes SELECT 1', async () => {
       mockExecute.mockResolvedValueOnce({ columns: [], rows: [] })

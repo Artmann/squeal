@@ -31,7 +31,9 @@ interface CapturedRequest {
   url: string
 }
 
-function toHeaderRecord(source: HeadersInit | undefined): Record<string, string> {
+function toHeaderRecord(
+  source: HeadersInit | undefined
+): Record<string, string> {
   const headers: Record<string, string> = {}
 
   if (source === undefined) {
@@ -201,10 +203,14 @@ describe('apiClient', () => {
         })
       )
 
-      const result = await apiClient.testConnection(
-        { database: 'testdb', host: 'localhost', username: 'admin' },
-        'postgres'
-      )
+      const result = await apiClient.testConnection({
+        connectionInfo: {
+          database: 'testdb',
+          host: 'localhost',
+          username: 'admin'
+        },
+        type: 'postgres'
+      })
 
       expect(result).toEqual({
         message: 'password authentication failed',
@@ -396,10 +402,10 @@ describe('apiClient', () => {
     // schema tree ParseError.message renders.
     it('maps an encode failure to field errors and sends nothing', async () => {
       try {
-        await apiClient.testConnection(
-          { database: 'testdb', host: '', username: 'admin' },
-          'postgres'
-        )
+        await apiClient.testConnection({
+          connectionInfo: { database: 'testdb', host: '', username: 'admin' },
+          type: 'postgres'
+        })
         expect.fail('Expected the request to reject')
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError)
