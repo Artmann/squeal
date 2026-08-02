@@ -75,12 +75,14 @@ at the code to change.
       each carrying its own `type` literal, or a `Schema.TaggedStruct`) so the
       cast disappears. `src/databases/schemas.ts` is renderer-form zod only and
       should follow whatever the contract does.
-- [ ] **Protect connection cleanup.** Narrower than first written:
+- [x] **Protect connection cleanup.** Narrower than first written:
       `acquireConnection` and `cancel` already try/catch their teardown
       (`postgres-adapter.ts:50-54,85-89,205-213`). Still unguarded — an
       `await client.end()` alone in a `finally`, which can reject and mask the
       original error or leak the socket — at `postgres-adapter.ts:101,128,177`
-      and `mysql-adapter.ts:44`.
+      and `mysql-adapter.ts:44`. Fixed: `src/databases/close-quietly.ts` logs
+      and swallows, applied to all seven sites in both adapters. One of them —
+      the mysql2 callback connection in `runQuery` — was not even awaited.
 - [ ] **Trim the polling payload.** `QueryRunner.list()`
       (`src/server/services/query-runner.ts:294-303`) JSON-parses the stored
       `result` of all 250 rows it returns, and `get()` re-parses the row payload
@@ -163,10 +165,10 @@ at the code to change.
       sidebar and the tab bar. Add a `useCurrentWorksheet(id)` hook that filters
       in the live query, and a `useDatabase(id)` hook — both belong next to the
       existing hooks in `src/app/hooks/queries.ts`.
-- [ ] **Fix floating promises.** One left: `hooks/mutations.ts:207`
+- [x] **Fix floating promises.** One left: `hooks/mutations.ts:207`
       `queryClient.invalidateQueries` is neither awaited nor voided, while every
       other call site in the file is (`:131,158,185`). Violates "No Floating
-      Promises". (The `DatabaseForm` promise chain is gone.)
+      Promises". (The `DatabaseForm` promise chain is gone.) Fixed: voided.
 - [ ] **Factor out the collection boilerplate.** The
       `if (collection.status === 'ready') { collection.utils.write…() }` guard
       and `void transaction.isPersisted.promise.catch(…)` are still copied by
@@ -186,11 +188,12 @@ at the code to change.
       `WorksheetEditor.tsx:68-75` should `return false`. Fixed:
       `WorksheetEditor.tsx:130-138` returns `false` when there is no run
       handler, so CodeMirror falls through to the next binding.
-- [ ] **Untitled-numbering can collide.** `worksheet-naming.ts:9-14` counts the
+- [x] **Untitled-numbering can collide.** `worksheet-naming.ts:9-14` counts the
       worksheets already named `Untitled`/`Untitled N`, so renaming `Untitled`
       to something else makes the next new worksheet `Untitled 2` when that name
       is already taken. Use max existing suffix + 1, not count + 1. (Deleting a
-      worksheet triggers the same collision — see the delete item below.)
+      worksheet triggers the same collision — see the delete item below.) Fixed:
+      `worksheet-naming.ts` now takes one past the highest suffix in use.
 - [x] **`ResultSheet.tsx:36-53` drag listeners leak if unmounted mid-drag.**
       Fixed: the sheet was replaced by `ResizeHandle.tsx`, which keeps its
       teardown in `detachRef` and runs it on unmount as well as on `mouseup`.
@@ -202,9 +205,9 @@ at the code to change.
 
 ## 🔵 UX — missing SQL-client affordances
 
-> `redesign-tasks.md` is the active work list for this surface and owns the
-> shell, tabs, toolbar, results pane and status bar. Check it before starting
-> anything here.
+> The redesign delivered the shell, tabs, toolbar, results pane and status bar,
+> so check the current components before starting anything here — several of
+> these items are narrower than they read.
 
 - [ ] **Add worksheet delete and duplicate.** `WorksheetExplorer.tsx` has
       create + rename but no delete, and there is no route to call: the contract
@@ -246,7 +249,7 @@ at the code to change.
 
 ## 🟣 UX — states, guards & feedback
 
-> Also covered in part by `redesign-tasks.md` — check there first.
+> Partly delivered by the redesign; check the current components first.
 
 - [ ] **Add a "No rows returned" state.** Idle is handled
       (`QueryResultEmpty.tsx`) and DML feedback lands in the Messages tab, but a
@@ -284,14 +287,18 @@ at the code to change.
       (`DatabaseExplorer.tsx:66`), EditorScreen close (`EditorScreen.tsx:59`),
       and the TitleBar window controls (`TitleBar.tsx:33-45`) have no accessible
       name. Copy the correct pattern from `WorksheetEditor.tsx:159`
-      (`aria-label="Focus editor"`). Fixed: every icon-only control now has one
-      — `DatabaseExplorer.tsx:244`, `WorksheetExplorer.tsx:223`,
+      (`aria-label="Focus editor"`). Fixed for four of the five:
+      `DatabaseExplorer.tsx:244`, `WorksheetExplorer.tsx:223`,
       `WorksheetTabs.tsx:144,161`, `TitleBar.tsx:75,105`, `StatusBar.tsx:114`,
-      `ConnectionPicker.tsx:437,449` — and Run carries a visible text label.
+      `ConnectionPicker.tsx:437,449`, and Run carries a visible text label. The
+      EditorScreen close button is **not** among them — see the dialog-semantics
+      item below, which owns that component.
 - [ ] **Give custom modals dialog semantics.** `EditorScreen.tsx` and
       `GettingStartedScreen.tsx` are still plain `fixed inset-0` divs — no
       `role="dialog"`/`aria-modal`, no focus trap/return, no Escape, no
-      backdrop-close. Rebuild on Radix Dialog.
+      backdrop-close. Rebuild on Radix Dialog. Also give the close button an
+      accessible name: `EditorScreen.tsx:61-67` is still an icon-only `Button`
+      wrapping a bare `<XIcon />`, the one site the item above missed.
 - [ ] **Finish the resize separator.** `ResizeHandle.tsx:110-125` now has
       `role="separator"`, `aria-label`, `aria-orientation`, `tabIndex` and arrow
       keys, but still no `aria-valuenow`/`valuemin`/`valuemax` (so the current
@@ -308,8 +315,7 @@ at the code to change.
 
 ## 🎨 Design & visual polish
 
-> Mostly delivered by the redesign — see `redesign-tasks.md` for what remains of
-> it.
+> Mostly delivered by the redesign; what is left is listed below.
 
 - [x] **Theme the toasts.** `renderer.tsx:35` renders `<Toaster />` with no
       props, so Sonner shows light-themed toasts in dark mode — and toasts are
