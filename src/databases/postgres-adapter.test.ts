@@ -25,7 +25,14 @@ const { cursorState, mockConnect, mockEnd, mockQuery } = vi.hoisted(() => ({
 }))
 
 vi.mock('pg', () => {
-  function MockClient(this: any) {
+  // Constructor-function mock, so `this` needs the shape it assigns.
+  interface MockClientInstance {
+    connect: typeof mockConnect
+    end: typeof mockEnd
+    query: typeof mockQuery
+  }
+
+  function MockClient(this: MockClientInstance) {
     this.connect = mockConnect
     this.end = mockEnd
     this.query = mockQuery

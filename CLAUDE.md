@@ -149,7 +149,6 @@ and disposes on `before-quit`.
   — internal callers use `getDatabaseWithSecrets()`, updates with a blank
   password keep the stored one, and connection tests can pass a `databaseId` to
   borrow it.
-- Refer to @CODE_STYLE.md
 - Don't include the Claude footer in commits
 
 ## Tracing

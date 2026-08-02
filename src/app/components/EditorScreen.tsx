@@ -1,11 +1,35 @@
 import { XIcon } from 'lucide-react'
 import { ReactElement, useCallback, useMemo } from 'react'
 
+import type { PublicConnectionInfo } from '@/glue/api/schemas'
+
 import { useDatabases } from '../hooks/queries'
 import { useAppDispatch } from '../store'
 import { uiActions } from '../store/ui-slice'
 import { DatabaseForm } from './DatabaseForm'
+import type { DatabaseFormConnectionInfo } from './DatabaseForm'
 import { Button } from './ui/button'
+
+// The DTO and the form's input type are close but not identical: the DTO omits
+// the password and treats port as optional, while the form wants every server
+// field present and normalizes port itself. Mapping field by field keeps that
+// difference visible instead of hiding it behind a cast.
+function toFormConnectionInfo(
+  connectionInfo: PublicConnectionInfo
+): DatabaseFormConnectionInfo {
+  if ('path' in connectionInfo) {
+    return { path: connectionInfo.path }
+  }
+
+  return {
+    database: connectionInfo.database,
+    host: connectionInfo.host,
+    port: connectionInfo.port,
+    sslMode: connectionInfo.sslMode,
+    sslRootCert: connectionInfo.sslRootCert,
+    username: connectionInfo.username
+  }
+}
 
 export interface EditorScreenProps {
   databaseId?: string
@@ -46,7 +70,10 @@ export function EditorScreen({
     ? {
         // Null when the stored secret could not be decrypted; the form opens
         // with empty connection fields so saving repairs the row.
-        connectionInfo: database.connectionInfo ?? undefined,
+        connectionInfo:
+          database.connectionInfo === null
+            ? undefined
+            : toFormConnectionInfo(database.connectionInfo),
         name: database.name,
         type: database.type
       }

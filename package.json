@@ -12,7 +12,8 @@
     "package": "electron-forge package",
     "seed": "tsx scripts/seed.ts",
     "start": "electron-forge start",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.backend.json && tsc --noEmit -p tsconfig.renderer.json"
   },
   "keywords": [],
