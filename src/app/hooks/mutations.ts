@@ -204,7 +204,7 @@ export function useUpdateDatabase() {
         databases.utils.writeUpsert(response.database)
       }
 
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: queryKeys.schema(response.database.id)
       })
     }

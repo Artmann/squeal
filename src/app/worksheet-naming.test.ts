@@ -36,4 +36,23 @@ describe('getNextUntitledName', () => {
       getNextUntitledName([worksheet('Revenue'), worksheet('Untitled notes')])
     ).toEqual('Untitled')
   })
+
+  // Counting the untitled worksheets collides the moment the set has a gap.
+  it('does not reuse a name after an earlier untitled worksheet is renamed', () => {
+    expect(
+      getNextUntitledName([worksheet('Revenue'), worksheet('Untitled 2')])
+    ).toEqual('Untitled 3')
+  })
+
+  it('does not reuse a name after an untitled worksheet is deleted', () => {
+    expect(
+      getNextUntitledName([worksheet('Untitled'), worksheet('Untitled 3')])
+    ).toEqual('Untitled 4')
+  })
+
+  it('goes past the highest suffix, not the count', () => {
+    expect(
+      getNextUntitledName([worksheet('Untitled'), worksheet('Untitled 9')])
+    ).toEqual('Untitled 10')
+  })
 })
