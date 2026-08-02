@@ -61,6 +61,11 @@ export interface DatabaseFormResult {
   updatedWorksheet?: WorksheetDto
 }
 
+// Exported so callers can build the connection info the form expects without
+// casting a DTO into it — the two shapes differ (the DTO omits the password and
+// makes port optional).
+export type DatabaseFormConnectionInfo = FormInput['connectionInfo']
+
 export interface DatabaseFormProps {
   databaseId?: string
   defaultValues?: Partial<FormInput>

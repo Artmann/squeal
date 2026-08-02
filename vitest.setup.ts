@@ -15,13 +15,11 @@ if (typeof window !== 'undefined') {
   // setPointerCapture on pointer-down for its swipe-to-dismiss. Without these
   // every click on a toast throws an uncaught TypeError, which vitest reports
   // as an unhandled error and warns can cause false positives.
-  for (const name of [
-    'hasPointerCapture',
-    'releasePointerCapture',
-    'setPointerCapture'
-  ] as const) {
-    if (typeof Element.prototype[name] !== 'function') {
-      Element.prototype[name] = () => undefined
-    }
-  }
+  //
+  // Assigned one at a time rather than in a loop: `hasPointerCapture` answers a
+  // boolean while the other two return void, so a single shared stub does not
+  // satisfy all three signatures.
+  Element.prototype.hasPointerCapture ??= () => false
+  Element.prototype.releasePointerCapture ??= () => undefined
+  Element.prototype.setPointerCapture ??= () => undefined
 }

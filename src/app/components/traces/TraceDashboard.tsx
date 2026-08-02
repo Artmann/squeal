@@ -266,7 +266,9 @@ function TraceSpansPanel({
   selectedSpanId,
   traceSpans
 }: {
-  onSelectSpan: (spanId: string) => void
+  // Takes undefined as well: the waterfall calls it with undefined to clear
+  // the selection when the already-selected row is clicked again.
+  onSelectSpan: (spanId: string | undefined) => void
   selectedSpanId: string | undefined
   traceSpans: UseQueryResult<Spans>
 }): ReactElement {

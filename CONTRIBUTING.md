@@ -5,9 +5,9 @@
 - **Electron** - Desktop application framework
 - **React** - UI framework
 - **Vite** - Build tool
-- **Hono** - API server (runs in main process)
+- **Effect-TS** - The backend: services, layers, and the HTTP API
 - **Drizzle ORM** - Database ORM for app state (SQLite)
-- **PostgreSQL** - Target database for user queries
+- **PostgreSQL / MySQL / SQLite** - Target databases for user queries
 - **CodeMirror** - SQL editor
 - **Tailwind CSS** - Styling
 
@@ -16,23 +16,40 @@
 ```
 src/
 ├── app/           # React frontend (renderer process)
-├── main/          # Electron main process
-│   ├── auth/      # Authentication routes
-│   ├── chat/      # AI chat routes
-│   └── queries/   # Query execution
-├── database/      # Drizzle schema and connection
-├── api.ts         # Hono API server setup
+├── glue/          # Shared contract: HttpApi definition, schemas, errors
+├── server/        # Effect backend: HTTP layer, services, tracing, retention
+├── main/          # Main-process helpers (secret storage, retention sweeps)
+├── database/      # Drizzle schema and connection for app state
+├── databases/     # Adapters for the databases the user queries
 └── main.ts        # Electron entry point
 ```
+
+The contract in `src/glue/api/` is imported by both processes, so it must stay
+free of main-process imports. See `CLAUDE.md` for the architecture in detail.
 
 ## Scripts
 
 - `yarn start` - Run in development mode
+- `yarn typecheck` - Type-check both projects (backend and renderer)
+- `yarn test` - Run the test suite once
+- `yarn test:watch` - Run the test suite in watch mode
 - `yarn lint` - Run ESLint
 - `yarn format` - Format code with Prettier
-- `yarn seed` - Seed PostgreSQL with sample data
+- `yarn seed` - Seed the sample databases
 - `yarn package` - Package the app
 - `yarn make` - Build distributable
+
+## Environment
+
+Nothing is required to run the app. `yarn seed` reads two optional variables —
+copy `.env.example` to `.env` to override the defaults, which match the services
+in `docker-compose.yml`:
+
+```bash
+cp .env.example .env
+docker compose up -d
+yarn seed
+```
 
 ## Releases
 
