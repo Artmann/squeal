@@ -11,6 +11,7 @@ import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
 import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
+import type { DatabaseConnection } from '@/glue/api/schemas'
 import { ApiToken } from '@/server/http/api-token'
 import { ApiLive, CorsLive, ServeLive } from '@/server/http/server'
 import {
@@ -93,9 +94,9 @@ export function makeTestAdapterFactory(config: TestAdapterConfig = {}) {
   const layer = Layer.succeed(
     AdapterFactory,
     AdapterFactory.make({
-      create: (type: string, connectionInfo: unknown) => {
-        state.lastConnectionInfo = connectionInfo
-        state.lastType = type
+      create: (connection: DatabaseConnection) => {
+        state.lastConnectionInfo = connection.connectionInfo
+        state.lastType = connection.type
 
         return {
           cancel: config.cancel ?? (() => Promise.resolve()),

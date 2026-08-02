@@ -5,13 +5,12 @@
 import { z } from 'zod'
 
 import type {
-  ConnectionInfo,
-  DatabaseType,
+  DatabaseConnection,
   ServerConnectionInfo,
   SqliteConnectionInfo
 } from '@/glue/api/schemas'
 
-export type { ConnectionInfo, DatabaseType, SqliteConnectionInfo }
+export type { DatabaseConnection, SqliteConnectionInfo }
 
 // MySQL and PostgreSQL connections share the same shape.
 export type MysqlConnectionInfo = ServerConnectionInfo
@@ -64,6 +63,11 @@ const updateConnectionInfoSchema = z.union([
 ])
 
 export { databaseTypeSchema }
+
+// These validate `type` and `connectionInfo` independently, which is fine for a
+// form whose type selector resets connectionInfo on every change. The pairing
+// is enforced where it matters — `DatabaseConnection` in the contract, which
+// every request decodes against.
 
 export const createDatabaseSchema = z.object({
   connectionInfo: connectionInfoSchema,

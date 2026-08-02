@@ -1,5 +1,6 @@
 import { createClient } from '@libsql/client'
 import Database from 'libsql'
+import invariant from 'tiny-invariant'
 import { pathToFileURL } from 'url'
 
 import { maxResultRows } from './adapter'
@@ -19,6 +20,15 @@ export class SqliteAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: SqliteConnectionInfo
 
   constructor(connectionInfo: SqliteConnectionInfo) {
+    // Requests are validated against the contract's DatabaseConnection, but
+    // stored rows are only JSON.parsed, so a row an older build saved with a
+    // server-shaped info can still land here. Without this the failure was
+    // `pathToFileURL(undefined)` deep in the driver.
+    invariant(
+      connectionInfo.path,
+      'This connection is saved as SQLite but has no database file. Edit the connection and choose a file.'
+    )
+
     this.connectionInfo = connectionInfo
   }
 

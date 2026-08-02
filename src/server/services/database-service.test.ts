@@ -3,7 +3,10 @@ import { Effect, Layer, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { databasesTable, worksheetsTable } from '@/database/schema'
-import type { ConnectionInfo } from '@/glue/api/schemas'
+import type {
+  DatabaseConnection,
+  ServerConnectionInfo
+} from '@/glue/api/schemas'
 import {
   makeTestAppDatabase,
   testEncryptionPrefix,
@@ -13,12 +16,16 @@ import { AppDatabase } from './app-database'
 import { DatabaseService } from './database-service'
 import { WorksheetService } from './worksheet-service'
 
-const connectionInfo: ConnectionInfo = {
+const connectionInfo: ServerConnectionInfo = {
   database: 'pagila',
   host: 'localhost',
   password: 'secret',
   username: 'postgres'
 }
+
+// The type and its connection info travel as one value now, so a mismatched
+// pair cannot be constructed by accident.
+const connection: DatabaseConnection = { connectionInfo, type: 'postgres' }
 
 function makeLayer() {
   return Layer.mergeAll(
@@ -31,11 +38,7 @@ function makeLayer() {
 }
 
 function run<A, E>(
-  effect: Effect.Effect<
-    A,
-    E,
-    AppDatabase | DatabaseService | WorksheetService
-  >
+  effect: Effect.Effect<A, E, AppDatabase | DatabaseService | WorksheetService>
 ): Promise<A> {
   return Effect.runPromise(Effect.provide(effect, makeLayer()))
 }
@@ -47,7 +50,7 @@ describe('DatabaseService', () => {
         const service = yield* DatabaseService
         const appDatabase = yield* AppDatabase
 
-        const result = yield* service.create('Pagila', connectionInfo, 'postgres')
+        const result = yield* service.create('Pagila', connection)
 
         const [row] = yield* appDatabase.execute((client) =>
           client.select().from(databasesTable)
@@ -81,7 +84,7 @@ describe('DatabaseService', () => {
 
         yield* worksheets.create({ name: 'My First Worksheet' })
 
-        return yield* service.create('Pagila', connectionInfo, 'postgres')
+        return yield* service.create('Pagila', connection)
       })
     )
 
@@ -94,19 +97,17 @@ describe('DatabaseService', () => {
         const service = yield* DatabaseService
         const appDatabase = yield* AppDatabase
 
-        const created = yield* service.create('Pagila', connectionInfo, 'postgres')
+        const created = yield* service.create('Pagila', connection)
 
-        yield* service.update(
-          created.database.id,
-          'Renamed',
-          {
+        yield* service.update(created.database.id, 'Renamed', {
+          connectionInfo: {
             database: 'pagila',
             host: 'other-host',
             password: '',
             username: 'postgres'
           },
-          'postgres'
-        )
+          type: 'postgres'
+        })
 
         const [row] = yield* appDatabase.execute((client) =>
           client.select().from(databasesTable)
@@ -133,7 +134,7 @@ describe('DatabaseService', () => {
         const service = yield* DatabaseService
 
         return yield* service
-          .update('missing', 'Name', connectionInfo, 'postgres')
+          .update('missing', 'Name', connection)
           .pipe(Effect.flip)
       })
     )
@@ -150,7 +151,7 @@ describe('DatabaseService', () => {
 
         yield* worksheets.create({ name: 'My First Worksheet' })
 
-        const created = yield* service.create('Pagila', connectionInfo, 'postgres')
+        const created = yield* service.create('Pagila', connection)
 
         yield* service.remove(created.database.id)
 
@@ -191,7 +192,7 @@ describe('DatabaseService', () => {
       Effect.gen(function* () {
         const service = yield* DatabaseService
 
-        const created = yield* service.create('Pagila', connectionInfo, 'postgres')
+        const created = yield* service.create('Pagila', connection)
 
         return yield* service
           .reorder([created.database.id, 'missing'])
@@ -213,8 +214,8 @@ describe('DatabaseService', () => {
         const service = yield* DatabaseService
         const appDatabase = yield* AppDatabase
 
-        const first = yield* service.create('First', connectionInfo, 'postgres')
-        const second = yield* service.create('Second', connectionInfo, 'postgres')
+        const first = yield* service.create('First', connection)
+        const second = yield* service.create('Second', connection)
 
         const before = yield* appDatabase.execute((client) =>
           client
@@ -254,7 +255,7 @@ describe('DatabaseService', () => {
         const service = yield* DatabaseService
         const appDatabase = yield* AppDatabase
 
-        yield* service.create('Readable', connectionInfo, 'postgres')
+        yield* service.create('Readable', connection)
 
         yield* appDatabase.execute((client) =>
           client.insert(databasesTable).values({
@@ -293,21 +294,15 @@ describe('DatabaseService', () => {
       Effect.gen(function* () {
         const service = yield* DatabaseService
 
-        const created = yield* service.create(
-          'Pagila',
-          connectionInfo,
-          'postgres'
-        )
+        const created = yield* service.create('Pagila', connection)
 
         yield* service.remove(created.database.id)
 
         const result = yield* Effect.either(
-          service.update(
-            created.database.id,
-            'Renamed',
-            { ...connectionInfo, password: 'new-secret' },
-            'postgres'
-          )
+          service.update(created.database.id, 'Renamed', {
+            connectionInfo: { ...connectionInfo, password: 'new-secret' },
+            type: 'postgres'
+          })
         )
 
         const [row] = yield* (yield* AppDatabase).execute((client) =>
@@ -327,6 +322,64 @@ describe('DatabaseService', () => {
     expect(outcome.connectionInfo).toEqual(`${testEncryptionPrefix}{}`)
   })
 
+  // A row saved by an older build can pair `type` with the wrong info shape.
+  // getWithSecrets refuses it, but editing is how the user repairs it, so the
+  // update path has to tolerate a secret it cannot make sense of.
+  it('lets an update repair a row whose stored pair is mismatched', async () => {
+    const { readBack, unreadable, updated } = await run(
+      Effect.gen(function* () {
+        const service = yield* DatabaseService
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* service.create('Broken', connection)
+
+        // Rewrite the stored secret as SQLite-shaped while the row says
+        // postgres — the disagreement getWithSecrets rejects.
+        yield* appDatabase.execute((client) =>
+          client
+            .update(databasesTable)
+            .set({
+              connectionInfo: `${testEncryptionPrefix}${JSON.stringify({
+                path: '/tmp/stray.sqlite3'
+              })}`
+            })
+            .where(eq(databasesTable.id, created.database.id))
+        )
+
+        const unreadable = yield* service
+          .getWithSecrets(created.database.id)
+          .pipe(Effect.flip)
+
+        // A blank password is what the renderer sends, since it never receives
+        // the stored one — so this is the path that has to look the unreadable
+        // secret up and carry on regardless.
+        const updated = yield* service.update(created.database.id, 'Repaired', {
+          connectionInfo: { ...connectionInfo, password: '' },
+          type: 'postgres'
+        })
+
+        const readBack = yield* service.getWithSecrets(created.database.id)
+
+        return { readBack, unreadable, updated }
+      })
+    )
+
+    expect(unreadable._tag).toEqual('SecretDecryptError')
+    expect(updated.name).toEqual('Repaired')
+
+    // The repaired row is readable again. The password is blank because the
+    // stored one was unrecoverable, which is the honest outcome — the user
+    // re-enters it.
+    expect(Option.isSome(readBack)).toEqual(true)
+
+    if (Option.isSome(readBack)) {
+      expect(readBack.value.connection).toEqual({
+        connectionInfo: { ...connectionInfo, password: '' },
+        type: 'postgres'
+      })
+    }
+  })
+
   it('returns none for a missing or deleted database', async () => {
     const { missing, deleted } = await run(
       Effect.gen(function* () {
@@ -334,7 +387,7 @@ describe('DatabaseService', () => {
 
         const missing = yield* service.getWithSecrets('missing')
 
-        const created = yield* service.create('Pagila', connectionInfo, 'postgres')
+        const created = yield* service.create('Pagila', connection)
 
         yield* service.remove(created.database.id)
 
@@ -353,7 +406,7 @@ describe('DatabaseService', () => {
       Effect.gen(function* () {
         const service = yield* DatabaseService
 
-        const created = yield* service.create('Pagila', connectionInfo, 'postgres')
+        const created = yield* service.create('Pagila', connection)
 
         return yield* service.getWithSecrets(created.database.id)
       })
@@ -362,7 +415,7 @@ describe('DatabaseService', () => {
     expect(Option.isSome(secrets)).toEqual(true)
 
     if (Option.isSome(secrets)) {
-      expect(secrets.value.connectionInfo).toEqual({
+      expect(secrets.value.connection.connectionInfo).toEqual({
         database: 'pagila',
         host: 'localhost',
         password: 'secret',

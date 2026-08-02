@@ -32,11 +32,7 @@ export const DatabasesLive = HttpApiBuilder.group(
         Effect.gen(function* () {
           const service = yield* DatabaseService
 
-          return yield* service.create(
-            payload.name,
-            payload.connectionInfo,
-            payload.type
-          )
+          return yield* service.create(payload.name, payload)
         }).pipe(orDieInternal)
       )
       .handle('reorder', ({ payload }) =>
@@ -62,10 +58,7 @@ export const DatabasesLive = HttpApiBuilder.group(
             })
           }
 
-          const adapter = adapterFactory.create(
-            record.value.type,
-            record.value.connectionInfo
-          )
+          const adapter = adapterFactory.create(record.value.connection)
 
           // Deliberately sequential. Running the probe alongside introspection
           // would double the connections every schema request opens, and
@@ -96,12 +89,7 @@ export const DatabasesLive = HttpApiBuilder.group(
         Effect.gen(function* () {
           const service = yield* DatabaseService
 
-          const database = yield* service.update(
-            path.id,
-            payload.name,
-            payload.connectionInfo,
-            payload.type
-          )
+          const database = yield* service.update(path.id, payload.name, payload)
 
           return { database }
         }).pipe(orDieInternal)

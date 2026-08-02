@@ -56,7 +56,10 @@ function run<A, E>(
 const createDatabase = Effect.gen(function* () {
   const databases = yield* DatabaseService
 
-  const created = yield* databases.create('Pagila', connectionInfo, 'postgres')
+  const created = yield* databases.create('Pagila', {
+    connectionInfo,
+    type: 'postgres'
+  })
 
   return created.database
 })
@@ -175,10 +178,7 @@ describe('QueryRunner', () => {
           if (rejectRunningQuery === undefined) {
             return yield* Effect.fail(new Error('adapter not running yet'))
           }
-        }).pipe(
-          Effect.retry({ times: 100 }),
-          Effect.delay('1 millis')
-        )
+        }).pipe(Effect.retry({ times: 100 }), Effect.delay('1 millis'))
 
         yield* runner.awaitIdle
 

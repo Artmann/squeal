@@ -27,7 +27,6 @@ import type {
   CreateQueryResponse,
   CreateWorksheetRequest,
   DatabaseDto,
-  DatabaseType,
   ListTracesUrlParams,
   QueryDto,
   ReorderDatabasesResponse,
@@ -35,7 +34,7 @@ import type {
   SchemaInfoDto,
   SpanDto,
   TraceSummaryDto,
-  UpdateConnectionInfo,
+  UpdateDatabaseConnection,
   UpdateDatabaseRequest,
   UpdateDatabaseResponse,
   UpdateWorksheetRequest,
@@ -322,8 +321,13 @@ export const apiClient = {
       'HTTP POST /databases',
       { method: 'POST', path: '/databases' },
       undefined,
+      // The payload schema is a union discriminated on `type`, so the generated
+      // client's options object is a union too. Narrowing here hands it one
+      // concrete member instead of reaching for a cast.
       Effect.flatMap(client, (api) =>
-        api.databases.create({ payload: request })
+        request.type === 'sqlite'
+          ? api.databases.create({ payload: request })
+          : api.databases.create({ payload: request })
       )
     )
   },
@@ -495,22 +499,23 @@ export const apiClient = {
   },
 
   async testConnection(
-    connectionInfo: UpdateConnectionInfo,
-    type: DatabaseType,
+    connection: UpdateDatabaseConnection,
     databaseId?: string
   ): Promise<ConnectionTestResponse> {
+    const target = databaseId === undefined ? {} : { databaseId }
+
     return traced(
       'HTTP POST /connection-tests',
       { method: 'POST', path: '/connection-tests' },
       undefined,
       Effect.flatMap(client, (api) =>
-        api.connectionTests.create({
-          payload: {
-            connectionInfo,
-            type,
-            ...(databaseId === undefined ? {} : { databaseId })
-          }
-        })
+        connection.type === 'sqlite'
+          ? api.connectionTests.create({
+              payload: { ...connection, ...target }
+            })
+          : api.connectionTests.create({
+              payload: { ...connection, ...target }
+            })
       )
     )
   },
@@ -524,7 +529,9 @@ export const apiClient = {
       { method: 'PATCH', path: `/databases/${databaseId}` },
       undefined,
       Effect.flatMap(client, (api) =>
-        api.databases.update({ path: { id: databaseId }, payload: request })
+        request.type === 'sqlite'
+          ? api.databases.update({ path: { id: databaseId }, payload: request })
+          : api.databases.update({ path: { id: databaseId }, payload: request })
       )
     )
   },
