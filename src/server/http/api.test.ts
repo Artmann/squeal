@@ -105,10 +105,9 @@ describe('authentication', () => {
   })
 
   it('always requires the token for span ingest', async () => {
-    const response = await rawRequest(
-      HttpClientRequest.post('/traces/spans'),
-      { publicTraceReads: true }
-    )
+    const response = await rawRequest(HttpClientRequest.post('/traces/spans'), {
+      publicTraceReads: true
+    })
 
     expect(response.status).toEqual(401)
   })

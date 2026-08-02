@@ -126,7 +126,9 @@ describe('TitleBar', () => {
 
     expect(readStoredTheme()).toEqual({ mode: 'light', name: 'squeal' })
     expect(document.documentElement.getAttribute('data-mode')).toEqual('light')
-    expect(document.documentElement.getAttribute('data-theme')).toEqual('squeal')
+    expect(document.documentElement.getAttribute('data-theme')).toEqual(
+      'squeal'
+    )
     expect(
       screen.getByRole('button', { name: 'Switch to dark theme' })
     ).toBeInTheDocument()

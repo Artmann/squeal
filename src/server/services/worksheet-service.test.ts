@@ -86,9 +86,7 @@ describe('WorksheetService', () => {
 
         const created = yield* service.create({ name: 'Analysis' })
 
-        return yield* service
-          .reorder([created.id, 'missing'])
-          .pipe(Effect.flip)
+        return yield* service.reorder([created.id, 'missing']).pipe(Effect.flip)
       })
     )
 

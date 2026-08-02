@@ -48,7 +48,13 @@ interface PickerKeyDownOptions {
 /** Escape closes, Enter selects the highlight, arrows move it with wrapping. */
 function handlePickerKeyDown(
   event: KeyboardEvent<HTMLDivElement>,
-  { databases, highlightedIndex, onClose, onHighlight, onSelect }: PickerKeyDownOptions
+  {
+    databases,
+    highlightedIndex,
+    onClose,
+    onHighlight,
+    onSelect
+  }: PickerKeyDownOptions
 ): void {
   if (event.key === 'Escape') {
     event.preventDefault()

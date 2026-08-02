@@ -2,7 +2,16 @@
 // Tracer whose spans persist straight into the spans table via writeSpans.
 // Effect already generates W3C-format ids, so the renderer's traceparent
 // propagation and the existing dashboard keep working unchanged.
-import { Cause, Chunk, Effect, Exit, Layer, Option, Queue, Tracer } from 'effect'
+import {
+  Cause,
+  Chunk,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Queue,
+  Tracer
+} from 'effect'
 import type { Context } from 'effect'
 import { log } from 'tiny-typescript-logger'
 
@@ -311,9 +320,7 @@ function describeFailure(
   }
 }
 
-function coerceAttributes(
-  attributes: Record<string, unknown>
-): SpanAttributes {
+function coerceAttributes(attributes: Record<string, unknown>): SpanAttributes {
   const coerced: SpanAttributes = {}
 
   for (const [key, value] of Object.entries(attributes)) {

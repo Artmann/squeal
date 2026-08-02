@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import reducer, { initialTabsState, tabsActions, type TabsState } from './tabs-slice'
+import reducer, {
+  initialTabsState,
+  tabsActions,
+  type TabsState
+} from './tabs-slice'
 
 function stateOf(
   openWorksheetIds: string[],

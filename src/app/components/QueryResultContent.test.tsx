@@ -81,7 +81,9 @@ describe('QueryResultContent', () => {
     )
 
     expect(screen.getByText('Alien')).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'title' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'title' })
+    ).toBeInTheDocument()
   })
 
   it('splits a driver error into a title and its detail', () => {

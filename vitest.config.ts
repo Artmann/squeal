@@ -5,10 +5,7 @@ import { configDefaults, defineConfig } from 'vitest/config'
 // Tests for backend code (pure glue modules and, as the Effect migration
 // lands, src/server) run in a plain node environment. Everything else keeps
 // the jsdom environment the React tests need.
-const backendTestPatterns = [
-  'src/glue/**/*.test.ts',
-  'src/server/**/*.test.ts'
-]
+const backendTestPatterns = ['src/glue/**/*.test.ts', 'src/server/**/*.test.ts']
 
 export default defineConfig({
   plugins: [react()],

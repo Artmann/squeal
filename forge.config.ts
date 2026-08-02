@@ -17,12 +17,7 @@ import { join, resolve } from 'path'
 // src/databases/create-adapter.ts imports all three adapters at module level,
 // which means a single missing package breaks every database type, not just its
 // own.
-const rootExternalPackages = [
-  '@libsql/client',
-  'mysql2',
-  'pg',
-  'pg-cursor'
-]
+const rootExternalPackages = ['@libsql/client', 'mysql2', 'pg', 'pg-cursor']
 
 interface PackageDependency {
   name: string

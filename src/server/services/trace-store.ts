@@ -168,7 +168,11 @@ function parseJsonObject(value: string | null): SpanAttributes {
   try {
     const parsed: unknown = JSON.parse(value)
 
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+    ) {
       return parsed as SpanAttributes
     }
 
