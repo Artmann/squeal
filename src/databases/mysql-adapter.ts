@@ -2,6 +2,7 @@ import { createConnection, type FieldPacket } from 'mysql2'
 import mysql from 'mysql2/promise'
 
 import { maxResultRows } from './adapter'
+import { closeQuietly } from './close-quietly'
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
   type ColumnRow,
@@ -41,7 +42,7 @@ export class MysqlAdapter implements DatabaseAdapter {
         foreignKeyRows as ForeignKeyRow[]
       )
     } finally {
-      await connection.end()
+      await closeQuietly(() => connection.end(), 'schema')
     }
   }
 
@@ -77,7 +78,7 @@ export class MysqlAdapter implements DatabaseAdapter {
       // `destroy()` has already torn the socket down; calling `end()` on top of
       // it throws.
       if (!timedOut) {
-        await connection.end()
+        await closeQuietly(() => connection.end(), 'version probe')
       }
     }
   }
@@ -161,7 +162,7 @@ export class MysqlAdapter implements DatabaseAdapter {
       })
     } finally {
       if (!destroyed) {
-        connection.end()
+        await closeQuietly(() => connection.end(), 'query')
       }
     }
   }
@@ -172,7 +173,7 @@ export class MysqlAdapter implements DatabaseAdapter {
     try {
       await connection.ping()
     } finally {
-      await connection.end()
+      await closeQuietly(() => connection.end(), 'connection test')
     }
   }
 

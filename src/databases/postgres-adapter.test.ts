@@ -459,6 +459,42 @@ describe('PostgresAdapter', () => {
       expect(mockEnd).toHaveBeenCalled()
     })
 
+    // The close lives in the `finally`, so a rejecting one used to replace the
+    // error the caller needs with a socket error — and the connection leaked
+    // anyway, since nothing retries the close.
+    it('still reports the query error when closing the connection fails', async () => {
+      cursorState.fixtures.push({
+        error: new Error('Query failed'),
+        fields: [],
+        rows: []
+      })
+      mockEnd.mockRejectedValueOnce(new Error('socket hang up'))
+
+      const adapter = new PostgresAdapter(connectionInfo)
+
+      await expect(adapter.runQuery('INVALID SQL')).rejects.toThrow(
+        'Query failed'
+      )
+    })
+
+    it('still returns rows when closing the connection fails', async () => {
+      cursorState.fixtures.push({
+        fields: [{ name: 'id' }],
+        rowCount: 1,
+        rows: [{ id: 1 }]
+      })
+      mockEnd.mockRejectedValueOnce(new Error('socket hang up'))
+
+      const adapter = new PostgresAdapter(connectionInfo)
+
+      expect(await adapter.runQuery('SELECT id FROM t')).toEqual({
+        fields: [{ name: 'id' }],
+        rowCount: 1,
+        rows: [{ id: 1 }],
+        truncated: false
+      })
+    })
+
     it('passes discrete connection fields without ssl when sslMode is disable', async () => {
       cursorState.fixtures.push({ fields: [], rows: [] })
 

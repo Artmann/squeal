@@ -7,6 +7,7 @@ import Cursor from 'pg-cursor'
 import { log } from 'tiny-typescript-logger'
 
 import { maxResultRows, QueryCanceledError } from './adapter'
+import { closeQuietly } from './close-quietly'
 import type { DatabaseAdapter, QueryResult, SchemaInfo } from './adapter'
 import {
   extractMissingColumn,
@@ -98,7 +99,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     try {
       return await this.getSchemaWithClient(client)
     } finally {
-      await client.end()
+      await closeQuietly(() => client.end(), 'schema')
     }
   }
 
@@ -125,7 +126,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         rawVersion
       )
     } finally {
-      await client.end()
+      await closeQuietly(() => client.end(), 'version probe')
     }
   }
 
@@ -174,7 +175,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     } finally {
       this.activeClient = null
 
-      await client.end()
+      await closeQuietly(() => client.end(), 'query')
     }
   }
 
@@ -296,7 +297,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     try {
       await client.connect()
     } finally {
-      await client.end()
+      await closeQuietly(() => client.end(), 'connection test')
     }
   }
 }
