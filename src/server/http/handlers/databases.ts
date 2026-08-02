@@ -7,6 +7,7 @@ import { DatabaseNotFoundError, SchemaLoadFailedError } from '@/glue/api/errors'
 import { AdapterFactory } from '@/server/services/adapter-factory'
 import { DatabaseService } from '@/server/services/database-service'
 import { orDieInternal } from '../internal-errors'
+import { answerRemoved } from '../remove-route'
 
 // A version probe opens a second connection to the user's database, so it gets
 // a bound of its own: past this the schema response goes out without a
@@ -77,13 +78,7 @@ export const DatabasesLive = HttpApiBuilder.group(
         }).pipe(orDieInternal)
       )
       .handle('remove', ({ path }) =>
-        Effect.gen(function* () {
-          const service = yield* DatabaseService
-
-          yield* service.remove(path.id)
-
-          return { success: true as const }
-        }).pipe(orDieInternal)
+        answerRemoved(DatabaseService.remove(path.id))
       )
       .handle('update', ({ path, payload }) =>
         Effect.gen(function* () {

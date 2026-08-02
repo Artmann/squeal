@@ -4,6 +4,7 @@ import { Effect } from 'effect'
 import { SquealApi } from '@/glue/api/api'
 import { WorksheetService } from '@/server/services/worksheet-service'
 import { orDieInternal } from '../internal-errors'
+import { answerRemoved } from '../remove-route'
 
 export const WorksheetsLive = HttpApiBuilder.group(
   SquealApi,
@@ -45,6 +46,9 @@ export const WorksheetsLive = HttpApiBuilder.group(
 
           return { worksheets }
         }).pipe(orDieInternal)
+      )
+      .handle('remove', ({ path }) =>
+        answerRemoved(WorksheetService.remove(path.id))
       )
       .handle('update', ({ path, payload }) =>
         Effect.gen(function* () {

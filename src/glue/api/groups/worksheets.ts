@@ -4,6 +4,7 @@ import { UnknownWorksheetIdsError, WorksheetNotFoundError } from '../errors'
 import {
   CreateWorksheetRequest,
   CreateWorksheetResponse,
+  DeleteWorksheetResponse,
   ListWorksheetsResponse,
   ReorderWorksheetsRequest,
   ReorderWorksheetsResponse,
@@ -31,6 +32,13 @@ export const worksheetsGroup = HttpApiGroup.make('worksheets')
       .setPayload(ReorderWorksheetsRequest)
       .addSuccess(ReorderWorksheetsResponse)
       .addError(UnknownWorksheetIdsError)
+  )
+  .add(
+    // Soft delete, like databases: the row keeps its queries so history
+    // survives, and every read already filters on deletedAt.
+    HttpApiEndpoint.del('remove')`/${idParam}`
+      .addSuccess(DeleteWorksheetResponse)
+      .addError(WorksheetNotFoundError)
   )
   .add(
     HttpApiEndpoint.patch('update')`/${idParam}`

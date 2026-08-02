@@ -133,6 +133,23 @@ export function useDeleteDatabase() {
   })
 }
 
+export function useDeleteWorksheet() {
+  const { worksheets } = useCollections()
+
+  return useMutation({
+    mutationFn: (worksheetId: string) => apiClient.deleteWorksheet(worksheetId),
+    onSuccess: (_, worksheetId) => {
+      if (worksheets.status === 'ready') {
+        worksheets.utils.writeDelete(worksheetId)
+      }
+
+      // No tab bookkeeping here on purpose: `tabsReconciled` runs on every
+      // worksheets update and drops tabs whose worksheet is gone, picking the
+      // next one to focus.
+    }
+  })
+}
+
 export function useReorderDatabases() {
   const { databases } = useCollections()
   const queryClient = useQueryClient()

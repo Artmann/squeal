@@ -376,6 +376,17 @@ export const apiClient = {
     )
   },
 
+  async deleteWorksheet(worksheetId: string): Promise<void> {
+    await traced(
+      'HTTP DELETE /worksheets/:id',
+      { method: 'DELETE', path: `/worksheets/${worksheetId}` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.worksheets.remove({ path: { id: worksheetId } })
+      )
+    )
+  },
+
   async getDatabaseSchema(databaseId: string): Promise<SchemaInfoDto> {
     const data = await traced(
       'HTTP GET /databases/:id/schema',
