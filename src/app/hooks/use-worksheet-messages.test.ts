@@ -127,10 +127,7 @@ describe('buildWorksheetMessages', () => {
       query({ content: 'FIRST', id: 'q-1', queriedAt: 1000 })
     ])
 
-    expect(messages.map((message) => message.text)).toEqual([
-      'FIRST',
-      'SECOND'
-    ])
+    expect(messages.map((message) => message.text)).toEqual(['FIRST', 'SECOND'])
   })
 
   it('caps the log and keeps the newest entries', () => {

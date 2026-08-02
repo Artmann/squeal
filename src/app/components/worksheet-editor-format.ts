@@ -4,11 +4,7 @@ import type { DatabaseType } from '@/glue/api/schemas'
 
 import { formatSql, SqlFormatError, toSqlDialect } from './sql-format'
 
-export type FormatOutcome =
-  | 'formatted'
-  | 'parse-error'
-  | 'unchanged'
-  | 'empty'
+export type FormatOutcome = 'formatted' | 'parse-error' | 'unchanged' | 'empty'
 
 // Only the two things formatting actually needs. `EditorView` satisfies this,
 // and so does a bare state+dispatch pair, which keeps the tests off the DOM —

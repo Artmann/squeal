@@ -40,9 +40,11 @@ describe('toQueryErrorParts', () => {
   })
 
   it('trims surrounding whitespace before splitting', () => {
-    expect(toQueryErrorParts('\n  Table missing\n  and here is why\n')).toEqual({
-      detail: 'and here is why',
-      title: 'Table missing'
-    })
+    expect(toQueryErrorParts('\n  Table missing\n  and here is why\n')).toEqual(
+      {
+        detail: 'and here is why',
+        title: 'Table missing'
+      }
+    )
   })
 })

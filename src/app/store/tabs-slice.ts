@@ -67,9 +67,7 @@ const tabsSlice = createSlice({
       // update, and the id list grows with the user's worksheets.
       const available = new Set(availableIds)
 
-      const surviving = state.openWorksheetIds.filter((id) =>
-        available.has(id)
-      )
+      const surviving = state.openWorksheetIds.filter((id) => available.has(id))
 
       const openWorksheetIds =
         surviving.length === 0 && fallbackId !== undefined
@@ -89,7 +87,9 @@ const tabsSlice = createSlice({
       if (
         activeWorksheetId === state.activeWorksheetId &&
         openWorksheetIds.length === state.openWorksheetIds.length &&
-        openWorksheetIds.every((id, index) => id === state.openWorksheetIds[index])
+        openWorksheetIds.every(
+          (id, index) => id === state.openWorksheetIds[index]
+        )
       ) {
         return
       }

@@ -1,4 +1,13 @@
-import { Cause, Context, Effect, Exit, FiberId, Layer, Option, Tracer } from 'effect'
+import {
+  Cause,
+  Context,
+  Effect,
+  Exit,
+  FiberId,
+  Layer,
+  Option,
+  Tracer
+} from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { spansTable } from '@/database/schema'
@@ -155,9 +164,7 @@ describe('makeSquealTracer', () => {
     span.end(endNanos, Exit.succeed(undefined))
 
     expect(written[0].parentSpanId).toEqual(null)
-    expect(written[0].traceId).toEqual(
-      expect.stringMatching(/^[0-9a-f]{32}$/)
-    )
+    expect(written[0].traceId).toEqual(expect.stringMatching(/^[0-9a-f]{32}$/))
     expect(written[0].traceId).not.toEqual('junk')
   })
 
@@ -172,9 +179,7 @@ describe('makeSquealTracer', () => {
     span.end(endNanos, Exit.succeed(undefined))
 
     expect(written[0].parentSpanId).toEqual(null)
-    expect(written[0].traceId).not.toEqual(
-      '00000000000000000000000000000000'
-    )
+    expect(written[0].traceId).not.toEqual('00000000000000000000000000000000')
   })
 
   it('coerces and truncates attribute values', () => {
@@ -277,5 +282,4 @@ describe('TracerLive', () => {
       'queued.parent'
     ])
   })
-
 })

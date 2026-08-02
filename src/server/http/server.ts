@@ -111,7 +111,10 @@ function withRequestGuards(app: HttpApp.Default): HttpApp.Default {
     // common case.
     const declaredLength = Number(request.headers['content-length'] ?? '0')
 
-    if (Number.isFinite(declaredLength) && declaredLength > maxRequestBodyBytes) {
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > maxRequestBodyBytes
+    ) {
       return HttpServerResponse.unsafeJson(
         { message: 'The request body is too large.' },
         { status: 413 }
@@ -119,9 +122,7 @@ function withRequestGuards(app: HttpApp.Default): HttpApp.Default {
     }
 
     return yield* app
-  }).pipe(
-    HttpServerRequest.withMaxBodySize(Option.some(maxRequestBodyBytes))
-  )
+  }).pipe(HttpServerRequest.withMaxBodySize(Option.some(maxRequestBodyBytes)))
 }
 
 // Shared by the production server and the in-memory test harness so both run

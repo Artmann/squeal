@@ -156,9 +156,8 @@ function ResultsMeta({ query }: { query: QueryDto | undefined }): ReactElement {
 
   return (
     <>
-      {formatRowCount(query.result)} ·{' '}
-      {Intl.NumberFormat().format(durationMs)} ms ·{' '}
-      <TimeAgo timestamp={query.queriedAt} />
+      {formatRowCount(query.result)} · {Intl.NumberFormat().format(durationMs)}{' '}
+      ms · <TimeAgo timestamp={query.queriedAt} />
     </>
   )
 }
