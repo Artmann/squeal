@@ -79,7 +79,7 @@ describe('worksheet routes', () => {
         id: expect.any(String),
         lastOpenedAt: null,
         name: 'Analysis',
-        sortOrder: null
+        sortOrder: -1
       }
     })
     expect(rows).toHaveLength(1)

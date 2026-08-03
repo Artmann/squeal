@@ -38,8 +38,46 @@ describe('WorksheetService', () => {
       id: expect.any(String),
       lastOpenedAt: null,
       name: 'My First Worksheet',
-      sortOrder: null
+      // Below the current minimum, so a new worksheet lands on top.
+      sortOrder: -1
     })
+  })
+
+  it('lists the newest worksheet first', async () => {
+    const names = await run(
+      Effect.gen(function* () {
+        const service = yield* WorksheetService
+
+        yield* service.create({ name: 'First' })
+        yield* service.create({ name: 'Second' })
+
+        const worksheets = yield* service.list()
+
+        return worksheets.map((worksheet) => worksheet.name)
+      })
+    )
+
+    expect(names).toEqual(['Second', 'First'])
+  })
+
+  it('puts a worksheet created after a reorder on top', async () => {
+    const names = await run(
+      Effect.gen(function* () {
+        const service = yield* WorksheetService
+
+        const first = yield* service.create({ name: 'First' })
+        const second = yield* service.create({ name: 'Second' })
+
+        yield* service.reorder([first.id, second.id])
+        yield* service.create({ name: 'Third' })
+
+        const worksheets = yield* service.list()
+
+        return worksheets.map((worksheet) => worksheet.name)
+      })
+    )
+
+    expect(names).toEqual(['Third', 'First', 'Second'])
   })
 
   it('updates only the provided fields', async () => {

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, min, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
 
 import { worksheetsTable } from '@/database/schema'
@@ -26,11 +26,23 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
       const create = Effect.fn('WorksheetService.create')(function* (
         request: CreateWorksheetRequest
       ) {
+        // A new worksheet belongs at the top of the list. Sitting one below the
+        // current minimum gets it there without renumbering every other row,
+        // and it also clears the legacy rows that never got a sortOrder, since
+        // those sort last.
+        const [lowest] = yield* appDatabase.execute((client) =>
+          client
+            .select({ sortOrder: min(worksheetsTable.sortOrder) })
+            .from(worksheetsTable)
+            .where(isNull(worksheetsTable.deletedAt))
+        )
+
         const [worksheet] = yield* appDatabase.execute((client) =>
           client
             .insert(worksheetsTable)
             .values({
               name: request.name,
+              sortOrder: (lowest?.sortOrder ?? 0) - 1,
               ...(request.content === undefined
                 ? {}
                 : { content: request.content }),
