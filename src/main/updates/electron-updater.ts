@@ -4,7 +4,7 @@
 //
 // Only ever built in the main process. Tests drive `createUpdater` with a fake
 // backend instead of building anything here.
-import { app, autoUpdater } from 'electron'
+import { app, autoUpdater, net } from 'electron'
 import { log } from 'tiny-typescript-logger'
 
 import {
@@ -103,8 +103,18 @@ function githubBackend(): UpdateBackend {
   let handlers: UpdateHandlers | null = null
 
   const load = async (): Promise<void> => {
-    const response = await fetch(latestReleaseApiUrl(), {
-      headers: { accept: 'application/vnd.github+json' },
+    // net.fetch rather than the global one: in the main process `fetch` is
+    // Node's undici, which knows nothing about Chromium's proxy configuration
+    // or the system certificate store, so an update check behind a corporate
+    // proxy fails while the rest of the app works. net.fetch honours both, and
+    // honours AbortSignal.timeout the same way.
+    const response = await net.fetch(latestReleaseApiUrl(), {
+      headers: {
+        accept: 'application/vnd.github+json',
+        // GitHub asks API clients to identify themselves. Without this the
+        // request still carries a User-Agent, but an anonymous one.
+        'user-agent': `Squeal/${app.getVersion()}`
+      },
       signal: AbortSignal.timeout(githubTimeoutMilliseconds)
     })
 
