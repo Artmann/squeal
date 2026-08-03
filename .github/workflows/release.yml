@@ -26,7 +26,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # macos-latest is arm64; macos-15-intel is x64. Two runners rather than
+        # one cross-arch build: libsql ships per-arch native bindings as optional
+        # dependencies and forge's packageAfterCopy hook copies node_modules
+        # straight from the host, so only the runner's own architecture is right.
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
 
     runs-on: ${{ matrix.os }}
 
@@ -43,15 +47,91 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
+      # forge.config.ts skips signing when APPLE_TEAM_ID is unset, so a missing
+      # secret would quietly ship an unsigned app that macOS refuses to open.
+      # Fail here instead.
+      - name: Check Apple signing secrets
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD:
+            ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=()
+
+          for name in APPLE_APP_SPECIFIC_PASSWORD APPLE_CERTIFICATE \
+            APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Cannot build a distributable macOS app. Missing repository secrets: ${missing[*]}. Add them under Settings -> Secrets and variables -> Actions, then re-run this job. Without them the app is unsigned and macOS reports it as damaged."
+            exit 1
+          fi
+
+      - name: Import Apple certificate
+        if: startsWith(matrix.os, 'macos')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          # Decode certificate from base64
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import certificate
+          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Add keychain to search list
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
       - name: Build artifacts
         run: yarn make
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD:
+            ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload to release
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run:
-          find out/make -type f \( -name "*.exe" -o -name "*.zip" -o -name
-          "*.deb" -o -name "*.rpm" -o -name "*.nupkg" -o -name "RELEASES" \)
-          -exec gh release upload ${{ needs.release-please.outputs.tag_name }}
-          {} --clobber \;
+          RUNNER_OS_LABEL: ${{ matrix.os }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          artifacts=()
+
+          while IFS= read -r file; do
+            artifacts+=("$file")
+          done < <(find out/make -type f \( -name "*.exe" -o -name "*.dmg" \
+            -o -name "*.deb" -o -name "*.rpm" -o -name "*.nupkg" \
+            -o -name "RELEASES" \))
+
+          # A bare `find -exec` exits 0 when nothing matches, which would leave
+          # the release missing this platform's installer while the job still
+          # looked green.
+          if [ ${#artifacts[@]} -eq 0 ]; then
+            echo "::error::No installers found in out/make for $RUNNER_OS_LABEL. The makers produced nothing, so there is nothing to publish — check the Build artifacts step."
+            exit 1
+          fi
+
+          printf 'Uploading %s\n' "${artifacts[@]}"
+
+          gh release upload "$TAG_NAME" "${artifacts[@]}" --clobber
