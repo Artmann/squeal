@@ -1,6 +1,6 @@
 {
   "name": "squeal",
-  "productName": "squeal",
+  "productName": "Squeal",
   "version": "1.2.0",
   "description": "Ergonomic SQL Client for Humans",
   "main": ".vite/build/main.js",
@@ -85,9 +85,9 @@
     "@effect/language-service": "^0.87.1",
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-dmg": "7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
     "@electron-forge/maker-squirrel": "^7.10.2",
-    "@electron-forge/maker-zip": "^7.10.2",
     "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
     "@electron-forge/plugin-fuses": "^7.10.2",
     "@electron-forge/plugin-vite": "^7.10.2",

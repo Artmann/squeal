@@ -66,7 +66,33 @@ the PR Title check) because squash-merged titles drive versioning:
 
 release-please maintains a release PR on `main` that accumulates changes.
 Merging it tags `vX.Y.Z`, creates the GitHub Release, updates `CHANGELOG.md`,
-and CI builds and uploads installers for Windows, macOS, and Linux.
+and CI builds and uploads installers for Windows, macOS, and Linux. macOS ships
+two DMGs — one for Apple silicon, one for Intel.
+
+### macOS signing
+
+macOS refuses to launch an app that isn't signed and notarized, reporting it as
+_damaged_. The release workflow therefore needs five repository secrets under
+**Settings → Secrets and variables → Actions**:
+
+| Secret                        | What it is                                    |
+| ----------------------------- | --------------------------------------------- |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from appleid.apple.com  |
+| `APPLE_CERTIFICATE`           | Base64 of the Developer ID Application `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD`  | The `.p12` export password                    |
+| `APPLE_ID`                    | Apple Developer account email                 |
+| `APPLE_TEAM_ID`               | Apple Developer team ID                       |
+
+Export the certificate with Keychain Access, then `base64 -i cert.p12 | pbcopy`.
+The macOS jobs fail with a message naming the missing secrets if any are absent,
+rather than publishing an app that can't be opened.
+
+Local `yarn make` skips signing when `APPLE_TEAM_ID` is unset. Those builds run
+fine from `out/` because nothing quarantines them, but they are not
+distributable — their signature doesn't verify, and macOS calls a quarantined
+app with a bad signature _damaged_. To produce a real signed build locally, set
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`; notarization
+adds a few minutes to the build.
 
 ## Database Migrations
 
