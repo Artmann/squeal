@@ -379,7 +379,12 @@ function WorksheetTab({
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent>
+      <ContextMenuContent
+        // Radix hands focus back to the trigger when the menu closes. That
+        // blurs the input Rename just opened, and a blur commits the edit, so
+        // the rename would end before a single key was pressed.
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
         <ContextMenuItem
           className="flex items-center gap-2 min-w-32 text-xs"
           onClick={() => rename.startEditing(worksheet)}
