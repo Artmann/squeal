@@ -146,11 +146,16 @@ const config: ForgeConfig = {
     // (`Squeal-darwin-arm64-<version>.zip`) is also what update.electronjs.org
     // matches on to pick the right architecture.
     new MakerZIP({}, ['darwin']),
+    // `bin` is the executable inside the packaged app, so it has to match
+    // packager's executable name — `Squeal`, see packagerConfig below. The
+    // installed command is still the conventional lowercase `/usr/bin/squeal`:
+    // that name comes from the package name, not from `bin`. Getting this wrong
+    // fails the build with "could not find the Electron app binary".
     new MakerRpm({
-      options: { bin: 'squeal', icon: './assets/icons/icon.png' }
+      options: { bin: 'Squeal', icon: './assets/icons/icon.png' }
     }),
     new MakerDeb({
-      options: { bin: 'squeal', icon: './assets/icons/icon.png' }
+      options: { bin: 'Squeal', icon: './assets/icons/icon.png' }
     })
   ],
   packagerConfig: {
@@ -160,9 +165,12 @@ const config: ForgeConfig = {
       // they must stay outside the archive. libsql carries the native binding.
       unpack: '**/node_modules/{@libsql,libsql,mysql2,pg,pg-cursor}/**/*'
     },
-    // The bundle is "Squeal", but the binary inside it stays lowercase so the
-    // Linux package binaries keep a conventional name.
-    executableName: 'squeal',
+    // No `executableName` on purpose, so it defaults to the product name and
+    // the executable is `Squeal`. Packager writes CFBundleDisplayName from the
+    // executable name rather than from the product name, so `executableName:
+    // 'squeal'` is what made Finder label the bundle "squeal" even though the
+    // bundle directory was `Squeal.app`. The Linux packages get their lowercase
+    // command from the package name; see the `bin` options above.
     icon: './assets/icons/icon',
     // Only sign when the CI secrets are present, so `yarn make` still works
     // locally. Unsigned builds launch from disk but are not distributable: the
