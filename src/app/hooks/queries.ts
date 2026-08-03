@@ -6,7 +6,11 @@ import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import { finishQueryTrace } from '../tracing/query-traces'
-import type { QueryDto, SchemaInfoDto } from '@/glue/api/schemas'
+import type {
+  QueryDto,
+  SchemaInfoDto,
+  UpdateStatusResponse
+} from '@/glue/api/schemas'
 
 export const queryPollInterval = 250
 
@@ -106,6 +110,30 @@ export function useServerVersion(
   const schema = useDatabaseSchema(databaseId)
 
   return schema.data?.serverVersion
+}
+
+// Slow on purpose. The backend checks GitHub every few hours and this only
+// reads the state it recorded, so a minute of staleness costs nothing — and
+// once an update is ready there is nothing left to learn, so polling stops.
+const updateStatusPollInterval = 60_000
+
+export function useUpdateStatus() {
+  return useQuery<UpdateStatusResponse>({
+    queryKey: queryKeys.updateStatus,
+    queryFn: () => apiClient.getUpdateStatus(),
+    refetchInterval: (statusQuery) => {
+      const state = statusQuery.state.data?.state
+
+      if (state === 'ready' || state === 'unsupported') {
+        return false
+      }
+
+      return updateStatusPollInterval
+    },
+    // A failed poll must never surface as an app-level error: an update the
+    // user has not asked about is not worth an error boundary.
+    throwOnError: false
+  })
 }
 
 // The backend finishes queries out-of-band, so while the given query is

@@ -68,6 +68,17 @@ export class UnknownWorksheetIdsError extends Schema.TaggedError<UnknownWorkshee
   HttpApiSchema.annotations({ status: 400 })
 ) {}
 
+// Installing is only possible once an update has finished downloading. The
+// renderer never offers the action in any other state, so this fires when a
+// check ran between the popover opening and the click landing.
+export class UpdateNotReadyError extends Schema.TaggedError<UpdateNotReadyError>()(
+  'UpdateNotReadyError',
+  {
+    message: Schema.String
+  },
+  HttpApiSchema.annotations({ status: 409 })
+) {}
+
 export class WorksheetNotFoundError extends Schema.TaggedError<WorksheetNotFoundError>()(
   'WorksheetNotFoundError',
   {

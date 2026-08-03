@@ -7,7 +7,7 @@ import { Toaster } from 'sonner'
 
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QueryDto, UpdateStatusResponse } from '@/glue/api/schemas'
 import { WorksheetDto } from '@/glue/worksheets'
 
 import { createCollections } from './collections'
@@ -30,6 +30,7 @@ export interface RenderOptions {
   schemas?: Record<string, SchemaInfo>
   tabs?: Partial<TabsState>
   ui?: UiState
+  updateStatus?: UpdateStatusResponse
   worksheets?: WorksheetDto[]
 }
 
@@ -57,6 +58,10 @@ function seedQueryCache(
 
   if (options.queries) {
     queryClient.setQueryData(queryKeys.queries, options.queries)
+  }
+
+  if (options.updateStatus) {
+    queryClient.setQueryData(queryKeys.updateStatus, options.updateStatus)
   }
 
   for (const [databaseId, schema] of Object.entries(options.schemas ?? {})) {

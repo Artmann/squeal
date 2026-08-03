@@ -7,5 +7,6 @@ export const queryKeys = {
   traces: (filters: { errorOnly: boolean; search: string }) =>
     ['traces', filters] as const,
   traceSpans: (traceId: string) => ['traces', 'spans', traceId] as const,
+  updateStatus: ['updates'] as const,
   worksheets: ['worksheets'] as const
 }

@@ -14,8 +14,10 @@ import { DatabaseService } from './services/database-service'
 import { QueryRunner } from './services/query-runner'
 import { SecretStorage } from './services/secret-storage'
 import { TraceStore } from './services/trace-store'
+import { Updater } from './services/updater'
 import { WorksheetService } from './services/worksheet-service'
 import { TracerLive } from './tracing/effect-tracer'
+import { UpdaterLive } from './updates'
 
 export interface MainRuntimeOptions {
   allowedOrigins: string[]
@@ -30,6 +32,7 @@ const ServicesLive = Layer.mergeAll(
   QueryRunner.Default,
   SecretStorage.Default,
   TraceStore.Default,
+  Updater.Default,
   WorksheetService.Default
 )
 
@@ -55,7 +58,8 @@ export function makeMainRuntime(options: MainRuntimeOptions) {
   // acquisition order.
   const MainLive = Layer.mergeAll(
     HttpLive.pipe(Layer.provide(BootLive)),
-    RetentionLive
+    RetentionLive,
+    UpdaterLive
   ).pipe(
     Layer.provideMerge(TracerLive),
     Layer.provideMerge(ServicesLive),

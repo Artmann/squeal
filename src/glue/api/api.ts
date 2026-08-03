@@ -11,6 +11,7 @@ import { databasesGroup } from './groups/databases'
 import { healthGroup } from './groups/health'
 import { queriesGroup } from './groups/queries'
 import { tracesGroup } from './groups/traces'
+import { updatesGroup } from './groups/updates'
 import { worksheetsGroup } from './groups/worksheets'
 
 export const SquealApi = HttpApi.make('SquealApi')
@@ -19,4 +20,5 @@ export const SquealApi = HttpApi.make('SquealApi')
   .add(healthGroup)
   .add(queriesGroup)
   .add(tracesGroup)
+  .add(updatesGroup)
   .add(worksheetsGroup)
