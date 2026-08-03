@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/Artmann/squeal/compare/v1.3.0...v1.3.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **release:** fail early when notarization is not available ([#42](https://github.com/Artmann/squeal/issues/42)) ([11301d4](https://github.com/Artmann/squeal/commit/11301d431e768ae469ee755cc5c5c7cc88ffbe83))
+
 ## [1.3.0](https://github.com/Artmann/squeal/compare/v1.2.0...v1.3.0) (2026-08-03)
 
 
