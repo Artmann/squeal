@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import type { WorksheetDto } from '@/glue/worksheets'
-import { pickWorksheetToOpen } from './worksheet-selection'
+import {
+  pickDatabaseForNewWorksheet,
+  pickWorksheetToOpen
+} from './worksheet-selection'
 
 function createWorksheet(
   id: string,
@@ -42,5 +45,49 @@ describe('pickWorksheetToOpen', () => {
 
   it('returns undefined when there are no worksheets', () => {
     expect(pickWorksheetToOpen([], undefined)).toEqual(undefined)
+  })
+})
+
+describe('pickDatabaseForNewWorksheet', () => {
+  function withDatabase(
+    worksheet: WorksheetDto,
+    databaseId: string
+  ): WorksheetDto {
+    return { ...worksheet, databaseId }
+  }
+
+  it('reuses the database the active worksheet runs against', () => {
+    const candidates = [
+      withDatabase(createWorksheet('a', 300), 'db-a'),
+      withDatabase(createWorksheet('b', 200), 'db-b')
+    ]
+
+    expect(pickDatabaseForNewWorksheet(candidates, 'b')).toEqual('db-b')
+  })
+
+  it('falls back to the most recently opened worksheet with a database', () => {
+    const candidates = [
+      withDatabase(createWorksheet('a', 100), 'db-a'),
+      withDatabase(createWorksheet('b', 300), 'db-b'),
+      createWorksheet('c', 400)
+    ]
+
+    expect(pickDatabaseForNewWorksheet(candidates, undefined)).toEqual('db-b')
+  })
+
+  // The active worksheet not having one yet is not a reason to start from
+  // scratch — the last connection the user worked with is the better guess.
+  it('falls back when the active worksheet has no database', () => {
+    const candidates = [
+      withDatabase(createWorksheet('a', 100), 'db-a'),
+      createWorksheet('b', 300)
+    ]
+
+    expect(pickDatabaseForNewWorksheet(candidates, 'b')).toEqual('db-a')
+  })
+
+  it('returns undefined when no worksheet has a database', () => {
+    expect(pickDatabaseForNewWorksheet(worksheets, 'b')).toEqual(undefined)
+    expect(pickDatabaseForNewWorksheet([], undefined)).toEqual(undefined)
   })
 })
