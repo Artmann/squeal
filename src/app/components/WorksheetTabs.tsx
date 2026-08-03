@@ -42,34 +42,34 @@ import { WorksheetDto } from '@/glue/worksheets'
 // both platforms. The last slot jumps to the last tab rather than the ninth.
 const tabHotkeys = Array.from({ length: 9 }, (_, index) => `mod+${index + 1}`)
 
-export function WorksheetTabs(): ReactElement {
-  const dispatch = useAppDispatch()
-  const worksheets = useWorksheets()
-  const createWorksheet = useCreateWorksheet()
+/** The worksheets behind the open tabs, in tab order. */
+function useOpenTabs(
+  openWorksheetIds: string[],
+  worksheets: WorksheetDto[]
+): WorksheetDto[] {
+  return openWorksheetIds.flatMap((id) => {
+    const worksheet = worksheets.find((entry) => entry.id === id)
 
-  const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
-  const openWorksheetIds = useAppSelector(selectOpenWorksheetIds)
+    // A tab whose worksheet has gone is dropped by `tabsReconciled`; skip it in
+    // the meantime rather than rendering a nameless tab.
+    return worksheet ? [worksheet] : []
+  })
+}
 
-  const rename = useWorksheetRename(worksheets.data)
-  const { editingWorksheetId } = rename
-
+/**
+ * Keeps the active tab in view in the scrolling strip. Owns the element map so
+ * the component only has to hand each tab's node over as it mounts.
+ */
+function useActiveTabScroll(
+  activeWorksheetId: string | undefined
+): (worksheetId: string, element: HTMLDivElement | null) => void {
   // Lazily initialised: `useRef(new Map())` would allocate a throwaway Map on
   // every render just to discard it.
   const tabRefs = useRef<Map<string, HTMLDivElement> | null>(null)
 
   tabRefs.current ??= new Map<string, HTMLDivElement>()
 
-  const openTabs = openWorksheetIds.flatMap((id) => {
-    const worksheet = worksheets.data.find((entry) => entry.id === id)
-
-    // A tab whose worksheet has gone is dropped by `tabsReconciled`; skip it in
-    // the meantime rather than rendering a nameless tab.
-    return worksheet ? [worksheet] : []
-  })
-
-  const openTabIds = openTabs.map((worksheet) => worksheet.id)
-
-  const registerTabElement = useCallback(
+  const registerElement = useCallback(
     (worksheetId: string, element: HTMLDivElement | null) => {
       if (element) {
         tabRefs.current?.set(worksheetId, element)
@@ -83,6 +83,148 @@ export function WorksheetTabs(): ReactElement {
     },
     []
   )
+
+  useEffect(() => {
+    if (!activeWorksheetId) {
+      return
+    }
+
+    tabRefs.current
+      ?.get(activeWorksheetId)
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [activeWorksheetId])
+
+  return registerElement
+}
+
+/** Creates a worksheet on the current connection and opens it in a tab. */
+function useNewWorksheet(
+  activeWorksheetId: string | undefined,
+  worksheets: WorksheetDto[]
+): () => void {
+  const dispatch = useAppDispatch()
+  const createWorksheet = useCreateWorksheet()
+
+  return useCallback(() => {
+    const databaseId = pickDatabaseForNewWorksheet(
+      worksheets,
+      activeWorksheetId
+    )
+
+    createWorksheet.mutate(
+      {
+        // `databaseId` is optional rather than nullable, so an unset one has to
+        // be left out instead of sent as null.
+        ...(databaseId === undefined ? {} : { databaseId }),
+        name: getNextUntitledName(worksheets)
+      },
+      {
+        onError: (error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : 'Unknown error'
+
+          toast.error('Failed to create worksheet', { description: message })
+        },
+        onSuccess: (worksheet) => {
+          dispatch(tabsActions.tabOpened(worksheet.id))
+        }
+      }
+    )
+  }, [activeWorksheetId, createWorksheet, dispatch, worksheets])
+}
+
+interface TabHotkeysOptions {
+  activeWorksheetId: string | undefined
+  /** Set while a tab is being renamed, which owns the keyboard. */
+  editingWorksheetId: string | null
+  openTabs: WorksheetDto[]
+  onActivate: (worksheetId: string) => void
+  onClose: (worksheetId: string) => void
+}
+
+/**
+ * Closing the active tab and jumping between tabs by position. Both are
+ * registered with `enableOnContentEditable` because CodeMirror is a
+ * contenteditable and holds focus by default, so without it the shortcuts are
+ * dead exactly where they are most useful.
+ */
+function useTabHotkeys(options: TabHotkeysOptions): void {
+  const {
+    activeWorksheetId,
+    editingWorksheetId,
+    openTabs,
+    onActivate,
+    onClose
+  } = options
+
+  useHotkeys(
+    'mod+w',
+    (event) => {
+      // Closing the tab out from under a rename would throw the edit away.
+      if (!activeWorksheetId || editingWorksheetId) {
+        return
+      }
+
+      // Without this the browser/Electron shortcut closes the window instead.
+      event.preventDefault()
+      onClose(activeWorksheetId)
+    },
+    { enableOnContentEditable: true, enableOnFormTags: true },
+    [activeWorksheetId, editingWorksheetId, onClose]
+  )
+
+  useHotkeys(
+    tabHotkeys,
+    (event, hotkey) => {
+      const worksheet = editingWorksheetId
+        ? undefined
+        : tabAtHotkeyPosition(openTabs, Number(hotkey.keys?.[0]))
+
+      if (!worksheet) {
+        return
+      }
+
+      event.preventDefault()
+      onActivate(worksheet.id)
+    },
+    { enableOnContentEditable: true, enableOnFormTags: true },
+    [editingWorksheetId, onActivate, openTabs]
+  )
+}
+
+/**
+ * The tab a number shortcut selects. The last slot lands on the last tab
+ * however many are open, the way browsers treat their ninth.
+ */
+function tabAtHotkeyPosition(
+  openTabs: WorksheetDto[],
+  position: number
+): WorksheetDto | undefined {
+  if (!position) {
+    return undefined
+  }
+
+  if (position === tabHotkeys.length) {
+    return openTabs[openTabs.length - 1]
+  }
+
+  return openTabs[position - 1]
+}
+
+export function WorksheetTabs(): ReactElement {
+  const dispatch = useAppDispatch()
+  const worksheets = useWorksheets()
+
+  const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
+  const openWorksheetIds = useAppSelector(selectOpenWorksheetIds)
+
+  const rename = useWorksheetRename(worksheets.data)
+
+  const openTabs = useOpenTabs(openWorksheetIds, worksheets.data)
+  const openTabIds = openTabs.map((worksheet) => worksheet.id)
+
+  const registerTabElement = useActiveTabScroll(activeWorksheetId)
+  const handleNewWorksheet = useNewWorksheet(activeWorksheetId, worksheets.data)
 
   const handleActivate = useCallback(
     (worksheetId: string) => {
@@ -105,33 +247,6 @@ export function WorksheetTabs(): ReactElement {
     [dispatch]
   )
 
-  const handleNewWorksheet = useCallback(() => {
-    const databaseId = pickDatabaseForNewWorksheet(
-      worksheets.data,
-      activeWorksheetId
-    )
-
-    createWorksheet.mutate(
-      {
-        // `databaseId` is optional rather than nullable, so an unset one has to
-        // be left out instead of sent as null.
-        ...(databaseId === undefined ? {} : { databaseId }),
-        name: getNextUntitledName(worksheets.data)
-      },
-      {
-        onError: (error: unknown) => {
-          const message =
-            error instanceof Error ? error.message : 'Unknown error'
-
-          toast.error('Failed to create worksheet', { description: message })
-        },
-        onSuccess: (worksheet) => {
-          dispatch(tabsActions.tabOpened(worksheet.id))
-        }
-      }
-    )
-  }, [activeWorksheetId, createWorksheet, dispatch, worksheets.data])
-
   const {
     dropIndicatorFor,
     handleDragOver,
@@ -147,65 +262,13 @@ export function WorksheetTabs(): ReactElement {
     resetDropIndicator
   })
 
-  useHotkeys(
-    'mod+w',
-    (event) => {
-      // A rename owns the keyboard while it is open — closing the tab out from
-      // under the input would throw the edit away.
-      if (!activeWorksheetId || editingWorksheetId) {
-        return
-      }
-
-      // Without this the browser/Electron shortcut closes the window instead.
-      event.preventDefault()
-      handleClose(activeWorksheetId)
-    },
-    // CodeMirror is a contenteditable, and it holds focus by default, so
-    // without this the shortcut is dead exactly where it is most useful.
-    { enableOnContentEditable: true, enableOnFormTags: true },
-    [activeWorksheetId, editingWorksheetId, handleClose]
-  )
-
-  useHotkeys(
-    tabHotkeys,
-    (event, hotkey) => {
-      if (editingWorksheetId) {
-        return
-      }
-
-      const position = Number(hotkey.keys?.[0])
-
-      if (!position) {
-        return
-      }
-
-      const worksheet =
-        position === tabHotkeys.length
-          ? openTabs[openTabs.length - 1]
-          : openTabs[position - 1]
-
-      if (!worksheet) {
-        return
-      }
-
-      event.preventDefault()
-      handleActivate(worksheet.id)
-    },
-    { enableOnContentEditable: true, enableOnFormTags: true },
-    [editingWorksheetId, handleActivate, openTabs]
-  )
-
-  useEffect(() => {
-    if (!activeWorksheetId) {
-      return
-    }
-
-    // Read through the ref rather than the render-scoped alias, so the effect
-    // depends only on which tab is active.
-    tabRefs.current
-      ?.get(activeWorksheetId)
-      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-  }, [activeWorksheetId])
+  useTabHotkeys({
+    activeWorksheetId,
+    editingWorksheetId: rename.editingWorksheetId,
+    onActivate: handleActivate,
+    onClose: handleClose,
+    openTabs
+  })
 
   return (
     <div className="h-[37px] flex-none flex items-stretch bg-panel2 border-b border-border">
