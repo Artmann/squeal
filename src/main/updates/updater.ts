@@ -65,8 +65,10 @@ export interface UpdaterOptions {
 export interface Updater {
   check(): void
   dispose(): void
-  // False when nothing is ready to install, which is the caller's cue to answer
-  // the request with an error rather than restarting the app.
+  // False when nothing is ready to install — the caller's cue to answer the
+  // request with an error rather than restarting the app — and also false for
+  // every call after the first, so the app can only ever be told to swap
+  // itself once.
   install(): boolean
   status(): UpdateStatus
 }
@@ -168,6 +170,10 @@ export function createUpdater(options: UpdaterOptions): Updater {
       ? idleStatus
       : { ...idleStatus, message: unsupported, state: 'unsupported' }
 
+  // One-way: once the app has been told to replace itself there is nothing to
+  // reset it for, and the process is on its way out.
+  let installing = false
+
   function fail(error: unknown, message: string): void {
     status = { ...status, lastCheckedAt: now(), message, state: 'error' }
 
@@ -250,9 +256,16 @@ export function createUpdater(options: UpdaterOptions): Updater {
     },
 
     install(): boolean {
-      if (status.state !== 'ready') {
+      // Idempotent rather than merely guarded. The install is handed to the
+      // backend on a short delay so the HTTP response can reach the renderer
+      // first, which leaves a window where a retry or a second client can ask
+      // again — and Squirrel spawns its installer per quitAndInstall call, so
+      // the second one buys a redundant swap of the bundle being replaced.
+      if (status.state !== 'ready' || installing) {
         return false
       }
+
+      installing = true
 
       backend.install()
 

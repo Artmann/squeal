@@ -342,6 +342,36 @@ describe('createUpdater', () => {
     expect(subject.state.installs).toEqual(1)
   })
 
+  // The install is handed to the backend on a delay so the HTTP response can
+  // leave first, which opens a window for a retry or a second client to ask
+  // again. Squirrel spawns its installer per quitAndInstall call.
+  it('only ever hands one install to the backend', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.downloaded('1.3.0')
+
+    expect(subject.updater.install()).toEqual(true)
+    expect(subject.updater.install()).toEqual(false)
+    expect(subject.updater.install()).toEqual(false)
+    expect(subject.state.installs).toEqual(1)
+  })
+
+  it('does not let a later check reopen installing', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.downloaded('1.3.0')
+    subject.updater.install()
+
+    // A check cannot start while an update is ready, but the events behind one
+    // can still arrive — a second downloaded must not license a second swap.
+    subject.emit.downloaded('1.4.0')
+
+    expect(subject.updater.install()).toEqual(false)
+    expect(subject.state.installs).toEqual(1)
+  })
+
   it('removes its listeners when disposed', () => {
     const subject = makeSubject()
 
