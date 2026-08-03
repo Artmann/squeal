@@ -101,6 +101,41 @@ jobs:
           # Add keychain to search list
           security list-keychain -d user -s $KEYCHAIN_PATH
 
+      # The secret check above cannot see an expired Apple agreement, and
+      # signing succeeds without one — so the first sign of trouble is a raw
+      # `HTTP status code: 403` from notarytool, two minutes into `yarn make`
+      # and wrapped in a forge stack trace. This asks the notary service the
+      # same question up front and names the cause instead.
+      - name: Check notarization is available
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD:
+            ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # `history` authenticates against the notary service without
+          # submitting anything, and answers fine for an account that has never
+          # notarized.
+          if reply=$(xcrun notarytool history \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" 2>&1); then
+            echo "Notary service reachable and the credentials are accepted."
+            exit 0
+          fi
+
+          echo "$reply"
+
+          if printf '%s' "$reply" | grep -qi 'agreement'; then
+            echo "::error::Notarization is unavailable because Apple reports a missing or expired agreement, so this build would fail later inside notarytool. The Account Holder — an Admin cannot do it — has to accept the current Apple Developer Program License Agreement at https://developer.apple.com/account and clear anything pending under App Store Connect -> Business, then re-run this job."
+          else
+            echo "::error::Notarization is unavailable, so this build would fail later inside notarytool. Apple's reply is above. Check that APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID are still valid and that the Developer Program membership has not lapsed."
+          fi
+
+          exit 1
+
       - name: Build artifacts
         run: yarn make
         env:
