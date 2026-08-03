@@ -7,6 +7,7 @@ import {
   useState
 } from 'react'
 import { toast } from 'sonner'
+import invariant from 'tiny-invariant'
 import { v7 } from 'uuid'
 
 import { AppSidebar } from './components/AppSidebar'
@@ -33,6 +34,10 @@ import { selectActiveWorksheetId } from './store/tabs-slice'
 import { finishQueryTrace, startQueryTrace } from './tracing/query-traces'
 import { createAstFromSql, type Statement } from './sql-parser'
 import { findActiveStatementIndex } from './sql-parser/active-statement'
+import {
+  resolveEditorContent,
+  type EditedContent
+} from './worksheet-editor-content'
 
 const WorksheetEditor = lazy(() =>
   import('./components/WorksheetEditor').then((module) => ({
@@ -65,18 +70,39 @@ function useActiveStatement(openWorksheetId: string | undefined) {
   // column are reported separately so neither has to derive the other.
   const [cursorOffset, setCursorOffset] = useState<number>(0)
 
+  // What the editor holds, which is ahead of the saved copy for as long as the
+  // autosave debounce is open. The cursor offset below is already live, so
+  // parsing the saved copy would also mean matching a fresh offset against a
+  // stale statement list.
+  const [editedContent, setEditedContent] = useState<EditedContent | null>(null)
+
   const currentWorksheet = useMemo(
     () => worksheets.data.find((worksheet) => worksheet.id === openWorksheetId),
     [worksheets.data, openWorksheetId]
   )
 
+  const content = resolveEditorContent(
+    editedContent,
+    openWorksheetId,
+    currentWorksheet
+  )
+
+  const recordEditedContent = useCallback(
+    (newContent: string) => {
+      invariant(openWorksheetId, 'No worksheet is open')
+
+      setEditedContent({ content: newContent, worksheetId: openWorksheetId })
+    },
+    [openWorksheetId]
+  )
+
   const statements = useMemo(() => {
-    if (!currentWorksheet?.content) {
+    if (!content) {
       return []
     }
 
-    return createAstFromSql(currentWorksheet.content).statements
-  }, [currentWorksheet?.content])
+    return createAstFromSql(content).statements
+  }, [content])
 
   const activeStatementIndex = useMemo(
     () => findActiveStatementIndex(statements, cursorOffset),
@@ -89,7 +115,9 @@ function useActiveStatement(openWorksheetId: string | undefined) {
   return {
     activeStatement,
     activeStatementIndex,
+    content,
     currentWorksheet,
+    recordEditedContent,
     setCursorOffset,
     statements
   }
@@ -124,7 +152,8 @@ function useLatestQuery(openWorksheetId: string | undefined) {
 function useRunQuery(
   activeStatement: Statement | null,
   databaseId: string | null | undefined,
-  worksheetId: string | undefined
+  worksheetId: string | undefined,
+  flushSave: () => void
 ) {
   const { queries: queriesCollection } = useCollections()
 
@@ -134,6 +163,11 @@ function useRunQuery(
 
       return
     }
+
+    // Running is a good moment to stop waiting out the debounce: the statement
+    // is already taken from the editor, so this only makes the saved copy match
+    // what just ran. Nothing waits on it — the query carries its own SQL.
+    flushSave()
 
     const optimistic = createOptimisticQuery(
       activeStatement,
@@ -153,7 +187,7 @@ function useRunQuery(
       finishQueryTrace({ error: message, id: optimistic.id })
       toast.error('Query failed', { description: message })
     })
-  }, [activeStatement, databaseId, worksheetId, queriesCollection])
+  }, [activeStatement, databaseId, flushSave, worksheetId, queriesCollection])
 }
 
 /**
@@ -161,13 +195,15 @@ function useRunQuery(
  * latest query, and the handlers that act on both. Bundled here so `App` itself
  * stays a layout.
  */
-function useWorksheetSession(openWorksheetId: string | undefined) {
+export function useWorksheetSession(openWorksheetId: string | undefined) {
   const databases = useDatabases()
 
   const {
     activeStatement,
     activeStatementIndex,
+    content,
     currentWorksheet,
+    recordEditedContent,
     setCursorOffset,
     statements
   } = useActiveStatement(openWorksheetId)
@@ -178,13 +214,24 @@ function useWorksheetSession(openWorksheetId: string | undefined) {
 
   const { handleCancelQuery, isCancelPending } = useCancelRunningQuery(query)
 
-  const { handleUpdateContent, saveState } =
+  const { flushSave, queueSave, saveState } =
     useWorksheetAutosave(openWorksheetId)
+
+  const handleUpdateContent = useCallback(
+    (newContent: string) => {
+      // The parse follows the editor immediately; the save is what gets to
+      // wait for the debounce.
+      recordEditedContent(newContent)
+      queueSave(newContent)
+    },
+    [queueSave, recordEditedContent]
+  )
 
   const handleRunQuery = useRunQuery(
     activeStatement,
     currentWorksheet?.databaseId,
-    openWorksheetId
+    openWorksheetId,
+    flushSave
   )
 
   const currentDatabase = useMemo(
@@ -198,6 +245,7 @@ function useWorksheetSession(openWorksheetId: string | undefined) {
   return {
     activeStatement,
     activeStatementIndex,
+    content,
     currentDatabase,
     currentWorksheet,
     handleCancelQuery,
@@ -222,6 +270,7 @@ export function App(): ReactElement {
   const {
     activeStatement,
     activeStatementIndex,
+    content,
     currentDatabase,
     currentWorksheet,
     handleCancelQuery,
@@ -270,7 +319,7 @@ export function App(): ReactElement {
               <Suspense fallback={null}>
                 <WorksheetEditor
                   activeStatementIndex={activeStatementIndex}
-                  content={currentWorksheet.content}
+                  content={content}
                   databaseType={currentDatabase?.type}
                   statements={statements}
                   onChange={handleUpdateContent}

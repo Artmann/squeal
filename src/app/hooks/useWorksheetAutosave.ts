@@ -53,7 +53,7 @@ export function useWorksheetAutosave(openWorksheetId: string | undefined) {
     }
   }, [flushSave, openWorksheetId])
 
-  const handleUpdateContent = useCallback(
+  const queueSave = useCallback(
     (newContent: string) => {
       invariant(openWorksheetId, 'No worksheet is open')
 
@@ -70,5 +70,7 @@ export function useWorksheetAutosave(openWorksheetId: string | undefined) {
     [flushSave, openWorksheetId]
   )
 
-  return { handleUpdateContent, saveState }
+  // `flushSave` is exposed so callers that need the saved copy to be current —
+  // running a query — can close the debounce window instead of waiting it out.
+  return { flushSave, queueSave, saveState }
 }
