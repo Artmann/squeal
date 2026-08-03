@@ -312,7 +312,9 @@ function WorksheetRow({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       {...(isSortingDisabled ? {} : listeners)}
     >
-      {dropIndicator && <DropIndicatorLine position={dropIndicator} />}
+      {dropIndicator && (
+        <DropIndicatorLine orientation="vertical" position={dropIndicator} />
+      )}
 
       {children}
     </div>

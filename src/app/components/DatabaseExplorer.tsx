@@ -363,7 +363,12 @@ function DatabaseRow({
       className={cn('relative flex-none', isDragging && 'opacity-50')}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
-      {dropIndicator && <DropIndicatorLine position={dropIndicator} />}
+      {dropIndicator && (
+        <DropIndicatorLine
+          orientation="vertical"
+          position={dropIndicator}
+        />
+      )}
 
       <DatabaseRowHeader
         database={database}
