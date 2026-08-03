@@ -11,7 +11,9 @@ import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
 import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
+import { UpdateNotReadyError } from '@/glue/api/errors'
 import type { DatabaseConnection } from '@/glue/api/schemas'
+import { updateMessages } from '@/main/updates/updater'
 import { ApiToken } from '@/server/http/api-token'
 import { ApiLive, CorsLive, ServeLive } from '@/server/http/server'
 import {
@@ -23,7 +25,9 @@ import { DatabaseService } from '@/server/services/database-service'
 import { QueryRunner } from '@/server/services/query-runner'
 import { SecretStorage } from '@/server/services/secret-storage'
 import { TraceStore } from '@/server/services/trace-store'
+import { Updater } from '@/server/services/updater'
 import { WorksheetService } from '@/server/services/worksheet-service'
+import type { UpdateStatus } from '@/main/updates/updater'
 
 export const testEncryptionPrefix = 'enc:v1:test:'
 
@@ -43,6 +47,52 @@ export const TestSecretStorage = Layer.succeed(
     isEncryptionAvailable: Effect.succeed(true)
   })
 )
+
+export const idleUpdateStatus: UpdateStatus = {
+  currentVersion: '1.2.0',
+  lastCheckedAt: null,
+  message: null,
+  releaseNotesUrl: null,
+  state: 'idle',
+  version: null
+}
+
+export interface TestUpdaterState {
+  checks: number
+  installs: number
+}
+
+// The real service attaches listeners to Electron's autoUpdater, so tests never
+// build Default. `status` is fixed per layer: route tests care about how a
+// given status is served, not about driving transitions — that is
+// src/main/updates/updater.test.ts's job.
+export function makeTestUpdater(status: UpdateStatus = idleUpdateStatus) {
+  const state: TestUpdaterState = { checks: 0, installs: 0 }
+
+  const layer = Layer.succeed(
+    Updater,
+    Updater.make({
+      check: Effect.sync(() => {
+        state.checks++
+      }),
+      install: () =>
+        Effect.gen(function* () {
+          if (status.state !== 'ready') {
+            return yield* new UpdateNotReadyError({
+              message: updateMessages.notReady
+            })
+          }
+
+          state.installs++
+
+          return status
+        }),
+      status: Effect.succeed(status)
+    })
+  )
+
+  return { layer, state }
+}
 
 export function makeTestAppDatabase(): Layer.Layer<AppDatabase> {
   return Layer.effect(
@@ -131,10 +181,12 @@ export interface TestApiOptions {
   // regression stays covered.
   allowedOrigins?: string[]
   publicTraceReads?: boolean
+  updateStatus?: UpdateStatus
 }
 
 export function makeTestApi(options: TestApiOptions = {}) {
   const adapterFactory = makeTestAdapterFactory(options.adapter)
+  const updater = makeTestUpdater(options.updateStatus)
 
   const services = Layer.mergeAll(
     QueryRunner.DefaultWithoutDependencies,
@@ -144,7 +196,8 @@ export function makeTestApi(options: TestApiOptions = {}) {
     Layer.provideMerge(DatabaseService.DefaultWithoutDependencies),
     Layer.provideMerge(adapterFactory.layer),
     Layer.provideMerge(makeTestAppDatabase()),
-    Layer.provideMerge(TestSecretStorage)
+    Layer.provideMerge(TestSecretStorage),
+    Layer.provideMerge(updater.layer)
   )
 
   const configuration = Layer.setConfigProvider(
@@ -167,7 +220,11 @@ export function makeTestApi(options: TestApiOptions = {}) {
     Layer.provideMerge(NodeHttpServer.layerTest)
   )
 
-  return { adapterState: adapterFactory.state, layer }
+  return {
+    adapterState: adapterFactory.state,
+    layer,
+    updaterState: updater.state
+  }
 }
 
 // A typed client for the served test API, authenticated with the test token.

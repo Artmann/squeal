@@ -7,6 +7,7 @@ import type { SaveState } from '../hooks/useWorksheetAutosave'
 import { useServerVersion } from '../hooks/queries'
 import { useAppDispatch } from '../store'
 import { uiActions } from '../store/ui-slice'
+import { UpdateIndicator } from './UpdateIndicator'
 import type { CursorPosition } from './worksheet-editor-cursor'
 
 type ConnectionHealth = 'failed' | 'succeeded' | 'unknown'
@@ -109,6 +110,8 @@ export function StatusBar({
         </span>
 
         <span className="text-text3">UTF-8</span>
+
+        <UpdateIndicator />
 
         <button
           aria-label="Open traces"

@@ -151,6 +151,63 @@ disposes on `before-quit`.
   borrow it.
 - Don't include the Claude footer in commits
 
+## Updates
+
+Squeal updates itself through Electron's built-in `autoUpdater`, pointed at
+[update.electronjs.org](https://update.electronjs.org) — the free Squirrel feed
+for public repos. The feed URL is
+`https://update.electronjs.org/Artmann/squeal/<platform>-<arch>/<version>`.
+
+Two constraints in the release pipeline are invisible until updates silently
+stop working, so both have comments at the code:
+
+- **Release tags must be valid semver.** The service skips any release where
+  `semver.valid(release.tag_name)` is false, so `squeal-v1.2.0` was invisible to
+  it — hence `include-component-in-tag: false` in `release-please-config.json`.
+  Tags are `v1.3.0`.
+- **macOS needs the ZIP, not the DMG.** Squirrel.Mac cannot install from a DMG.
+  `forge.config.ts` ships both: the DMG for first install, `MakerZIP` for
+  updates. Removing the ZIP maker breaks macOS updates while every build still
+  passes, which is how it was lost once already.
+
+Windows needs nothing special — the Squirrel `Setup.exe`, `RELEASES`, and
+`-full.nupkg` are already uploaded, and the feed serves the channel from them.
+Linux has no Electron updater support at all, so it takes a separate path: a
+`GET` on the GitHub releases API, and a popover offering the release page.
+
+- **Layout**: `src/main/updates/updater.ts` is the state machine (no Electron,
+  no `fetch` — both arrive through an `UpdateBackend`, which is what makes it
+  unit-testable). `src/main/updates/electron-updater.ts` builds the real
+  backends and decides whether this build can update itself at all.
+  `src/server/services/updater.ts` wraps it as a scoped `Effect.Service`;
+  `src/server/updates.ts` is the check schedule.
+- **Contract**: `GET /updates` (never fails — a failed check is `state: 'error'`
+  with a message) and `POST /updates/install` (409 `UpdateNotReadyError` when
+  nothing is ready). There is no check endpoint on purpose: the backend checks
+  on its own schedule and no UI asks for one.
+- **UI**: `src/app/components/UpdateIndicator.tsx` in the status bar, absent
+  unless the state is `ready` or `available`. There is deliberately no manual
+  "check for updates" affordance — the app has no menu bar to hang one off.
+- **Schedule**: 30 seconds after boot, then every 6 hours. The updater refuses
+  to start a second check while one is in flight or an update is already waiting
+  — `autoUpdater.checkForUpdates()` downloads the update again on every call.
+- **Untraced**: `GET /updates` is in `src/server/tracing/trace-skip.ts`; polling
+  it every minute for a whole session would eat a large share of the span
+  retention budget. `POST /updates/install` stays traced.
+- **In development** the status is always `state: 'unsupported'` with "Updates
+  are only available in a packaged build." — `setFeedURL` throws on an unsigned
+  build, so nothing is ever attached. On macOS the same applies when the app is
+  not in `/Applications`, because Squirrel.Mac cannot swap a bundle on the
+  read-only volume a DMG mounts as.
+- **`quitAndInstall` routes through the `before-quit` handler** in
+  `src/main.ts`, which prevents the default, disposes the runtime, and then
+  calls `app.exit(0)`. The installer is already primed and finishes once the
+  process is gone. If it ever does not, a downloaded update is applied on the
+  next launch regardless.
+- The `ready` state cannot be reached in development, so the popover is covered
+  by `UpdateIndicator.test.tsx` and the real download-and-restart path can only
+  be verified against an actual release.
+
 ## Tracing
 
 OTEL-style tracing is built in: the renderer and main process emit spans (W3C

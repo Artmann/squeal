@@ -37,6 +37,7 @@ import type {
   UpdateDatabaseConnection,
   UpdateDatabaseRequest,
   UpdateDatabaseResponse,
+  UpdateStatusResponse,
   UpdateWorksheetRequest,
   WorksheetDto
 } from '@/glue/api/schemas'
@@ -477,9 +478,24 @@ export const apiClient = {
     return data.traces
   },
 
+  // Untraced: this answers from memory on a schedule for the whole session, and
+  // the backend skips it too — see src/server/tracing/trace-skip.ts.
+  async getUpdateStatus(): Promise<UpdateStatusResponse> {
+    return run(Effect.flatMap(client, (api) => api.updates.get()))
+  },
+
   async ingestSpans(spans: SpanRecord[]): Promise<{ insertedCount: number }> {
     return run(
       Effect.flatMap(client, (api) => api.traces.ingest({ payload: { spans } }))
+    )
+  },
+
+  async installUpdate(): Promise<UpdateStatusResponse> {
+    return traced(
+      'HTTP POST /updates/install',
+      { method: 'POST', path: '/updates/install' },
+      undefined,
+      Effect.flatMap(client, (api) => api.updates.install())
     )
   },
 

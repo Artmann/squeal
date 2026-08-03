@@ -3,6 +3,7 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel'
 import { MakerDMG } from '@electron-forge/maker-dmg'
 import { MakerDeb } from '@electron-forge/maker-deb'
 import { MakerRpm } from '@electron-forge/maker-rpm'
+import { MakerZIP } from '@electron-forge/maker-zip'
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives'
 import { VitePlugin } from '@electron-forge/plugin-vite'
 import { FusesPlugin } from '@electron-forge/plugin-fuses'
@@ -138,6 +139,13 @@ const config: ForgeConfig = {
     // `Squeal-<version>-<arch>.dmg`, so the arm64 and x64 jobs don't overwrite
     // each other when the release upload runs with --clobber.
     new MakerDMG({ icon: './assets/icons/icon.icns' }, ['darwin']),
+    // The DMG is for the first install; this zip is what Squirrel.Mac
+    // installs. Do not remove it — Squirrel.Mac cannot read a DMG, so dropping
+    // this maker silently ends macOS auto-updates while every build still
+    // passes. The name it derives from the packaged directory
+    // (`Squeal-darwin-arm64-<version>.zip`) is also what update.electronjs.org
+    // matches on to pick the right architecture.
+    new MakerZIP({}, ['darwin']),
     new MakerRpm({
       options: { bin: 'squeal', icon: './assets/icons/icon.png' }
     }),

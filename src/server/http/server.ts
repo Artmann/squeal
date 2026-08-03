@@ -23,6 +23,7 @@ import { DatabasesLive } from './handlers/databases'
 import { HealthLive } from './handlers/health'
 import { QueriesLive } from './handlers/queries'
 import { TracesLive } from './handlers/traces'
+import { UpdatesLive } from './handlers/updates'
 import { WorksheetsLive } from './handlers/worksheets'
 
 const apiPort = 7847
@@ -33,6 +34,7 @@ const HandlersLive = Layer.mergeAll(
   HealthLive,
   QueriesLive,
   TracesLive,
+  UpdatesLive,
   WorksheetsLive
 )
 

@@ -23,6 +23,11 @@ describe('shouldSkipTracing', () => {
     expect(shouldSkipTracing('POST', '/queries/some-id/cancel')).toEqual(false)
   })
 
+  it('skips the update status poll but not the install', () => {
+    expect(shouldSkipTracing('GET', '/updates')).toEqual(true)
+    expect(shouldSkipTracing('POST', '/updates/install')).toEqual(false)
+  })
+
   it('traces everything else', () => {
     expect(shouldSkipTracing('GET', '/databases')).toEqual(false)
     expect(shouldSkipTracing('POST', '/worksheets')).toEqual(false)

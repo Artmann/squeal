@@ -442,6 +442,40 @@ export const HealthResponse = Schema.Struct({
   status: Schema.Literal('ok')
 })
 
+// --- Updates ---------------------------------------------------------------------
+
+// A failed check is data, not an error channel: the renderer shows `message`
+// in the update popover and keeps polling, exactly like a failed connection
+// test renders inline. `state` is the whole contract the UI branches on:
+//
+//   available    a newer version exists that this platform cannot self-install
+//   checking     a check is in flight
+//   downloading  Squirrel is fetching the update
+//   error        the check or the download failed; `message` says which
+//   idle         no update known
+//   ready        downloaded — installing it is one restart away
+//   unsupported  no update path from here (development build, DMG mount)
+export const UpdateStatusResponse = Schema.Struct({
+  currentVersion: Schema.String,
+  lastCheckedAt: Schema.NullOr(Schema.Number),
+  message: Schema.NullOr(Schema.String),
+  releaseNotesUrl: Schema.NullOr(Schema.String),
+  state: Schema.Literal(
+    'available',
+    'checking',
+    'downloading',
+    'error',
+    'idle',
+    'ready',
+    'unsupported'
+  ),
+  version: Schema.NullOr(Schema.String)
+})
+
+export type UpdateStatusResponse = Schema.Schema.Type<
+  typeof UpdateStatusResponse
+>
+
 // --- Response envelopes -----------------------------------------------------------
 
 export const ListDatabasesResponse = Schema.Struct({

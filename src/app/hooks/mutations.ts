@@ -150,6 +150,15 @@ export function useDeleteWorksheet() {
   })
 }
 
+// The response is answered before the app quits, so a success here means the
+// restart is coming, not that it has happened. Nothing is invalidated on
+// purpose: this window is about to close.
+export function useInstallUpdate() {
+  return useMutation({
+    mutationFn: () => apiClient.installUpdate()
+  })
+}
+
 export function useReorderDatabases() {
   const { databases } = useCollections()
   const queryClient = useQueryClient()
