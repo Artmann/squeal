@@ -25,6 +25,7 @@ import { useAppDispatch, useAppSelector } from '../store'
 import { worksheetSearchQueryUpdated } from '../store/editor-slice'
 import { selectActiveWorksheetId, tabsActions } from '../store/tabs-slice'
 import { getNextUntitledName } from '../worksheet-naming'
+import { pickDatabaseForNewWorksheet } from '../worksheet-selection'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -81,6 +82,7 @@ function useWorksheetActions(
 ) {
   const dispatch = useAppDispatch()
   const createWorksheet = useCreateWorksheet()
+  const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
   const { worksheets: worksheetsCollection } = useCollections()
 
   const touchWorksheet = useCallback(
@@ -103,10 +105,19 @@ function useWorksheetActions(
   )
 
   const handleNewWorksheet = useCallback(() => {
+    const databaseId = pickDatabaseForNewWorksheet(
+      worksheets,
+      activeWorksheetId
+    )
     const name = getNextUntitledName(worksheets)
 
     createWorksheet.mutate(
-      { name },
+      {
+        // `databaseId` is optional rather than nullable, so an unset one has to
+        // be left out instead of sent as null.
+        ...(databaseId === undefined ? {} : { databaseId }),
+        name
+      },
       {
         onSuccess: (worksheet) => {
           dispatch(tabsActions.tabOpened(worksheet.id))
@@ -121,7 +132,14 @@ function useWorksheetActions(
         }
       }
     )
-  }, [createWorksheet, dispatch, startEditing, touchWorksheet, worksheets])
+  }, [
+    activeWorksheetId,
+    createWorksheet,
+    dispatch,
+    startEditing,
+    touchWorksheet,
+    worksheets
+  ])
 
   return { handleNewWorksheet, handleSelectWorksheet }
 }
@@ -313,7 +331,10 @@ function WorksheetRow({
       {...(isSortingDisabled ? {} : listeners)}
     >
       {dropIndicator && (
-        <DropIndicatorLine orientation="vertical" position={dropIndicator} />
+        <DropIndicatorLine
+          orientation="vertical"
+          position={dropIndicator}
+        />
       )}
 
       {children}
