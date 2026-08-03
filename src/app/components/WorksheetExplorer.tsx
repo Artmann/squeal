@@ -3,14 +3,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { FileBracesIcon, Pencil, PlusIcon, Trash2 } from 'lucide-react'
-import {
-  ReactElement,
-  ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState
-} from 'react'
+import { ReactElement, ReactNode, useCallback } from 'react'
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
@@ -26,6 +19,7 @@ import {
   type DropIndicator
 } from '../hooks/use-drop-indicator'
 import { useReorderDrag } from '../hooks/use-reorder-drag'
+import { useWorksheetRename } from '../hooks/use-worksheet-rename'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import { worksheetSearchQueryUpdated } from '../store/editor-slice'
@@ -37,9 +31,9 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
-import { Input } from './ui/input'
 import { DropIndicatorLine } from './DropIndicatorLine'
 import { SearchInput } from './SearchInput'
+import { WorksheetNameInput } from './WorksheetNameInput'
 import { WorksheetDto } from '@/glue/worksheets'
 
 // Deleting takes the editor content with it, so it asks first via an action
@@ -74,91 +68,6 @@ function useConfirmedWorksheetDeletion(): (worksheet: WorksheetDto) => void {
     },
     [deleteWorksheet]
   )
-}
-
-function useWorksheetRename(worksheets: WorksheetDto[]) {
-  const { worksheets: worksheetsCollection } = useCollections()
-
-  const [editingWorksheetId, setEditingWorksheetId] = useState<string | null>(
-    null
-  )
-  const [editingName, setEditingName] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (editingWorksheetId && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [editingWorksheetId])
-
-  const startEditing = useCallback((worksheet: WorksheetDto) => {
-    setEditingWorksheetId(worksheet.id)
-    setEditingName(worksheet.name)
-  }, [])
-
-  const handleRenameCancel = useCallback(() => {
-    setEditingWorksheetId(null)
-    setEditingName('')
-  }, [])
-
-  const handleRenameSubmit = useCallback(
-    (worksheetId: string) => {
-      const trimmedName = editingName.trim()
-
-      if (!trimmedName) {
-        handleRenameCancel()
-
-        return
-      }
-
-      const worksheet = worksheets.find((w) => w.id === worksheetId)
-
-      if (!worksheet || worksheet.name === trimmedName) {
-        handleRenameCancel()
-
-        return
-      }
-
-      setEditingWorksheetId(null)
-
-      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
-        draft.name = trimmedName
-      })
-
-      void transaction.isPersisted.promise.catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-
-        toast.error('Failed to rename worksheet', { description: message })
-      })
-
-      setEditingName('')
-    },
-    [editingName, handleRenameCancel, worksheetsCollection, worksheets]
-  )
-
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent, worksheetId: string) => {
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        handleRenameSubmit(worksheetId)
-      } else if (event.key === 'Escape') {
-        event.preventDefault()
-        handleRenameCancel()
-      }
-    },
-    [handleRenameCancel, handleRenameSubmit]
-  )
-
-  return {
-    editingName,
-    editingWorksheetId,
-    handleKeyDown,
-    handleRenameSubmit,
-    inputRef,
-    setEditingName,
-    startEditing
-  }
 }
 
 /**
@@ -346,6 +255,7 @@ export function WorksheetExplorer(): ReactElement {
                     editingName={editingName}
                     inputRef={inputRef}
                     worksheetId={worksheet.id}
+                    worksheetName={worksheet.name}
                     onEditingNameChange={setEditingName}
                     onKeyDown={handleKeyDown}
                     onRenameSubmit={handleRenameSubmit}
@@ -487,15 +397,19 @@ interface WorksheetRenameInputProps {
   editingName: string
   inputRef: React.RefObject<HTMLInputElement | null>
   worksheetId: string
+  worksheetName: string
   onEditingNameChange: (name: string) => void
   onKeyDown: (event: React.KeyboardEvent, worksheetId: string) => void
   onRenameSubmit: (worksheetId: string) => void
 }
 
+// Keeps the row's icon and height while the name is being edited, so the list
+// does not shift under the cursor.
 function WorksheetRenameInput({
   editingName,
   inputRef,
   worksheetId,
+  worksheetName,
   onEditingNameChange,
   onKeyDown,
   onRenameSubmit
@@ -504,13 +418,14 @@ function WorksheetRenameInput({
     <div className="flex h-[var(--item-h)] items-center gap-2 px-2">
       <FileBracesIcon className="size-[13px] flex-none text-text3" />
 
-      <Input
-        ref={inputRef}
-        className="h-[22px] rounded-[4px] px-1 py-0 text-[12.5px] shadow-none md:text-[12.5px] focus-visible:ring-0"
-        value={editingName}
-        onBlur={() => onRenameSubmit(worksheetId)}
-        onChange={(event) => onEditingNameChange(event.target.value)}
-        onKeyDown={(event) => onKeyDown(event, worksheetId)}
+      <WorksheetNameInput
+        ariaLabel={`Rename ${worksheetName}`}
+        editingName={editingName}
+        inputRef={inputRef}
+        worksheetId={worksheetId}
+        onEditingNameChange={onEditingNameChange}
+        onKeyDown={onKeyDown}
+        onRenameSubmit={onRenameSubmit}
       />
     </div>
   )
