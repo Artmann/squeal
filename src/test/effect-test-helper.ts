@@ -66,7 +66,7 @@ export interface TestUpdaterState {
 // build Default. `status` is fixed per layer: route tests care about how a
 // given status is served, not about driving transitions — that is
 // src/main/updates/updater.test.ts's job.
-export function makeTestUpdater(status: UpdateStatus = idleUpdateStatus) {
+function makeTestUpdater(status: UpdateStatus = idleUpdateStatus) {
   const state: TestUpdaterState = { checks: 0, installs: 0 }
 
   const layer = Layer.succeed(
