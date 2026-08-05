@@ -6,12 +6,14 @@ import {
   ReactNode,
   Suspense,
   useCallback,
-  useEffect
+  useEffect,
+  useState
 } from 'react'
 
+import type { Collections } from './collections'
 import { useCollections } from './collections-context'
 import { Button } from './components/ui/button'
-import { useQueriesList, useWorksheets } from './hooks/queries'
+import { useDatabases, useQueriesList, useWorksheets } from './hooks/queries'
 import { useAppDispatch, useAppSelector } from './store'
 import { selectActiveWorksheetId, tabsActions } from './store/tabs-slice'
 import { captureRendererError } from './tracing/init'
@@ -25,7 +27,25 @@ function FullScreenSpinner(): ReactNode {
   )
 }
 
-function DataLoadError({ onRetry }: { onRetry: () => void }): ReactNode {
+function DataLoadError({
+  onRetry
+}: {
+  onRetry: () => Promise<void>
+}): ReactNode {
+  const [retrying, setRetrying] = useState(false)
+
+  const retry = useCallback(async () => {
+    setRetrying(true)
+
+    try {
+      await onRetry()
+    } finally {
+      // A successful retry unmounts this, which makes the update a no-op. A
+      // failed one lands back here with the button usable again.
+      setRetrying(false)
+    }
+  }, [onRetry])
+
   return (
     <div className="w-full h-screen flex items-center justify-center bg-panel2">
       <div className="w-full max-w-sm flex flex-col gap-4 text-center">
@@ -37,7 +57,12 @@ function DataLoadError({ onRetry }: { onRetry: () => void }): ReactNode {
         </p>
 
         <div className="flex justify-center">
-          <Button onClick={onRetry}>Try again</Button>
+          <Button
+            disabled={retrying}
+            onClick={() => void retry()}
+          >
+            {retrying ? 'Retrying…' : 'Try again'}
+          </Button>
         </div>
       </div>
     </div>
@@ -46,8 +71,8 @@ function DataLoadError({ onRetry }: { onRetry: () => void }): ReactNode {
 
 interface ErrorBoundaryProps {
   children: ReactNode
-  fallback: (reset: () => void) => ReactNode
-  onReset?: () => void
+  fallback: (reset: () => Promise<void>) => ReactNode
+  onReset?: () => Promise<void>
 }
 
 interface ErrorBoundaryState {
@@ -68,8 +93,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render(): ReactNode {
     if (this.state.error) {
-      return this.props.fallback(() => {
-        this.props.onReset?.()
+      return this.props.fallback(async () => {
+        // Awaited before clearing the error: the reset remounts the loader,
+        // which re-reads the collections' error state, so it has to run after
+        // the refetch has settled or it sees the stale failure and lands right
+        // back here.
+        await this.props.onReset?.()
+
         this.setState({ error: null })
       })
     }
@@ -78,10 +108,51 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+function allCollections(collections: Collections) {
+  return [collections.databases, collections.queries, collections.worksheets]
+}
+
+// Gets every collection loading at once. The reads below suspend one at a time,
+// so whichever one came first used to be the only request in flight — the three
+// loads ran strictly in sequence, and with retries and backoff that was ~26
+// seconds of spinner before a failing backend surfaced anything at all.
+//
+// Called during render rather than from an effect on purpose: effects do not run
+// when a child suspends, which is exactly what happens on the first paint.
+// `preload()` caches its own promise, so calling it on every render is free.
+function startLoading(collections: Collections): void {
+  for (const collection of allCollections(collections)) {
+    void collection.preload().catch((): void => undefined)
+  }
+}
+
+// A collection whose sync failed still reports itself ready — the query
+// collection marks ready on its error path — so nothing suspends and the app
+// renders an empty shell as if the user simply had no worksheets. That is how a
+// broken backend looked like a merely slow one. Throwing here puts it on the
+// error screen instead.
+function failIfLoadFailed(collections: Collections): void {
+  for (const collection of allCollections(collections)) {
+    if (collection.utils.isError) {
+      throw (
+        collection.utils.lastError ??
+        new Error('Could not load your data from the local server.')
+      )
+    }
+  }
+}
+
 function AppDataLoader({ children }: { children: ReactNode }): ReactNode {
+  const collections = useCollections()
+
+  startLoading(collections)
+
   const worksheets = useWorksheets()
 
   useQueriesList()
+  useDatabases()
+
+  failIfLoadFailed(collections)
 
   const dispatch = useAppDispatch()
   const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
@@ -107,19 +178,18 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
   const collections = useCollections()
 
   // Resetting the query error boundary is not enough to restart a collection
-  // whose sync failed, so clear collection errors too.
-  const clearCollectionErrors = useCallback(() => {
-    const all = [
-      collections.databases,
-      collections.queries,
-      collections.worksheets
-    ]
-
-    for (const collection of all) {
-      if (collection.utils.isError) {
-        void collection.utils.clearError().catch((): void => undefined)
-      }
-    }
+  // whose sync failed, so clear collection errors too. Awaited, and failures
+  // swallowed: a retry that fails again leaves the collection in its error
+  // state, which puts the user back on the error screen rather than an empty
+  // app.
+  const clearCollectionErrors = useCallback(async () => {
+    await Promise.all(
+      allCollections(collections)
+        .filter((collection) => collection.utils.isError)
+        .map((collection) =>
+          collection.utils.clearError().catch((): void => undefined)
+        )
+    )
   }, [collections])
 
   return (
@@ -127,9 +197,10 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
       {({ reset }) => (
         <ErrorBoundary
           fallback={(retry) => <DataLoadError onRetry={retry} />}
-          onReset={() => {
+          onReset={async () => {
             reset()
-            clearCollectionErrors()
+
+            await clearCollectionErrors()
           }}
         >
           <Suspense fallback={<FullScreenSpinner />}>
