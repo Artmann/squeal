@@ -264,6 +264,9 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
 export function App(): ReactElement {
   const openWorksheetId = useAppSelector(selectActiveWorksheetId)
   const editorScreen = useAppSelector((state) => state.ui.editorScreen)
+  const gettingStartedDismissed = useAppSelector(
+    (state) => state.ui.gettingStartedDismissed
+  )
 
   const [cursorPosition, setCursorPosition] = useState<CursorPosition>()
 
@@ -285,7 +288,9 @@ export function App(): ReactElement {
     statements
   } = useWorksheetSession(openWorksheetId)
 
-  const showGettingStartedScreen = !hasDatabases
+  // Dismissible so an empty app is not a dead end. Saving a connection hides it
+  // for good, and the sidebar's add button reaches the same form afterwards.
+  const showGettingStartedScreen = !hasDatabases && !gettingStartedDismissed
 
   return (
     <main className="w-full h-screen flex flex-col bg-panel2 overflow-hidden text-sm">

@@ -12,7 +12,8 @@ import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
 import { UpdateNotReadyError } from '@/glue/api/errors'
-import type { DatabaseConnection } from '@/glue/api/schemas'
+import type { DatabaseConnection, SecretStorageMode } from '@/glue/api/schemas'
+import type { KeychainProbeResult } from '@/main/databases/secret-storage'
 import { updateMessages } from '@/main/updates/updater'
 import { ApiToken } from '@/server/http/api-token'
 import { ApiLive, CorsLive, ServeLive } from '@/server/http/server'
@@ -24,6 +25,7 @@ import { AdapterFactory } from '@/server/services/adapter-factory'
 import { DatabaseService } from '@/server/services/database-service'
 import { QueryRunner } from '@/server/services/query-runner'
 import { SecretStorage } from '@/server/services/secret-storage'
+import { SecretStorageSettings } from '@/server/services/secret-storage-settings'
 import { TraceStore } from '@/server/services/trace-store'
 import { Updater } from '@/server/services/updater'
 import { WorksheetService } from '@/server/services/worksheet-service'
@@ -31,22 +33,45 @@ import type { UpdateStatus } from '@/main/updates/updater'
 
 export const testEncryptionPrefix = 'enc:v1:test:'
 
-// Mirrors the real storage's shape (enc:v1:<payload>) without touching the
-// OS keychain, so assertions can check that secrets were stored encrypted.
-export const TestSecretStorage = Layer.succeed(
-  SecretStorage,
-  SecretStorage.make({
-    decrypt: (value: string) =>
-      Effect.succeed(
-        value.startsWith(testEncryptionPrefix)
-          ? value.slice(testEncryptionPrefix.length)
-          : value
-      ),
-    encrypt: (value: string) =>
-      Effect.succeed(`${testEncryptionPrefix}${value}`),
-    isEncryptionAvailable: Effect.succeed(true)
-  })
-)
+// Mirrors the real storage's shape (enc:v1:<payload>) without touching the OS
+// keychain, so assertions can check that secrets were stored encrypted.
+//
+// encrypt and decrypt deliberately ignore the mode: whether the gate holds is a
+// property of the real module and is covered by
+// src/main/databases/secret-storage.test.ts. What matters here is that the mode
+// round-trips through setMode, and that it lives in this closure rather than in
+// the real module's process-global.
+export function makeTestSecretStorage(
+  probeResult: KeychainProbeResult = 'available'
+) {
+  let mode: SecretStorageMode = 'keychain'
+
+  const layer = Layer.succeed(
+    SecretStorage,
+    SecretStorage.make({
+      decrypt: (value: string) =>
+        Effect.succeed(
+          value.startsWith(testEncryptionPrefix)
+            ? value.slice(testEncryptionPrefix.length)
+            : value
+        ),
+      encrypt: (value: string) =>
+        Effect.succeed(`${testEncryptionPrefix}${value}`),
+      mode: Effect.sync(() => mode),
+      probe: Effect.sync(() => probeResult),
+      setMode: (next: SecretStorageMode) =>
+        Effect.sync(() => {
+          mode = next
+        })
+    })
+  )
+
+  return { layer }
+}
+
+// The default substitute, kept as a layer so the suites that only need
+// transparent encryption can provide it directly.
+export const TestSecretStorage = makeTestSecretStorage().layer
 
 export const idleUpdateStatus: UpdateStatus = {
   currentVersion: '1.2.0',
@@ -181,22 +206,26 @@ export interface TestApiOptions {
   // regression stays covered.
   allowedOrigins?: string[]
   publicTraceReads?: boolean
+  // What the keychain answers when the user asks for encryption.
+  secretStorageProbe?: KeychainProbeResult
   updateStatus?: UpdateStatus
 }
 
 export function makeTestApi(options: TestApiOptions = {}) {
   const adapterFactory = makeTestAdapterFactory(options.adapter)
+  const secretStorage = makeTestSecretStorage(options.secretStorageProbe)
   const updater = makeTestUpdater(options.updateStatus)
 
   const services = Layer.mergeAll(
     QueryRunner.DefaultWithoutDependencies,
+    SecretStorageSettings.DefaultWithoutDependencies,
     TraceStore.DefaultWithoutDependencies,
     WorksheetService.DefaultWithoutDependencies
   ).pipe(
     Layer.provideMerge(DatabaseService.DefaultWithoutDependencies),
     Layer.provideMerge(adapterFactory.layer),
     Layer.provideMerge(makeTestAppDatabase()),
-    Layer.provideMerge(TestSecretStorage),
+    Layer.provideMerge(secretStorage.layer),
     Layer.provideMerge(updater.layer)
   )
 

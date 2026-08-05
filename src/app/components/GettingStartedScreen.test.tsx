@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { renderWithProviders } from '../test-utils'
@@ -25,4 +26,17 @@ describe('GettingStartedScreen', () => {
     expect(screen.getByLabelText('Database')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
   })
+
+  it.each(['Close', 'Skip for now'])(
+    'dismisses the screen from %s',
+    async (name) => {
+      const user = userEvent.setup()
+
+      const { store } = renderWithProviders(<GettingStartedScreen />)
+
+      await user.click(screen.getByRole('button', { name }))
+
+      expect(store.getState().ui.gettingStartedDismissed).toEqual(true)
+    }
+  )
 })

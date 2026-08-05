@@ -242,9 +242,7 @@ describe('apiClient', () => {
     })
 
     it('does not send a traceparent for health checks', async () => {
-      mockFetch.mockResolvedValueOnce(
-        respondWith({ encryptionAvailable: true, status: 'ok' })
-      )
+      mockFetch.mockResolvedValueOnce(respondWith({ status: 'ok' }))
 
       await apiClient.getHealth()
 

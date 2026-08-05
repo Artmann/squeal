@@ -5,6 +5,10 @@ import databaseExplorerReducer, {
   DatabaseExplorerState
 } from './database-explorer-slice'
 import editorReducer, { EditorState } from './editor-slice'
+import {
+  readGettingStartedDismissed,
+  writeGettingStartedDismissed
+} from './getting-started-storage'
 import tabsReducer, { TabsState } from './tabs-slice'
 import { readStoredTabs, writeStoredTabs } from './tabs-storage'
 import uiReducer, { UiState } from './ui-slice'
@@ -18,7 +22,10 @@ interface RootState {
 
 export function createStore() {
   const store = configureStore({
-    preloadedState: { tabs: readStoredTabs() },
+    preloadedState: {
+      tabs: readStoredTabs(),
+      ui: { gettingStartedDismissed: readGettingStartedDismissed() }
+    },
     reducer: {
       databaseExplorer: databaseExplorerReducer,
       editor: editorReducer,
@@ -30,17 +37,24 @@ export function createStore() {
   // Persisting from a subscriber rather than inside the reducers keeps the
   // reducers pure and unit-testable. Comparing the slice reference stops every
   // unrelated dispatch from writing to localStorage.
-  let persisted = store.getState().tabs
+  let persistedTabs = store.getState().tabs
+  let persistedDismissal = store.getState().ui.gettingStartedDismissed
 
   store.subscribe(() => {
-    const { tabs } = store.getState()
+    const { tabs, ui } = store.getState()
 
-    if (tabs === persisted) {
-      return
+    if (tabs !== persistedTabs) {
+      persistedTabs = tabs
+      writeStoredTabs(tabs)
     }
 
-    persisted = tabs
-    writeStoredTabs(tabs)
+    // Only this one field of `ui` is persisted, so it is compared by value
+    // rather than by slice reference — every editor screen opening would
+    // otherwise write it again.
+    if (ui.gettingStartedDismissed !== persistedDismissal) {
+      persistedDismissal = ui.gettingStartedDismissed
+      writeGettingStartedDismissed(ui.gettingStartedDismissed ?? false)
+    }
   })
 
   return store

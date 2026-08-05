@@ -14,20 +14,31 @@ import {
 
 import { createCollections } from '../collections'
 import { CollectionsProvider } from '../collections-context'
-import type { DatabaseDto, WorksheetDto } from '@/glue/api/schemas'
+import type {
+  DatabaseDto,
+  SecretStorageMode,
+  WorksheetDto
+} from '@/glue/api/schemas'
 import { capturedFetch, jsonResponse } from '../test-fetch'
 import { DatabaseForm } from './DatabaseForm'
 
-// The form asks the backend whether the OS keychain can encrypt secrets; stub
-// the hook so no test consumes the fetch mocks with a health request.
-let encryptionAvailable = true
+// The form reads whether stored passwords are encrypted; stub the hook so no
+// test consumes the fetch mocks with a secret-storage request (and so none of
+// them suspend without a boundary).
+let secretStorageMode: SecretStorageMode = 'keychain'
+
+const storageName = 'the macOS Keychain'
 
 vi.mock('../hooks/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/queries')>()
 
   return {
     ...actual,
-    useEncryptionAvailable: () => encryptionAvailable
+    useSecretStorage: () => ({
+      message: null,
+      mode: secretStorageMode,
+      storageName
+    })
   }
 })
 
@@ -77,9 +88,12 @@ function renderDatabaseForm(props: Parameters<typeof DatabaseForm>[0] = {}) {
   )
 }
 
+const unencryptedWarning =
+  'This password will be stored unencrypted on this computer, because Squeal does not have permission to use the macOS Keychain.'
+
 describe('DatabaseForm', () => {
   beforeEach(() => {
-    encryptionAvailable = true
+    secretStorageMode = 'keychain'
 
     vi.stubGlobal('fetch', vi.fn())
   })
@@ -88,26 +102,71 @@ describe('DatabaseForm', () => {
     vi.restoreAllMocks()
   })
 
-  it('warns when the OS keychain cannot encrypt the password', () => {
-    encryptionAvailable = false
+  it('warns when the password will be stored unencrypted', () => {
+    secretStorageMode = 'plaintext'
 
     renderDatabaseForm()
 
-    expect(
-      screen.getByText(
-        'Your OS keychain is unavailable — this password will be stored unencrypted on this computer.'
-      )
-    ).toBeInTheDocument()
+    expect(screen.getByText(unencryptedWarning)).toBeInTheDocument()
   })
 
-  it('does not warn when the OS keychain is available', () => {
+  it('says nothing about encryption when the keychain is in use', () => {
     renderDatabaseForm()
 
+    expect(screen.queryByText(unencryptedWarning)).not.toBeInTheDocument()
     expect(
-      screen.queryByText(
-        'Your OS keychain is unavailable — this password will be stored unencrypted on this computer.'
-      )
+      screen.queryByRole('button', { name: 'Turn on encryption' })
     ).not.toBeInTheDocument()
+  })
+
+  it('offers to turn encryption on from the warning', async () => {
+    const user = userEvent.setup()
+
+    secretStorageMode = 'plaintext'
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ message: null, mode: 'keychain', storageName })
+    )
+
+    renderDatabaseForm()
+
+    await user.click(screen.getByRole('button', { name: 'Turn on encryption' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Encryption is on')).toBeInTheDocument()
+    })
+
+    const request = await capturedFetch()
+
+    expect(request.method).toEqual('POST')
+    expect(request.url).toEqual('http://127.0.0.1:7847/secret-storage/grant')
+  })
+
+  it('explains why turning encryption on did not work', async () => {
+    const user = userEvent.setup()
+
+    secretStorageMode = 'plaintext'
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        message: 'Squeal could not get access to the macOS Keychain.',
+        mode: 'undecided',
+        storageName
+      })
+    )
+
+    renderDatabaseForm()
+
+    await user.click(screen.getByRole('button', { name: 'Turn on encryption' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Could not turn on encryption')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText('Squeal could not get access to the macOS Keychain.')
+      ).toBeInTheDocument()
+    })
   })
 
   it('renders all form fields', () => {

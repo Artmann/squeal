@@ -12,6 +12,7 @@ vi.mock('./api-client', () => ({
   apiClient: {
     getDatabases: vi.fn(),
     getQueries: vi.fn(),
+    getSecretStorage: vi.fn(),
     getWorksheets: vi.fn()
   }
 }))
@@ -134,6 +135,109 @@ describe('AppShell', () => {
     })
 
     expect(screen.queryByText('data loaded')).not.toBeInTheDocument()
+  })
+
+  describe('the secret storage gate', () => {
+    it('asks about the keychain before showing the app', async () => {
+      resolveAll()
+
+      renderWithProviders(<AppShell>data loaded</AppShell>, {
+        secretStorageMode: 'undecided'
+      })
+
+      expect(await screen.findByText('Welcome to Squeal')).toBeInTheDocument()
+      expect(screen.queryByText('data loaded')).not.toBeInTheDocument()
+    })
+
+    it.each(['keychain' as const, 'plaintext' as const])(
+      'shows the app once the choice is %s',
+      async (secretStorageMode) => {
+        resolveAll()
+
+        renderWithProviders(<AppShell>data loaded</AppShell>, {
+          secretStorageMode
+        })
+
+        expect(await screen.findByText('data loaded')).toBeInTheDocument()
+        expect(screen.queryByText('Welcome to Squeal')).not.toBeInTheDocument()
+      }
+    )
+
+    // The read suspends rather than defaulting, so a returning user never sees
+    // the consent screen flash before their app.
+    it('shows the spinner rather than the consent screen while the mode loads', async () => {
+      let releaseMode:
+        | ((response: {
+            message: null
+            mode: 'keychain'
+            storageName: string
+          }) => void)
+        | undefined
+
+      resolveAll()
+      vi.mocked(apiClient.getSecretStorage).mockReturnValue(
+        new Promise((resolve) => {
+          releaseMode = resolve
+        })
+      )
+
+      // Deliberately unseeded so the gate has to fetch.
+      renderWithProviders(<AppShell>data loaded</AppShell>, {
+        secretStorageMode: null
+      })
+
+      expect(
+        await screen.findByRole('status', { name: 'Loading Squeal' })
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Welcome to Squeal')).not.toBeInTheDocument()
+
+      releaseMode?.({
+        message: null,
+        mode: 'keychain',
+        storageName: 'the macOS Keychain'
+      })
+
+      expect(await screen.findByText('data loaded')).toBeInTheDocument()
+    })
+
+    // The ordering guarantee: the gate sits below failIfLoadFailed, so a broken
+    // backend can never be mistaken for a first run.
+    it('shows the data error screen rather than the consent screen when a load fails', async () => {
+      resolveAll()
+      vi.mocked(apiClient.getWorksheets).mockRejectedValue(
+        new Error('backend is down')
+      )
+
+      renderWithProviders(<AppShell>data loaded</AppShell>, {
+        secretStorageMode: 'undecided'
+      })
+
+      expect(
+        await screen.findByText('Could not load your data')
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Welcome to Squeal')).not.toBeInTheDocument()
+    })
+
+    it('asks for the mode alongside the collections, not after them', async () => {
+      let releaseWorksheets: ((worksheets: WorksheetDto[]) => void) | undefined
+
+      resolveAll()
+      vi.mocked(apiClient.getWorksheets).mockReturnValue(
+        new Promise((resolve) => {
+          releaseWorksheets = resolve
+        })
+      )
+
+      renderWithProviders(<AppShell>data loaded</AppShell>, {
+        secretStorageMode: null
+      })
+
+      await waitFor(() => {
+        expect(apiClient.getSecretStorage).toHaveBeenCalled()
+      })
+
+      releaseWorksheets?.([worksheet])
+    })
   })
 
   it('does not retry the collections that loaded fine', async () => {

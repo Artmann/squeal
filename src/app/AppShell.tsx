@@ -12,8 +12,14 @@ import {
 
 import type { Collections } from './collections'
 import { useCollections } from './collections-context'
+import { SecretStorageConsentScreen } from './components/SecretStorageConsentScreen'
 import { Button } from './components/ui/button'
-import { useDatabases, useQueriesList, useWorksheets } from './hooks/queries'
+import {
+  useDatabases,
+  useQueriesList,
+  useSecretStorage,
+  useWorksheets
+} from './hooks/queries'
 import { useAppDispatch, useAppSelector } from './store'
 import { selectActiveWorksheetId, tabsActions } from './store/tabs-slice'
 import { captureRendererError } from './tracing/init'
@@ -21,7 +27,11 @@ import { pickWorksheetToOpen } from './worksheet-selection'
 
 function FullScreenSpinner(): ReactNode {
   return (
-    <div className="w-full h-screen flex items-center justify-center bg-panel2">
+    <div
+      aria-label="Loading Squeal"
+      className="w-full h-screen flex items-center justify-center bg-panel2"
+      role="status"
+    >
       <Loader2Icon className="size-6 animate-spin text-text2" />
     </div>
   )
@@ -147,6 +157,11 @@ function AppDataLoader({ children }: { children: ReactNode }): ReactNode {
 
   startLoading(collections)
 
+  // Read before the collections so the request goes out on the first render,
+  // alongside the three preloads above rather than as a fourth round trip after
+  // them.
+  const secretStorage = useSecretStorage()
+
   const worksheets = useWorksheets()
 
   useQueriesList()
@@ -170,6 +185,17 @@ function AppDataLoader({ children }: { children: ReactNode }): ReactNode {
       })
     )
   }, [worksheets.data, activeWorksheetId, dispatch])
+
+  // Below failIfLoadFailed on purpose, and that order is the guarantee: a broken
+  // backend has already thrown onto the error screen by now, so the welcome
+  // screen can never stand in for one. Returning the screen instead of children
+  // also means App never mounts, so the getting-started screen cannot stack with
+  // it and none of the pollers start behind it.
+  if (secretStorage.mode === 'undecided') {
+    return (
+      <SecretStorageConsentScreen storageName={secretStorage.storageName} />
+    )
+  }
 
   return children
 }

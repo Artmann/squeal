@@ -13,6 +13,7 @@ import { AppDatabase } from './services/app-database'
 import { DatabaseService } from './services/database-service'
 import { QueryRunner } from './services/query-runner'
 import { SecretStorage } from './services/secret-storage'
+import { SecretStorageSettings } from './services/secret-storage-settings'
 import { TraceStore } from './services/trace-store'
 import { Updater } from './services/updater'
 import { WorksheetService } from './services/worksheet-service'
@@ -31,6 +32,7 @@ const ServicesLive = Layer.mergeAll(
   DatabaseService.Default,
   QueryRunner.Default,
   SecretStorage.Default,
+  SecretStorageSettings.Default,
   TraceStore.Default,
   Updater.Default,
   WorksheetService.Default

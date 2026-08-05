@@ -121,7 +121,15 @@ disposes on `before-quit`.
   `src/server` and `src/glue`) and `tsconfig.renderer.json`
 - `yarn test` - Vitest, split into a `backend` project (node environment) and a
   `renderer` project (jsdom)
-- `npx drizzle-kit generate` - Generate migrations after schema changes
+
+Schema changes do **not** go through `drizzle-kit generate` — it is interactive,
+and nothing applies the `drizzle/` folder at runtime. `src/database/index.ts`
+runs `createTables` from `src/database/tables.ts` (hand-written
+`CREATE TABLE IF NOT EXISTS` — the real DDL, and what in-memory test databases
+are built from) and then `reconcileColumns`, which ALTER-adds columns missing
+from older databases. A new table or column goes in both
+`src/database/schema.ts` and `tables.ts`; the guard test in
+`reconcile-columns.test.ts` fails if they disagree.
 
 ## Notes
 
@@ -129,10 +137,11 @@ disposes on `before-quit`.
 - API base URL in frontend: `http://127.0.0.1:7847` (the server binds loopback
   only)
 - The API requires a per-session bearer token on every route except `/health`
-  (and, in dev, GET `/traces*`). The renderer gets it via
-  `window.electron.getApiToken()`; the token is not printed at startup. Auth is
-  an `HttpApiMiddleware`, applied per group — the trace-read carve-out is a
-  separate middleware tag rather than path matching.
+  (which answers `{ status: 'ok' }` from nothing at all, so the one
+  unauthenticated route cannot reach the keychain) and, in dev, GET `/traces*`.
+  The renderer gets it via `window.electron.getApiToken()`; the token is not
+  printed at startup. Auth is an `HttpApiMiddleware`, applied per group — the
+  trace-read carve-out is a separate middleware tag rather than path matching.
 - Errors are `Schema.TaggedError`s: the body is the serialized error
   (`{ _tag, message, ... }`) and the status comes from its annotation, so the
   renderer discriminates on `_tag`. Errors internal to the backend
@@ -144,12 +153,66 @@ disposes on `before-quit`.
   (`pg_cancel_backend`), never fiber interruption, and there is deliberately no
   timeout on user queries.
 - Database `connectionInfo` is encrypted at rest with Electron `safeStorage`
-  (`enc:v1:` prefix in the `databases` table; see
-  `src/main/databases/secret-storage.ts`). API responses never include passwords
-  — internal callers use `getDatabaseWithSecrets()`, updates with a blank
-  password keep the stored one, and connection tests can pass a `databaseId` to
-  borrow it.
+  once the user has granted permission (`enc:v1:` prefix in the `databases`
+  table; see Secret storage below). API responses never include passwords —
+  internal callers use `getDatabaseWithSecrets()`, updates with a blank password
+  keep the stored one, and connection tests can pass a `databaseId` to borrow
+  it.
 - Don't include the Claude footer in commits
+
+## Secret storage
+
+Nothing in the app touches the OS keychain until the user has agreed to it. That
+consent is a persisted three-state mode — `undecided`, `keychain`, `plaintext` —
+in the single-row `settings` table, and it exists because reaching the keychain
+raises an OS prompt: on macOS even `safeStorage.isEncryptionAvailable()` does,
+since Chromium's `IsEncryptionAvailable()` fetches the key from the Keychain. So
+"just check first" is not available.
+
+- **The invariant**: `src/main/databases/secret-storage.ts` is the only module
+  permitted to import `safeStorage`, and it enforces the mode itself. Outside
+  `mode === 'keychain'`, `encrypt` returns its input and `decrypt` refuses an
+  `enc:v1:` value. The gate lives in that module rather than in the
+  `SecretStorage` Effect service because the plain `safeStorageSecretStorage`
+  object is reached from Effect code and promise code alike, and
+  `isEncryptionAvailable()` is called _inside_ `encrypt`, below the service
+  boundary.
+- **The one deliberate touch** is `probeEncryption()`, reached only through
+  `POST /secret-storage/grant` — i.e. only when the user clicks the button
+  asking for it. It round-trips a value rather than checking availability,
+  because `isEncryptionAvailable()` can answer for a key that then fails to
+  seal. On Linux, `getSelectedStorageBackend() === 'basic_text'` counts as
+  failure: that backend obfuscates with a hardcoded key while reporting
+  encryption as available, so accepting it would tell the user their passwords
+  are protected when they are not.
+- **Existing installs never see the screen.** `SecretStorageSettings.resolve()`
+  runs at boot; when no decision is stored it looks for an `enc:v1:` prefix on
+  any stored `connectionInfo` (a string test — no keychain) and infers
+  `keychain`. Soft-deleted rows count, because deleting a connection overwrites
+  its secret with an encrypted `{}`.
+- **Contract**: `GET /secret-storage` (resolves and returns
+  `{ message, mode, storageName }`), `POST /secret-storage/grant`,
+  `POST /secret-storage/skip`. No error channel — a refused prompt is the user's
+  answer, so it is a 200 carrying `mode: 'undecided'` and a message, the same
+  way a failed connection test is a 200. `storageName` is the platform's word
+  for its keychain, resolved in the main process so the renderer never touches
+  the deprecated `navigator.platform`.
+- **UI**: `src/app/components/SecretStorageConsentScreen.tsx`, gated in
+  `AppDataLoader` (`src/app/AppShell.tsx`) _below_ `failIfLoadFailed` — that
+  order is what stops a broken backend from rendering as a welcome screen.
+  Returning the screen instead of `children` means `App` never mounts, so it
+  cannot stack with `GettingStartedScreen` and no poller starts behind it. The
+  read suspends; a non-suspending default would flash the screen at returning
+  users. The screen includes `TitleBar` because the window is frameless.
+- **Reversal** is offered in one place: the "stored unencrypted" notice in a
+  connection's Authentication section. Granting re-encrypts every stored
+  password, so it is a complete reversal. The other direction is deliberately
+  not offered.
+- **Known gap**: in `keychain` mode, if the keychain later breaks, `encrypt`
+  still falls back to plaintext with a one-time `log.warn` and the mode-driven
+  notice shows nothing, so the user gets no warning before that save. Surfacing
+  the warn latch through `SecretStorageResponse` would close it without probing
+  anything.
 
 ## Updates
 

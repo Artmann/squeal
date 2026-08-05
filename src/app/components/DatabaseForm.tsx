@@ -30,8 +30,12 @@ import { ApiError } from '@/errors'
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 import { apiClient } from '../api-client'
-import { useCreateDatabase, useUpdateDatabase } from '../hooks/mutations'
-import { useEncryptionAvailable } from '../hooks/queries'
+import {
+  useCreateDatabase,
+  useGrantSecretStorage,
+  useUpdateDatabase
+} from '../hooks/mutations'
+import { useSecretStorage } from '../hooks/queries'
 import { Button } from './ui/button'
 import {
   Form,
@@ -127,6 +131,63 @@ function UnreadableConnectionNotice({
   )
 }
 
+// Passwords are only stored unencrypted because the user chose that on the
+// welcome screen, so this is also the one place to change their mind: granting
+// permission re-encrypts every password already saved, which makes the reversal
+// complete rather than forward-only.
+function UnencryptedPasswordNotice(): ReactElement | null {
+  const grant = useGrantSecretStorage()
+  const secretStorage = useSecretStorage()
+
+  if (secretStorage.mode === 'keychain') {
+    return null
+  }
+
+  const turnOnEncryption = async (): Promise<void> => {
+    try {
+      const response = await grant.mutateAsync()
+
+      if (response.mode === 'keychain') {
+        toast.success('Encryption is on', {
+          description: `Your saved passwords are now encrypted with ${response.storageName}.`
+        })
+
+        return
+      }
+
+      toast.error('Could not turn on encryption', {
+        description: response.message ?? undefined
+      })
+    } catch (error) {
+      toast.error('Could not turn on encryption', {
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Restart Squeal and try again.'
+      })
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-2 rounded-md border border-err-border bg-err-bg px-3 py-2 text-xs text-err">
+      <p>
+        This password will be stored unencrypted on this computer, because
+        Squeal does not have permission to use {secretStorage.storageName}.
+      </p>
+
+      <Button
+        className="text-text"
+        disabled={grant.isPending}
+        onClick={() => void turnOnEncryption()}
+        size="sm"
+        variant="outline"
+      >
+        {grant.isPending ? 'Waiting for permission…' : 'Turn on encryption'}
+      </Button>
+    </div>
+  )
+}
+
 export function DatabaseForm({
   databaseId,
   defaultValues,
@@ -209,17 +270,11 @@ export function DatabaseForm({
           isEditMode={isEditMode}
         />
 
-        {databaseType !== 'sqlite' && (
-          <ConnectionStringSection
-            form={form}
-            onSslModeApplied={() => setShowAdvanced(true)}
-          />
-        )}
-
         <ConnectionDetailsSection
           databaseType={databaseType}
           form={form}
           onBrowseFile={handleBrowseFile}
+          onSslModeApplied={() => setShowAdvanced(true)}
           onTypeChange={handleTypeChange}
         />
 
@@ -539,6 +594,7 @@ interface ConnectionDetailsSectionProps {
   databaseType: DatabaseType
   form: DatabaseFormApi
   onBrowseFile: () => void
+  onSslModeApplied: () => void
   onTypeChange: (newType: string) => void
 }
 
@@ -546,6 +602,7 @@ function ConnectionDetailsSection({
   databaseType,
   form,
   onBrowseFile,
+  onSslModeApplied,
   onTypeChange
 }: ConnectionDetailsSectionProps): ReactElement {
   return (
@@ -582,6 +639,16 @@ function ConnectionDetailsSection({
       </FormSectionHeader>
 
       <Separator />
+
+      {/* Inside the section rather than above it: this fills in the fields
+          below, and on its own it read as a stray link floating in the gap
+          between sections. */}
+      {databaseType !== 'sqlite' && (
+        <ConnectionStringSection
+          form={form}
+          onSslModeApplied={onSslModeApplied}
+        />
+      )}
 
       <div className="flex items-start gap-4">
         <FormField
@@ -711,8 +778,6 @@ function AuthenticationSection({
   form: DatabaseFormApi
   isEditMode: boolean
 }): ReactElement {
-  const encryptionAvailable = useEncryptionAvailable()
-
   return (
     <FormSection>
       <FormSectionHeader>
@@ -721,12 +786,7 @@ function AuthenticationSection({
 
       <Separator />
 
-      {!encryptionAvailable && (
-        <p className="rounded-md border border-err-border bg-err-bg px-3 py-2 text-xs text-err">
-          Your OS keychain is unavailable — this password will be stored
-          unencrypted on this computer.
-        </p>
-      )}
+      <UnencryptedPasswordNotice />
 
       <div className="flex items-start gap-4">
         <FormField

@@ -1,5 +1,5 @@
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 import { apiClient } from '../api-client'
@@ -9,6 +9,7 @@ import { finishQueryTrace } from '../tracing/query-traces'
 import type {
   QueryDto,
   SchemaInfoDto,
+  SecretStorageResponse,
   UpdateStatusResponse
 } from '@/glue/api/schemas'
 
@@ -57,16 +58,25 @@ export function useQueriesList() {
   )
 }
 
-// Whether the OS keychain can encrypt stored connection secrets. Fetched once
-// per session — it only changes with the OS environment.
-export function useEncryptionAvailable(): boolean {
-  const health = useQuery({
-    queryKey: queryKeys.health,
-    queryFn: () => apiClient.getHealth(),
-    staleTime: Infinity
-  })
+// Whether Squeal may encrypt stored connection secrets with the OS keychain.
+// Shared with AppShell, which starts the request during its first render so it
+// travels alongside the collection loads instead of after them.
+//
+// staleTime: Infinity is load-bearing rather than an optimization. With the
+// global 30s default, a component mounting later becomes a second observer and
+// refetches — and a failed refetch on a suspense query throws the whole app onto
+// the error screen mid-edit.
+export const secretStorageQueryOptions = {
+  queryFn: () => apiClient.getSecretStorage(),
+  queryKey: queryKeys.secretStorage,
+  staleTime: Infinity
+}
 
-  return health.data?.encryptionAvailable ?? true
+// Suspends rather than defaulting, on purpose: a non-suspending read would have
+// to guess a mode before the answer arrives, and guessing 'undecided' flashes
+// the consent screen at every returning user.
+export function useSecretStorage(): SecretStorageResponse {
+  return useSuspenseQuery(secretStorageQueryOptions).data
 }
 
 export function useDatabaseSchema(databaseId: string | undefined) {

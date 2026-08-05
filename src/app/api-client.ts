@@ -27,11 +27,13 @@ import type {
   CreateQueryResponse,
   CreateWorksheetRequest,
   DatabaseDto,
+  HealthResponse,
   ListTracesUrlParams,
   QueryDto,
   ReorderDatabasesResponse,
   ReorderWorksheetsResponse,
   SchemaInfoDto,
+  SecretStorageResponse,
   SpanDto,
   TraceSummaryDto,
   UpdateDatabaseConnection,
@@ -49,11 +51,6 @@ import { memoizePromise } from './memoize-promise'
 import { Span, startSpan } from './tracing/tracer'
 
 const baseUrl = 'http://127.0.0.1:7847'
-
-interface GetHealthResponse {
-  encryptionAvailable: boolean
-  status: string
-}
 
 const getApiToken = memoizePromise(() => window.electron.getApiToken())
 
@@ -413,7 +410,7 @@ export const apiClient = {
   },
 
   // Untraced: a health probe every few seconds would drown the trace list.
-  async getHealth(): Promise<GetHealthResponse> {
+  async getHealth(): Promise<HealthResponse> {
     return run(Effect.flatMap(client, (api) => api.health.get()))
   },
 
@@ -437,6 +434,15 @@ export const apiClient = {
     )
 
     return data.query
+  },
+
+  async getSecretStorage(): Promise<SecretStorageResponse> {
+    return traced(
+      'HTTP GET /secret-storage',
+      { method: 'GET', path: '/secret-storage' },
+      undefined,
+      Effect.flatMap(client, (api) => api.secretStorage.get())
+    )
   },
 
   // Untraced: tracing the trace API is a feedback loop.
@@ -484,6 +490,17 @@ export const apiClient = {
     return run(Effect.flatMap(client, (api) => api.updates.get()))
   },
 
+  // The only call in the app that can raise an OS keychain prompt, so it is
+  // worth seeing in a trace.
+  async grantSecretStorage(): Promise<SecretStorageResponse> {
+    return traced(
+      'HTTP POST /secret-storage/grant',
+      { method: 'POST', path: '/secret-storage/grant' },
+      undefined,
+      Effect.flatMap(client, (api) => api.secretStorage.grant())
+    )
+  },
+
   async ingestSpans(spans: SpanRecord[]): Promise<{ insertedCount: number }> {
     return run(
       Effect.flatMap(client, (api) => api.traces.ingest({ payload: { spans } }))
@@ -522,6 +539,15 @@ export const apiClient = {
       Effect.flatMap(client, (api) =>
         api.worksheets.reorder({ payload: { worksheetIds } })
       )
+    )
+  },
+
+  async skipSecretStorage(): Promise<SecretStorageResponse> {
+    return traced(
+      'HTTP POST /secret-storage/skip',
+      { method: 'POST', path: '/secret-storage/skip' },
+      undefined,
+      Effect.flatMap(client, (api) => api.secretStorage.skip())
     )
   },
 

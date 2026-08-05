@@ -150,6 +150,27 @@ export function useDeleteWorksheet() {
   })
 }
 
+// Asks the OS for permission to encrypt stored passwords, which is what raises
+// the keychain prompt. The response is written straight into the cache rather
+// than invalidated: it is authoritative, and a refetch would race the consent
+// screen unmounting.
+export function useGrantSecretStorage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => apiClient.grantSecretStorage(),
+    onSuccess: (response) => {
+      queryClient.setQueryData(queryKeys.secretStorage, response)
+
+      if (response.mode === 'keychain') {
+        // Stored secrets were re-encrypted, and the databases were listed
+        // before permission existed.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.databases })
+      }
+    }
+  })
+}
+
 // The response is answered before the app quits, so a success here means the
 // restart is coming, not that it has happened. Nothing is invalidated on
 // purpose: this window is about to close.
@@ -209,6 +230,19 @@ export function useReorderWorksheets() {
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.worksheets })
+    }
+  })
+}
+
+// Records that the user would rather store passwords unencrypted than grant
+// keychain access. Nothing about the keychain is touched.
+export function useSkipSecretStorage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => apiClient.skipSecretStorage(),
+    onSuccess: (response) => {
+      queryClient.setQueryData(queryKeys.secretStorage, response)
     }
   })
 }

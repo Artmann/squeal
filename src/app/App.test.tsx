@@ -221,4 +221,29 @@ describe('App', () => {
 
     expect(screen.queryByText('Connect a database')).not.toBeInTheDocument()
   })
+
+  it('keeps the getting started screen hidden once it is dismissed', () => {
+    renderWithProviders(<App />, {
+      databases: [],
+      queries: [],
+      ui: { gettingStartedDismissed: true },
+      worksheets: []
+    })
+
+    expect(screen.queryByText('Connect a database')).not.toBeInTheDocument()
+  })
+
+  // The consent screen replaces App rather than overlaying it, so the two
+  // first-run screens can never stack.
+  it('shows only the getting started screen once the storage choice is made', () => {
+    renderWithProviders(<App />, {
+      databases: [],
+      queries: [],
+      secretStorageMode: 'plaintext',
+      worksheets: []
+    })
+
+    expect(screen.getByText('Connect a database')).toBeInTheDocument()
+    expect(screen.queryByText('Welcome to Squeal')).not.toBeInTheDocument()
+  })
 })

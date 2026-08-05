@@ -7,6 +7,7 @@ export interface EditorScreen {
 
 export interface UiState {
   editorScreen?: EditorScreen
+  gettingStartedDismissed?: boolean
   traceDashboardOpen?: boolean
 }
 
@@ -22,6 +23,12 @@ const uiSlice = createSlice({
 
     closeTraceDashboard: (state) => {
       state.traceDashboardOpen = false
+    },
+
+    // Only meaningful while there are no databases: adding one hides the screen
+    // on its own, and the flag stops mattering.
+    dismissGettingStarted: (state) => {
+      state.gettingStartedDismissed = true
     },
 
     openCreateDatabase: (state) => {

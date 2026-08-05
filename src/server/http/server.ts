@@ -22,6 +22,7 @@ import { ConnectionTestsLive } from './handlers/connection-tests'
 import { DatabasesLive } from './handlers/databases'
 import { HealthLive } from './handlers/health'
 import { QueriesLive } from './handlers/queries'
+import { SecretStorageLive } from './handlers/secret-storage'
 import { TracesLive } from './handlers/traces'
 import { UpdatesLive } from './handlers/updates'
 import { WorksheetsLive } from './handlers/worksheets'
@@ -33,6 +34,7 @@ const HandlersLive = Layer.mergeAll(
   DatabasesLive,
   HealthLive,
   QueriesLive,
+  SecretStorageLive,
   TracesLive,
   UpdatesLive,
   WorksheetsLive

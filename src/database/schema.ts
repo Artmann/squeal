@@ -70,6 +70,19 @@ export const queriesTable = sqliteTable(
   ]
 )
 
+export const settingsTable = sqliteTable('settings', {
+  // A single row, always keyed 'default' — hence no generated id. These are
+  // app-wide choices, not a collection of things.
+  id: text().primaryKey(),
+  createdAt: integer()
+    .notNull()
+    .$defaultFn(() => Date.now()),
+  secretStorageMode: text().notNull().default('undecided'),
+  updatedAt: integer()
+    .notNull()
+    .$defaultFn(() => Date.now())
+})
+
 export const spansTable = sqliteTable(
   'spans',
   {

@@ -435,12 +435,43 @@ export type ListTracesUrlParams = Schema.Schema.Type<typeof ListTracesUrlParams>
 
 // --- Health ---------------------------------------------------------------------
 
-// encryptionAvailable tells the renderer whether the OS keychain can protect
-// stored connection secrets, so it can warn before saving one.
+// A liveness probe and nothing more. It deliberately carries no data: it used to
+// report keychain availability, but answering that question means reaching into
+// the keychain, which is what raises the OS prompt this app now asks for
+// consent before doing. Whether secrets are encrypted comes from
+// GET /secret-storage instead.
 export const HealthResponse = Schema.Struct({
-  encryptionAvailable: Schema.Boolean,
   status: Schema.Literal('ok')
 })
+export type HealthResponse = Schema.Schema.Type<typeof HealthResponse>
+
+// --- Secret storage ---------------------------------------------------------------
+
+// Whether Squeal may use the OS keychain to encrypt stored connection
+// passwords. Nothing in the app touches the keychain until this is decided:
+//
+//   keychain   access granted; passwords are stored as enc:v1:<base64>
+//   plaintext  the user skipped; passwords are stored as they were given
+//   undecided  no decision yet — the renderer asks before anything else runs
+export const SecretStorageMode = Schema.Literal(
+  'keychain',
+  'plaintext',
+  'undecided'
+)
+export type SecretStorageMode = Schema.Schema.Type<typeof SecretStorageMode>
+
+// `message` is set only when a grant was refused, so the consent screen can say
+// what happened and what to do about it. `storageName` is the platform's name
+// for its keychain, filled in by the main process so every string the renderer
+// shows about it has a single source.
+export const SecretStorageResponse = Schema.Struct({
+  message: Schema.NullOr(Schema.String),
+  mode: SecretStorageMode,
+  storageName: Schema.String
+})
+export type SecretStorageResponse = Schema.Schema.Type<
+  typeof SecretStorageResponse
+>
 
 // --- Updates ---------------------------------------------------------------------
 

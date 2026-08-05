@@ -10,6 +10,7 @@ import { connectionTestsGroup } from './groups/connection-tests'
 import { databasesGroup } from './groups/databases'
 import { healthGroup } from './groups/health'
 import { queriesGroup } from './groups/queries'
+import { secretStorageGroup } from './groups/secret-storage'
 import { tracesGroup } from './groups/traces'
 import { updatesGroup } from './groups/updates'
 import { worksheetsGroup } from './groups/worksheets'
@@ -19,6 +20,7 @@ export const SquealApi = HttpApi.make('SquealApi')
   .add(databasesGroup)
   .add(healthGroup)
   .add(queriesGroup)
+  .add(secretStorageGroup)
   .add(tracesGroup)
   .add(updatesGroup)
   .add(worksheetsGroup)

@@ -52,7 +52,7 @@ describe('authentication', () => {
     const response = await rawRequest(HttpClientRequest.get('/health'))
 
     expect(response).toEqual({
-      body: { encryptionAvailable: true, status: 'ok' },
+      body: { status: 'ok' },
       status: 200
     })
   })

@@ -7,7 +7,11 @@ import { Toaster } from 'sonner'
 
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
-import type { QueryDto, UpdateStatusResponse } from '@/glue/api/schemas'
+import type {
+  QueryDto,
+  SecretStorageMode,
+  UpdateStatusResponse
+} from '@/glue/api/schemas'
 import { WorksheetDto } from '@/glue/worksheets'
 
 import { createCollections } from './collections'
@@ -28,6 +32,8 @@ export interface RenderOptions {
   openWorksheetId?: string
   queries?: QueryDto[]
   schemas?: Record<string, SchemaInfo>
+  /** `null` skips seeding, for the tests that exercise the real fetch. */
+  secretStorageMode?: SecretStorageMode | null
   tabs?: Partial<TabsState>
   ui?: UiState
   updateStatus?: UpdateStatusResponse
@@ -62,6 +68,18 @@ function seedQueryCache(
 
   if (options.updateStatus) {
     queryClient.setQueryData(queryKeys.updateStatus, options.updateStatus)
+  }
+
+  // Seeded by default, unlike everything above: the read suspends, and the
+  // components under test are rendered without a Suspense boundary, so an unset
+  // mode would hang every test that renders a connection form rather than just
+  // the ones that care about encryption.
+  if (options.secretStorageMode !== null) {
+    queryClient.setQueryData(queryKeys.secretStorage, {
+      message: null,
+      mode: options.secretStorageMode ?? 'keychain',
+      storageName: 'the macOS Keychain'
+    })
   }
 
   for (const [databaseId, schema] of Object.entries(options.schemas ?? {})) {
