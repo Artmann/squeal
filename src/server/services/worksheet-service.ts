@@ -8,12 +8,10 @@ import {
 } from '@/glue/api/errors'
 import type {
   CreateWorksheetRequest,
-  UpdateWorksheetRequest,
-  WorksheetDto
+  UpdateWorksheetRequest
 } from '@/glue/api/schemas'
 import { AppDatabase } from './app-database'
-
-type WorksheetRow = typeof worksheetsTable.$inferSelect
+import { toWorksheetDto } from './worksheet-dto'
 
 export class WorksheetService extends Effect.Service<WorksheetService>()(
   'WorksheetService',
@@ -53,7 +51,7 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
             .returning()
         )
 
-        return transformWorksheet(worksheet)
+        return toWorksheetDto(worksheet)
       })
 
       const list = Effect.fn('WorksheetService.list')(function* () {
@@ -71,7 +69,7 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
             )
         )
 
-        return worksheets.map(transformWorksheet)
+        return worksheets.map(toWorksheetDto)
       })
 
       const remove = Effect.fn('WorksheetService.remove')(function* (
@@ -180,7 +178,7 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
             })
           }
 
-          return transformWorksheet(existing)
+          return toWorksheetDto(existing)
         }
 
         const [worksheet] = yield* appDatabase.execute((client) =>
@@ -200,22 +198,10 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
           })
         }
 
-        return transformWorksheet(worksheet)
+        return toWorksheetDto(worksheet)
       })
 
       return { create, list, remove, reorder, update } as const
     })
   }
 ) {}
-
-function transformWorksheet(worksheet: WorksheetRow): WorksheetDto {
-  return {
-    content: worksheet.content,
-    createdAt: worksheet.createdAt,
-    databaseId: worksheet.databaseId ?? null,
-    id: worksheet.id,
-    lastOpenedAt: worksheet.lastOpenedAt ?? null,
-    name: worksheet.name,
-    sortOrder: worksheet.sortOrder ?? null
-  }
-}

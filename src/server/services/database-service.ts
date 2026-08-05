@@ -18,6 +18,7 @@ import type {
 import { SecretDecryptError } from '../errors'
 import { AppDatabase } from './app-database'
 import { SecretStorage } from './secret-storage'
+import { toWorksheetDto } from './worksheet-dto'
 
 interface CreateDatabaseResult {
   database: DatabaseDto
@@ -160,64 +161,64 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
           JSON.stringify(connection.connectionInfo)
         )
 
-        const [record] = yield* appDatabase.execute((client) =>
-          client
-            .insert(databasesTable)
-            .values({ connectionInfo: encrypted, name, type: connection.type })
-            .returning()
+        // One transaction: the row and the worksheet it gets connected to have
+        // to land together or not at all. Run as separate statements, a failure
+        // after the insert left the database created while the caller saw the
+        // whole request fail — which is exactly what happened when the worksheet
+        // probe below hit a database missing its `databaseId` column.
+        const { record, linkedWorksheet } = yield* appDatabase.transaction(
+          async (client) => {
+            const [created] = await client
+              .insert(databasesTable)
+              .values({
+                connectionInfo: encrypted,
+                name,
+                type: connection.type
+              })
+              .returning()
+
+            // If this is the first database and there's a worksheet without a
+            // database, connect it.
+            const existingDatabases = await client
+              .select()
+              .from(databasesTable)
+              .where(isNull(databasesTable.deletedAt))
+
+            if (existingDatabases.length !== 1) {
+              return { record: created, linkedWorksheet: undefined }
+            }
+
+            const worksheetsWithoutDatabase = await client
+              .select()
+              .from(worksheetsTable)
+              .where(
+                and(
+                  isNull(worksheetsTable.deletedAt),
+                  isNull(worksheetsTable.databaseId)
+                )
+              )
+
+            if (worksheetsWithoutDatabase.length !== 1) {
+              return { record: created, linkedWorksheet: undefined }
+            }
+
+            const [updated] = await client
+              .update(worksheetsTable)
+              .set({ databaseId: created.id })
+              .where(eq(worksheetsTable.id, worksheetsWithoutDatabase[0].id))
+              .returning()
+
+            return { record: created, linkedWorksheet: updated }
+          }
         )
 
         const databaseDto = yield* transformDatabase(record)
 
-        // If this is the first database and there's a worksheet without a
-        // database, connect it.
-        const existingDatabases = yield* appDatabase.execute((client) =>
-          client
-            .select()
-            .from(databasesTable)
-            .where(isNull(databasesTable.deletedAt))
-        )
-
-        let updatedWorksheet: WorksheetDto | undefined
-
-        if (existingDatabases.length === 1) {
-          const worksheetsWithoutDatabase = yield* appDatabase.execute(
-            (client) =>
-              client
-                .select()
-                .from(worksheetsTable)
-                .where(
-                  and(
-                    isNull(worksheetsTable.deletedAt),
-                    isNull(worksheetsTable.databaseId)
-                  )
-                )
-          )
-
-          if (worksheetsWithoutDatabase.length === 1) {
-            const [updated] = yield* appDatabase.execute((client) =>
-              client
-                .update(worksheetsTable)
-                .set({ databaseId: databaseDto.id })
-                .where(eq(worksheetsTable.id, worksheetsWithoutDatabase[0].id))
-                .returning()
-            )
-
-            updatedWorksheet = {
-              content: updated.content,
-              createdAt: updated.createdAt,
-              databaseId: updated.databaseId ?? null,
-              id: updated.id,
-              lastOpenedAt: updated.lastOpenedAt ?? null,
-              name: updated.name,
-              sortOrder: updated.sortOrder ?? null
-            }
-          }
-        }
-
         const result: CreateDatabaseResult = {
           database: databaseDto,
-          ...(updatedWorksheet === undefined ? {} : { updatedWorksheet })
+          ...(linkedWorksheet === undefined
+            ? {}
+            : { updatedWorksheet: toWorksheetDto(linkedWorksheet) })
         }
 
         return result

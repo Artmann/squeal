@@ -2,6 +2,7 @@
 // Every other service reaches SQLite through this — never through a direct
 // `@/database` import — so tests can substitute an in-memory database with a
 // layer instead of module mocking.
+import { sql } from 'drizzle-orm'
 import { Effect } from 'effect'
 
 import { database, initializeDatabase } from '@/database'
@@ -12,6 +13,13 @@ export type AppDatabaseClient = typeof database
 export interface AppDatabaseService {
   readonly client: AppDatabaseClient
   readonly execute: <T>(
+    run: (client: AppDatabaseClient) => Promise<T>
+  ) => Effect.Effect<T, AppDatabaseError>
+  /**
+   * Runs `run` inside a transaction, rolling back if it throws. Not reentrant —
+   * SQLite has no nested `BEGIN`, so `run` must not call this again.
+   */
+  readonly transaction: <T>(
     run: (client: AppDatabaseClient) => Promise<T>
   ) => Effect.Effect<T, AppDatabaseError>
 }
@@ -29,6 +37,15 @@ function isConstraintViolation(cause: unknown): boolean {
   )
 }
 
+function toAppDatabaseError(cause: unknown): AppDatabaseError {
+  return new AppDatabaseError({
+    cause: cause instanceof Error ? cause.message : String(cause),
+    message: isConstraintViolation(cause)
+      ? 'The app database rejected this change.'
+      : 'The app database is unavailable. Restart Squeal and try again.'
+  })
+}
+
 export function makeAppDatabaseService(
   client: AppDatabaseClient
 ): AppDatabaseService {
@@ -36,14 +53,32 @@ export function makeAppDatabaseService(
     client,
     execute: (run) =>
       Effect.tryPromise({
-        catch: (cause) =>
-          new AppDatabaseError({
-            cause: cause instanceof Error ? cause.message : String(cause),
-            message: isConstraintViolation(cause)
-              ? 'The app database rejected this change.'
-              : 'The app database is unavailable. Restart Squeal and try again.'
-          }),
+        catch: toAppDatabaseError,
         try: () => run(client)
+      }),
+    transaction: (run) =>
+      Effect.tryPromise({
+        catch: toAppDatabaseError,
+        // Explicit BEGIN/COMMIT on this connection rather than the driver's
+        // `client.transaction()`, which opens a second connection: for an
+        // in-memory database that is a whole different database, so it works
+        // against a file and breaks every test that shares the client.
+        try: async () => {
+          await client.run(sql`BEGIN`)
+
+          try {
+            const result = await run(client)
+
+            await client.run(sql`COMMIT`)
+
+            return result
+          } catch (cause) {
+            // A failed rollback must not mask why the transaction failed.
+            await client.run(sql`ROLLBACK`).catch((): void => undefined)
+
+            throw cause
+          }
+        }
       })
   }
 }
