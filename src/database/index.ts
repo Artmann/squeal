@@ -1,9 +1,11 @@
 import 'dotenv/config'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/libsql'
+import { log } from 'tiny-typescript-logger'
 
-import { addColumnIfMissing } from './add-column-if-missing'
+import { appTables } from './app-tables'
 import { databaseFilePath } from './path'
+import { reconcileColumns } from './reconcile-columns'
 import { createTables } from './tables'
 
 export const database = drizzle(databaseFilePath)
@@ -18,25 +20,12 @@ export async function initializeDatabase() {
 
   await createTables(database)
 
-  // Add columns that predate their tables' current definition. Each helper
-  // call swallows only the "duplicate column name" error.
-  await addColumnIfMissing(
-    database,
-    sql`ALTER TABLE worksheets ADD COLUMN content TEXT NOT NULL DEFAULT ''`
-  )
+  // Brings a database created by an older version up to the current schema.
+  // `createTables` cannot do this: `CREATE TABLE IF NOT EXISTS` is a no-op on a
+  // table that already exists, so a column added later never reaches it.
+  const added = await reconcileColumns(database, appTables)
 
-  await addColumnIfMissing(
-    database,
-    sql`ALTER TABLE worksheets ADD COLUMN lastOpenedAt INTEGER`
-  )
-
-  await addColumnIfMissing(
-    database,
-    sql`ALTER TABLE databases ADD COLUMN sortOrder INTEGER`
-  )
-
-  await addColumnIfMissing(
-    database,
-    sql`ALTER TABLE worksheets ADD COLUMN sortOrder INTEGER`
-  )
+  if (added.length > 0) {
+    log.info(`Added missing database columns: ${added.join(', ')}.`)
+  }
 }
