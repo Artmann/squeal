@@ -1,17 +1,20 @@
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { toast } from 'sonner'
 
 import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import { finishQueryTrace } from '../tracing/query-traces'
+import { consumeErrorNotice } from './use-start-query'
 import type {
   QueryDto,
   SchemaInfoDto,
   SecretStorageResponse,
   UpdateStatusResponse
 } from '@/glue/api/schemas'
+import { canceledQueryMessage } from '@/glue/queries'
 
 export const queryPollInterval = 250
 
@@ -189,6 +192,18 @@ export function useQueryResultSync(query: QueryDto | undefined): void {
 
     // Ends the query.run root span with the observed terminal state.
     finishQueryTrace(finished)
+
+    // A run the user did not start — "Query Table" in the sidebar — announces
+    // its own failure, since nothing told the user a query was even running.
+    // Switching tabs before it finishes disables this poller, so the toast is
+    // missed; the error is still waiting in the results pane.
+    if (
+      consumeErrorNotice(finished.id) &&
+      finished.error &&
+      finished.error !== canceledQueryMessage
+    ) {
+      toast.error('Query failed', { description: finished.error })
+    }
 
     void queries.stateWhenReady().then(() => {
       queries.utils.writeUpsert(finished)

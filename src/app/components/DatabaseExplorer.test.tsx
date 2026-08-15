@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
@@ -11,6 +11,7 @@ import { DatabaseExplorer } from './DatabaseExplorer'
 
 vi.mock('../api-client', () => ({
   apiClient: {
+    createQuery: vi.fn(),
     createWorksheet: vi.fn(),
     deleteDatabase: vi.fn(),
     getDatabases: vi.fn(async () => []),
@@ -90,6 +91,15 @@ const testSchema: SchemaInfo = {
       tableName: 'posts',
       tableSchema: 'public'
     }
+  ]
+}
+
+// Two schemas, so the table has to be qualified for the query to find it.
+const multiSchemaSchema: SchemaInfo = {
+  databaseName: 'testdb',
+  tables: [
+    { ...testSchema.tables[0], tableSchema: 'public' },
+    { ...testSchema.tables[1], tableSchema: 'billing' }
   ]
 }
 
@@ -243,10 +253,9 @@ describe('DatabaseExplorer', () => {
     expect(screen.queryByText('users')).not.toBeInTheDocument()
   })
 
-  it('creates a worksheet with a select query from the table context menu', async () => {
-    const user = userEvent.setup()
+  describe('querying a table from the context menu', () => {
     const createdWorksheet: WorksheetDto = {
-      content: 'SELECT * FROM users LIMIT 100',
+      content: 'SELECT * FROM "users" LIMIT 100',
       createdAt: 1704067200000,
       databaseId: 'db-123',
       id: 'ws-users',
@@ -255,29 +264,132 @@ describe('DatabaseExplorer', () => {
       sortOrder: null
     }
 
-    vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)
-
-    const { store } = renderWithProviders(<DatabaseExplorer />, {
-      databaseExplorer: { expandedDatabases: { 'db-123': true } },
-      databases: [testDatabase],
-      schemas: { 'db-123': testSchema },
-      worksheets: []
-    })
-
-    fireEvent.contextMenu(screen.getByText('users'))
-
-    await user.click(await screen.findByText('Query Table'))
-
-    await waitFor(() => {
-      expect(apiClient.createWorksheet).toHaveBeenCalledWith({
-        content: 'SELECT * FROM users LIMIT 100',
-        databaseId: 'db-123',
-        name: 'users'
+    beforeEach(() => {
+      vi.clearAllMocks()
+      vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)
+      vi.mocked(apiClient.createQuery).mockResolvedValue({
+        query: {
+          content: 'SELECT * FROM "users" LIMIT 100',
+          databaseId: 'db-123',
+          error: null,
+          finishedAt: null,
+          id: 'q-1',
+          queriedAt: 1704067200000,
+          result: null,
+          truncated: false,
+          worksheetId: 'ws-users'
+        }
       })
     })
 
-    await waitFor(() => {
-      expect(store.getState().tabs.activeWorksheetId).toEqual('ws-users')
+    // `AppShell` starts every collection in the real app. Nothing here
+    // subscribes to `queries`, so the insert handler's write-back would fail
+    // without this.
+    async function renderExplorer(schema: SchemaInfo = testSchema) {
+      const rendered = renderWithProviders(<DatabaseExplorer />, {
+        databaseExplorer: { expandedDatabases: { 'db-123': true } },
+        databases: [testDatabase],
+        schemas: { 'db-123': schema },
+        queries: [],
+        worksheets: []
+      })
+
+      await act(async () => {
+        await rendered.collections.queries.preload()
+      })
+
+      return rendered
+    }
+
+    it('creates a worksheet with a select query', async () => {
+      const user = userEvent.setup()
+
+      const { store } = await renderExplorer()
+
+      fireEvent.contextMenu(screen.getByText('users'))
+
+      await user.click(await screen.findByText('Query Table'))
+
+      await waitFor(() => {
+        expect(apiClient.createWorksheet).toHaveBeenCalledWith({
+          content: 'SELECT * FROM "users" LIMIT 100',
+          databaseId: 'db-123',
+          name: 'users'
+        })
+      })
+
+      await waitFor(() => {
+        expect(store.getState().tabs.activeWorksheetId).toEqual('ws-users')
+      })
+    })
+
+    it('runs the query as soon as the worksheet exists', async () => {
+      const user = userEvent.setup()
+
+      await renderExplorer()
+
+      fireEvent.contextMenu(screen.getByText('users'))
+
+      await user.click(await screen.findByText('Query Table'))
+
+      await waitFor(() => {
+        expect(apiClient.createQuery).toHaveBeenCalledWith(
+          {
+            content: 'SELECT * FROM "users" LIMIT 100',
+            databaseId: 'db-123',
+            id: expect.any(String),
+            queriedAt: expect.any(Number),
+            worksheetId: 'ws-users'
+          },
+          expect.anything()
+        )
+      })
+    })
+
+    it('qualifies the table when the database spans several schemas', async () => {
+      const user = userEvent.setup()
+
+      await renderExplorer(multiSchemaSchema)
+
+      fireEvent.contextMenu(screen.getByText('users'))
+
+      await user.click(await screen.findByText('Query Table'))
+
+      await waitFor(() => {
+        expect(apiClient.createWorksheet).toHaveBeenCalledWith({
+          content: 'SELECT * FROM "public"."users" LIMIT 100',
+          databaseId: 'db-123',
+          name: 'users'
+        })
+      })
+
+      await waitFor(() => {
+        expect(apiClient.createQuery).toHaveBeenCalledWith(
+          expect.objectContaining({
+            content: 'SELECT * FROM "public"."users" LIMIT 100'
+          }),
+          expect.anything()
+        )
+      })
+    })
+
+    it('runs nothing when the worksheet cannot be created', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.createWorksheet).mockRejectedValue(
+        new Error('Disk is full')
+      )
+
+      await renderExplorer()
+
+      fireEvent.contextMenu(screen.getByText('users'))
+
+      await user.click(await screen.findByText('Query Table'))
+
+      expect(
+        await screen.findByText('Failed to create worksheet')
+      ).toBeVisible()
+      expect(apiClient.createQuery).not.toHaveBeenCalled()
     })
   })
 

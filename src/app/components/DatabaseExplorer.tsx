@@ -31,6 +31,7 @@ import {
   type DropIndicator
 } from '../hooks/use-drop-indicator'
 import { useReorderDrag } from '../hooks/use-reorder-drag'
+import { useStartQuery } from '../hooks/use-start-query'
 import { databaseSearchQueryUpdated } from '../store/editor-slice'
 import { tabsActions } from '../store/tabs-slice'
 import { uiActions } from '../store/ui-slice'
@@ -39,6 +40,7 @@ import { useAppDispatch, useAppSelector } from '../store'
 import { expandDatabase, expandTable } from '../store/database-explorer-slice'
 import { computeDatabaseMatch, DatabaseMatch } from './database-explorer-search'
 import { SearchInput } from './SearchInput'
+import { buildTableQuery } from './table-query'
 import { Button } from './ui/button'
 import {
   ContextMenu,
@@ -126,22 +128,27 @@ function useConfirmedDatabaseDeletion(): (database: DatabaseDto) => void {
   )
 }
 
-// Opens a fresh worksheet querying the given table and marks it as the open,
-// most recently used one.
+// Opens a fresh worksheet querying the given table, marks it as the open, most
+// recently used one, and runs the query so the table's rows are there without a
+// second click.
 function useQueryTableWorksheet(
-  databaseId: string
-): (tableName: string) => void {
+  database: DatabaseDto,
+  hasMultipleSchemas: boolean
+): (table: TableInfo) => void {
   const createWorksheet = useCreateWorksheet()
   const dispatch = useAppDispatch()
+  const startQuery = useStartQuery()
   const { worksheets: worksheetsCollection } = useCollections()
 
   return useCallback(
-    (tableName: string) => {
+    (table: TableInfo) => {
+      const content = buildTableQuery(table, database.type, hasMultipleSchemas)
+
       createWorksheet.mutate(
         {
-          content: `SELECT * FROM ${tableName} LIMIT 100`,
-          databaseId,
-          name: tableName
+          content,
+          databaseId: database.id,
+          name: table.tableName
         },
         {
           onSuccess: (worksheet) => {
@@ -157,6 +164,15 @@ function useQueryTableWorksheet(
 
               void transaction.isPersisted.promise.catch((): void => undefined)
             }
+
+            // The tab is already open, so the results land in front of the
+            // user. `notifyOnError` covers the case where they look away.
+            startQuery({
+              content,
+              databaseId: worksheet.databaseId ?? database.id,
+              notifyOnError: true,
+              worksheetId: worksheet.id
+            })
           },
           onError: (error) => {
             const message =
@@ -167,7 +183,14 @@ function useQueryTableWorksheet(
         }
       )
     },
-    [createWorksheet, databaseId, dispatch, worksheetsCollection]
+    [
+      createWorksheet,
+      database,
+      dispatch,
+      hasMultipleSchemas,
+      startQuery,
+      worksheetsCollection
+    ]
   )
 }
 
@@ -475,7 +498,7 @@ function DatabaseTableList({
   // expanded, which is exactly when the schema is needed.
   const schema = useDatabaseSchema(searchMatch ? undefined : database.id)
 
-  const handleQueryTable = useQueryTableWorksheet(database.id)
+  const handleQueryTable = useQueryTableWorksheet(database, hasMultipleSchemas)
 
   const tables = searchMatch?.tables ?? schema.data?.tables ?? []
 
@@ -505,7 +528,7 @@ function DatabaseTableList({
 interface DatabaseTableRowProps {
   hasMultipleSchemas: boolean
   isExpanded: boolean
-  onQueryTable: (tableName: string) => void
+  onQueryTable: (table: TableInfo) => void
   onToggle: () => void
   table: TableInfo
 }
@@ -550,7 +573,7 @@ function DatabaseTableRow({
         <ContextMenuContent>
           <ContextMenuItem
             className="flex items-center gap-2 min-w-32 text-xs"
-            onClick={() => onQueryTable(table.tableName)}
+            onClick={() => onQueryTable(table)}
           >
             <SearchIcon className="size-3" />
             Query Table

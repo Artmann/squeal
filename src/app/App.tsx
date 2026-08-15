@@ -6,9 +6,7 @@ import {
   useMemo,
   useState
 } from 'react'
-import { toast } from 'sonner'
 import invariant from 'tiny-invariant'
-import { v7 } from 'uuid'
 
 import { AppSidebar } from './components/AppSidebar'
 import { EditorScreen } from './components/EditorScreen'
@@ -19,7 +17,6 @@ import { TitleBar } from './components/TitleBar'
 import type { CursorPosition } from './components/worksheet-editor-cursor'
 import { WorksheetTabs } from './components/WorksheetTabs'
 import { WorksheetToolbar } from './components/WorksheetToolbar'
-import { useCollections } from './collections-context'
 import {
   useDatabases,
   useQueriesList,
@@ -27,11 +24,11 @@ import {
   useWorksheets
 } from './hooks/queries'
 import { useCancelQuery } from './hooks/mutations'
+import { useStartQuery } from './hooks/use-start-query'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import type { QueryDto } from '@/glue/api/schemas'
 import { useAppSelector } from './store'
 import { selectActiveWorksheetId } from './store/tabs-slice'
-import { finishQueryTrace, startQueryTrace } from './tracing/query-traces'
 import { createAstFromSql, type Statement } from './sql-parser'
 import { findActiveStatementIndex } from './sql-parser/active-statement'
 import {
@@ -44,24 +41,6 @@ const WorksheetEditor = lazy(() =>
     default: module.WorksheetEditor
   }))
 )
-
-function createOptimisticQuery(
-  activeStatement: Statement,
-  databaseId: string | null | undefined,
-  worksheetId: string | null | undefined
-): QueryDto {
-  return {
-    content: activeStatement.text,
-    databaseId: databaseId ?? '',
-    error: null,
-    finishedAt: null,
-    id: v7(),
-    queriedAt: Date.now(),
-    result: null,
-    truncated: false,
-    worksheetId: worksheetId ?? ''
-  }
-}
 
 function useActiveStatement(openWorksheetId: string | undefined) {
   const worksheets = useWorksheets()
@@ -155,7 +134,7 @@ function useRunQuery(
   worksheetId: string | undefined,
   flushSave: () => void
 ) {
-  const { queries: queriesCollection } = useCollections()
+  const startQuery = useStartQuery()
 
   return useCallback(() => {
     if (!activeStatement) {
@@ -169,25 +148,8 @@ function useRunQuery(
     // what just ran. Nothing waits on it — the query carries its own SQL.
     flushSave()
 
-    const optimistic = createOptimisticQuery(
-      activeStatement,
-      databaseId,
-      worksheetId
-    )
-
-    startQueryTrace(optimistic)
-
-    const transaction = queriesCollection.insert(optimistic)
-
-    // The optimistic row rolls back automatically if the create fails.
-    void transaction.isPersisted.promise.catch((error: unknown) => {
-      const message =
-        error instanceof Error ? error.message : 'Failed to run query'
-
-      finishQueryTrace({ error: message, id: optimistic.id })
-      toast.error('Query failed', { description: message })
-    })
-  }, [activeStatement, databaseId, flushSave, worksheetId, queriesCollection])
+    startQuery({ content: activeStatement.text, databaseId, worksheetId })
+  }, [activeStatement, databaseId, flushSave, startQuery, worksheetId])
 }
 
 /**
