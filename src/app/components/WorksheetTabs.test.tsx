@@ -80,7 +80,8 @@ describe('WorksheetTabs', () => {
 
     expect(store.getState().tabs).toEqual({
       activeWorksheetId: 'ws-2',
-      openWorksheetIds: ['ws-1', 'ws-2']
+      openWorksheetIds: ['ws-1', 'ws-2'],
+      status: 'reconciled'
     })
   })
 
@@ -96,7 +97,8 @@ describe('WorksheetTabs', () => {
 
     expect(store.getState().tabs).toEqual({
       activeWorksheetId: 'ws-2',
-      openWorksheetIds: ['ws-2']
+      openWorksheetIds: ['ws-2'],
+      status: 'reconciled'
     })
   })
 
@@ -115,7 +117,8 @@ describe('WorksheetTabs', () => {
 
     expect(store.getState().tabs).toEqual({
       activeWorksheetId: 'ws-3',
-      openWorksheetIds: ['ws-1', 'ws-3']
+      openWorksheetIds: ['ws-1', 'ws-3'],
+      status: 'reconciled'
     })
   })
 
@@ -134,7 +137,8 @@ describe('WorksheetTabs', () => {
 
     expect(store.getState().tabs).toEqual({
       activeWorksheetId: 'ws-1',
-      openWorksheetIds: ['ws-1']
+      openWorksheetIds: ['ws-1'],
+      status: 'reconciled'
     })
   })
 
@@ -150,7 +154,8 @@ describe('WorksheetTabs', () => {
 
     expect(store.getState().tabs).toEqual({
       activeWorksheetId: 'ws-2',
-      openWorksheetIds: ['ws-2']
+      openWorksheetIds: ['ws-2'],
+      status: 'reconciled'
     })
   })
 
@@ -171,7 +176,8 @@ describe('WorksheetTabs', () => {
 
     expect(store.getState().tabs).toEqual({
       activeWorksheetId: 'ws-new',
-      openWorksheetIds: ['ws-1', 'ws-new']
+      openWorksheetIds: ['ws-1', 'ws-new'],
+      status: 'reconciled'
     })
   })
 
@@ -364,7 +370,8 @@ describe('WorksheetTabs', () => {
 
       expect(store.getState().tabs).toEqual({
         activeWorksheetId: 'ws-1',
-        openWorksheetIds: ['ws-1']
+        openWorksheetIds: ['ws-1'],
+        status: 'reconciled'
       })
     })
 
@@ -383,7 +390,8 @@ describe('WorksheetTabs', () => {
 
       expect(store.getState().tabs).toEqual({
         activeWorksheetId: 'ws-1',
-        openWorksheetIds: ['ws-1', 'ws-2']
+        openWorksheetIds: ['ws-1', 'ws-2'],
+        status: 'reconciled'
       })
     })
   })
@@ -404,7 +412,8 @@ describe('WorksheetTabs', () => {
 
       expect(store.getState().tabs).toEqual({
         activeWorksheetId: 'ws-2',
-        openWorksheetIds: ['ws-1', 'ws-2', 'ws-3']
+        openWorksheetIds: ['ws-1', 'ws-2', 'ws-3'],
+        status: 'reconciled'
       })
     })
 
@@ -424,7 +433,8 @@ describe('WorksheetTabs', () => {
 
       expect(store.getState().tabs).toEqual({
         activeWorksheetId: 'ws-3',
-        openWorksheetIds: ['ws-1', 'ws-2', 'ws-3']
+        openWorksheetIds: ['ws-1', 'ws-2', 'ws-3'],
+        status: 'reconciled'
       })
     })
 
@@ -440,7 +450,8 @@ describe('WorksheetTabs', () => {
 
       expect(store.getState().tabs).toEqual({
         activeWorksheetId: 'ws-1',
-        openWorksheetIds: ['ws-1', 'ws-2']
+        openWorksheetIds: ['ws-1', 'ws-2'],
+        status: 'reconciled'
       })
     })
   })
