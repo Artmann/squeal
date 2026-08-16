@@ -19,12 +19,33 @@ describe('tabs storage', () => {
     expect(readStoredTabs()).toEqual(initialTabsState)
   })
 
-  it('reads back what it wrote', () => {
-    writeStoredTabs({ activeWorksheetId: 'b', openWorksheetIds: ['a', 'b'] })
+  // The status never round-trips — it is decided by what came back, not carried
+  // in the payload. Writing 'restored' and reading 'reconciled' is the proof:
+  // a readable payload is a decision the app already made.
+  it('reads back what it wrote, as tabs it has already reconciled', () => {
+    writeStoredTabs({
+      activeWorksheetId: 'b',
+      openWorksheetIds: ['a', 'b'],
+      status: 'restored'
+    })
 
     expect(readStoredTabs()).toEqual({
       activeWorksheetId: 'b',
-      openWorksheetIds: ['a', 'b']
+      openWorksheetIds: ['a', 'b'],
+      status: 'reconciled'
+    })
+  })
+
+  // Closing every tab is a decision too, and it has to survive a restart —
+  // otherwise the worksheet is back on the next launch, which is the same bug
+  // with a longer fuse.
+  it('remembers that every tab was closed deliberately', () => {
+    writeStoredTabs({ openWorksheetIds: [], status: 'reconciled' })
+
+    expect(readStoredTabs()).toEqual({
+      activeWorksheetId: undefined,
+      openWorksheetIds: [],
+      status: 'reconciled'
     })
   })
 
@@ -57,7 +78,8 @@ describe('tabs storage', () => {
 
     expect(readStoredTabs()).toEqual({
       activeWorksheetId: 'b',
-      openWorksheetIds: ['a', 'b']
+      openWorksheetIds: ['a', 'b'],
+      status: 'reconciled'
     })
   })
 
@@ -66,7 +88,8 @@ describe('tabs storage', () => {
 
     expect(readStoredTabs()).toEqual({
       activeWorksheetId: undefined,
-      openWorksheetIds: []
+      openWorksheetIds: [],
+      status: 'reconciled'
     })
   })
 })

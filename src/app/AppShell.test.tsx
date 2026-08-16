@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { App } from './App'
 import { AppShell } from './AppShell'
 import { apiClient } from './api-client'
 import { renderWithProviders } from './test-utils'
@@ -237,6 +238,33 @@ describe('AppShell', () => {
       })
 
       releaseWorksheets?.([worksheet])
+    })
+  })
+
+  // The reconciliation effect and the tabs slice have to agree about what an
+  // empty tab strip means, and only the mounted app shows whether they do: the
+  // close is a real click, and the empty state is what the user is left with.
+  describe('closing the last tab', () => {
+    it('leaves the editor empty instead of reopening the worksheet', async () => {
+      resolveAll()
+
+      renderWithProviders(
+        <AppShell>
+          <App />
+        </AppShell>,
+        {
+          databases: [database],
+          openWorksheetId: worksheet.id,
+          queries: [],
+          worksheets: [worksheet]
+        }
+      )
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: `Close ${worksheet.name}` })
+      )
+
+      expect(await screen.findByText('No worksheet open')).toBeInTheDocument()
     })
   })
 

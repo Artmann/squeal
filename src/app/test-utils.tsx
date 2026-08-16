@@ -97,7 +97,11 @@ function createTabsState(options: RenderOptions): TabsState {
       options.tabs?.activeWorksheetId ??
       options.openWorksheetId ??
       openWorksheetIds[openWorksheetIds.length - 1],
-    openWorksheetIds
+    openWorksheetIds,
+    // Seeded tabs stand for tabs the running app already has open, so they have
+    // met the worksheet list. A test that wants the startup pick asks for
+    // `tabs: { status: 'restored' }`.
+    status: options.tabs?.status ?? 'reconciled'
   }
 }
 
