@@ -22,6 +22,28 @@ const dialectNames: Record<DatabaseType, string> = {
   sqlite: 'SQLite'
 }
 
+// Instruction-tuned models answer a bare fragment like `select * from ` as if it
+// were a question — they explain that it is incomplete and ask which table you
+// meant. Telling them the job is autocomplete is not enough on its own; one
+// worked example of the exact shape of a reply is what actually gets a small
+// model to hand back a continuation and nothing else. It uses a schema of its
+// own so it cannot be mistaken for the user's, and it continues mid-word to show
+// that the reply starts at the cursor rather than at a word boundary.
+const example = [
+  'Example of a correct reply, for a different database:',
+  '',
+  'Schema:',
+  'public.customer(customer_id integer PK, first_name text, last_name text)',
+  '',
+  'Statement so far:',
+  'select first_name, last_name',
+  'from cus',
+  '',
+  'Continuation:',
+  'tomer',
+  "where last_name = 'Smith'"
+].join('\n')
+
 export function buildCompletionPrompt({
   databaseType,
   prefix,
@@ -31,17 +53,26 @@ export function buildCompletionPrompt({
   const dialect = databaseType === null ? 'SQL' : dialectNames[databaseType]
 
   const sections = [
-    `You are a ${dialect} autocomplete engine. Continue the statement from exactly where it stops.`,
+    [
+      `You are a ${dialect} autocomplete engine inside a SQL editor, not a chat assistant.`,
+      'The user is in the middle of typing and has not asked you anything.',
+      'Your reply is inserted into their editor at the cursor exactly as written,',
+      'so it must be the continuation of their statement and nothing else.'
+    ].join(' '),
     [
       'Rules:',
-      '- Reply with only the text that continues the statement.',
-      '- Never repeat text that is already written.',
-      '- No explanations, no markdown, no code fences.',
+      '- Reply with only the characters that come after the cursor.',
+      '- Never repeat text that is already written before the cursor.',
+      '- Never explain, never ask which table is meant, never use markdown or code fences.',
       "- Keep the author's line breaks and indentation so the statement stays formatted.",
       '- Use only tables and columns from the schema below.',
+      '- Finish the statement the user started; do not begin another one.',
       '- If nothing sensible can be added, reply with nothing at all.'
-    ].join('\n')
+    ].join('\n'),
+    example
   ]
+
+  sections.push('Now complete the real statement.')
 
   if (schema !== null) {
     sections.push(`Schema:\n${renderSchema(schema)}`)
@@ -52,6 +83,10 @@ export function buildCompletionPrompt({
   }
 
   sections.push(`Statement so far:\n${prefix}`)
+
+  // The prompt stops on the label the example taught, so the model's first token
+  // is already the continuation.
+  sections.push('Continuation:\n')
 
   return sections.join('\n\n')
 }

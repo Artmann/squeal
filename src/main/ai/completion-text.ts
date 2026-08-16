@@ -11,9 +11,14 @@
 // output that happens to repeat a word the user just typed.
 const maxEchoLength = 200
 
-// Matches an opening fence with an optional language tag, and a closing one.
+// Matches an opening fence with an optional language tag, for an answer whose
+// fence was never closed.
 const openingFencePattern = /^\s*```[a-zA-Z]*\s*\n?/
-const closingFencePattern = /\n?\s*```\s*$/
+
+// A chattier model ignores "no code fences" and answers with prose around a
+// fenced block. Taking the first block is what turns that answer into something
+// insertable instead of a paragraph of English in the editor.
+const fencedBlockPattern = /```[a-zA-Z]*[ \t]*\n?([\s\S]*?)```/
 
 export function normalizeCompletion(
   raw: string,
@@ -34,11 +39,17 @@ export function normalizeCompletion(
 }
 
 function stripFences(value: string): string {
+  const block = value.match(fencedBlockPattern)
+
+  if (block !== null) {
+    return block[1] ?? ''
+  }
+
   if (!openingFencePattern.test(value)) {
     return value
   }
 
-  return value.replace(openingFencePattern, '').replace(closingFencePattern, '')
+  return value.replace(openingFencePattern, '')
 }
 
 // The user's text is what the model was told to continue. When the answer

@@ -67,10 +67,43 @@ describe('buildCompletionPrompt', () => {
     )
 
     expect(dialects).toEqual([
-      'You are a MySQL autocomplete engine. Continue the statement from exactly where it stops.',
-      'You are a PostgreSQL autocomplete engine. Continue the statement from exactly where it stops.',
-      'You are a SQLite autocomplete engine. Continue the statement from exactly where it stops.'
+      'You are a MySQL autocomplete engine inside a SQL editor, not a chat assistant. The user is in the middle of typing and has not asked you anything. Your reply is inserted into their editor at the cursor exactly as written, so it must be the continuation of their statement and nothing else.',
+      'You are a PostgreSQL autocomplete engine inside a SQL editor, not a chat assistant. The user is in the middle of typing and has not asked you anything. Your reply is inserted into their editor at the cursor exactly as written, so it must be the continuation of their statement and nothing else.',
+      'You are a SQLite autocomplete engine inside a SQL editor, not a chat assistant. The user is in the middle of typing and has not asked you anything. Your reply is inserted into their editor at the cursor exactly as written, so it must be the continuation of their statement and nothing else.'
     ])
+  })
+
+  it('shows a worked example of a continuation, on a schema of its own', () => {
+    const prompt = buildCompletionPrompt({
+      databaseType: 'postgres',
+      prefix: 'select ',
+      schema: filmSchema,
+      suffix: ''
+    })
+
+    expect(prompt).toContain(
+      'Example of a correct reply, for a different database:'
+    )
+    expect(prompt).toContain(
+      "Statement so far:\nselect first_name, last_name\nfrom cus\n\nContinuation:\ntomer\nwhere last_name = 'Smith'"
+    )
+    // The example's schema is labelled apart from the real one, which follows it.
+    expect(prompt.indexOf('public.customer(')).toBeLessThan(
+      prompt.indexOf('public.film(')
+    )
+  })
+
+  it('ends on the continuation cue, so the first token continues the statement', () => {
+    const prompt = buildCompletionPrompt({
+      databaseType: 'postgres',
+      prefix: 'select * from ',
+      schema: null,
+      suffix: ''
+    })
+
+    expect(
+      prompt.endsWith('Statement so far:\nselect * from \n\nContinuation:\n')
+    ).toEqual(true)
   })
 
   it('falls back to plain SQL when no database is connected', () => {
@@ -81,7 +114,9 @@ describe('buildCompletionPrompt', () => {
       suffix: ''
     })
 
-    expect(prompt).toContain('You are a SQL autocomplete engine.')
+    expect(prompt).toContain(
+      'You are a SQL autocomplete engine inside a SQL editor'
+    )
   })
 
   it('renders tables with types, primary keys and foreign keys', () => {
@@ -105,7 +140,13 @@ describe('buildCompletionPrompt', () => {
       suffix: ''
     })
 
-    expect(prompt).not.toContain('Schema:')
+    // The example carries a Schema section of its own, so only the part of the
+    // prompt describing the real statement is examined.
+    const real = prompt.slice(
+      prompt.indexOf('Now complete the real statement.')
+    )
+
+    expect(real).not.toContain('Schema:')
   })
 
   it('leaves the schema name off when the adapter reports none', () => {

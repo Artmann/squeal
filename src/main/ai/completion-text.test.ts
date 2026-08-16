@@ -66,6 +66,32 @@ describe('normalizeCompletion', () => {
     ).toEqual(null)
   })
 
+  it('keeps only the fenced block when the model explains itself around it', () => {
+    const raw = [
+      'It looks like your query is incomplete. Here is one that works:',
+      '',
+      '```sql',
+      'film',
+      '```',
+      '',
+      'Let me know which table you meant!'
+    ].join('\n')
+
+    expect(normalizeCompletion(raw, 'select * from ')).toEqual('film')
+  })
+
+  it('keeps the first block when a chatty answer offers several', () => {
+    const raw = '```sql\nfilm\n```\n\nor:\n\n```sql\nactor\n```'
+
+    expect(normalizeCompletion(raw, 'select * from ')).toEqual('film')
+  })
+
+  it('strips an opening fence that was never closed', () => {
+    expect(normalizeCompletion('```sql\nfrom film', 'select * ')).toEqual(
+      'from film'
+    )
+  })
+
   it('returns null for an empty fenced block', () => {
     expect(normalizeCompletion('```sql\n```', 'select ')).toEqual(null)
   })
