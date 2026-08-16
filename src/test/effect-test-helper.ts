@@ -41,9 +41,7 @@ export const testEncryptionPrefix = 'enc:v1:test:'
 // src/main/databases/secret-storage.test.ts. What matters here is that the mode
 // round-trips through setMode, and that it lives in this closure rather than in
 // the real module's process-global.
-function makeTestSecretStorage(
-  probeResult: KeychainProbeResult = 'available'
-) {
+function makeTestSecretStorage(probeResult: KeychainProbeResult = 'available') {
   let mode: SecretStorageMode = 'keychain'
 
   const layer = Layer.succeed(

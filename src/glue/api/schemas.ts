@@ -453,11 +453,7 @@ export type HealthResponse = Schema.Schema.Type<typeof HealthResponse>
 //   keychain   access granted; passwords are stored as enc:v1:<base64>
 //   plaintext  the user skipped; passwords are stored as they were given
 //   undecided  no decision yet — the renderer asks before anything else runs
-const SecretStorageMode = Schema.Literal(
-  'keychain',
-  'plaintext',
-  'undecided'
-)
+const SecretStorageMode = Schema.Literal('keychain', 'plaintext', 'undecided')
 export type SecretStorageMode = Schema.Schema.Type<typeof SecretStorageMode>
 
 // `message` is set only when a grant was refused, so the consent screen can say
