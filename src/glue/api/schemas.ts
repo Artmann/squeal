@@ -453,7 +453,7 @@ export type HealthResponse = Schema.Schema.Type<typeof HealthResponse>
 //   keychain   access granted; passwords are stored as enc:v1:<base64>
 //   plaintext  the user skipped; passwords are stored as they were given
 //   undecided  no decision yet — the renderer asks before anything else runs
-export const SecretStorageMode = Schema.Literal(
+const SecretStorageMode = Schema.Literal(
   'keychain',
   'plaintext',
   'undecided'

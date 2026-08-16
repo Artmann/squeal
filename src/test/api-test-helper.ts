@@ -36,8 +36,6 @@ const mockAdapterConfig = {
   }
 }
 
-export const testEncryptionPrefix = 'enc:v1:test:'
-
 /**
  * Sets up the test environment with mocks.
  * Call this at the top of your test file, before any imports that use the database.

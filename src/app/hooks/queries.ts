@@ -62,14 +62,14 @@ export function useQueriesList() {
 }
 
 // Whether Squeal may encrypt stored connection secrets with the OS keychain.
-// Shared with AppShell, which starts the request during its first render so it
-// travels alongside the collection loads instead of after them.
+// AppShell reads it through useSecretStorage during its first render so the
+// request travels alongside the collection loads instead of after them.
 //
 // staleTime: Infinity is load-bearing rather than an optimization. With the
 // global 30s default, a component mounting later becomes a second observer and
 // refetches — and a failed refetch on a suspense query throws the whole app onto
 // the error screen mid-edit.
-export const secretStorageQueryOptions = {
+const secretStorageQueryOptions = {
   queryFn: () => apiClient.getSecretStorage(),
   queryKey: queryKeys.secretStorage,
   staleTime: Infinity
