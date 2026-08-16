@@ -1,4 +1,4 @@
-export const gettingStartedStorageKey = 'ui:getting-started-dismissed:v1'
+const gettingStartedStorageKey = 'ui:getting-started-dismissed:v1'
 
 /**
  * Whether the user has dismissed the getting-started screen. Persisted because a
