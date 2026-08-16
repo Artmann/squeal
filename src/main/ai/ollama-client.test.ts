@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ollamaBackend, ollamaBaseUrl } from './ollama-client'
+import {
+  ollamaBackend,
+  ollamaBaseUrl,
+  type PullProgress
+} from './ollama-client'
 
 const originalFetch = globalThis.fetch
 const originalHost = process.env.OLLAMA_HOST
@@ -10,6 +14,40 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { 'content-type': 'application/json' },
     status
   })
+}
+
+// Ollama streams a pull as newline-delimited JSON. The chunks are given
+// verbatim rather than one object per chunk, so a test can split a line across
+// two of them the way a socket does.
+function streamResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder()
+
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(chunk))
+        }
+
+        controller.close()
+      }
+    })
+  )
+}
+
+// A body that never produces anything, and fails the moment the request is
+// aborted — which is what a real fetch does, and what the stall deadline needs
+// in order to be observable.
+function silentResponse(signal: AbortSignal | undefined): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        signal?.addEventListener('abort', () => {
+          controller.error(new Error('The operation was aborted.'))
+        })
+      }
+    })
+  )
 }
 
 // The mock is typed rather than inferred so `mock.calls` keeps the URL and the
@@ -209,6 +247,147 @@ describe('ollamaBackend.generate', () => {
     const pending = ollamaBackend.generate({
       model: 'qwen2.5-coder:1.5b',
       prompt: 'select ',
+      signal: controller.signal
+    })
+
+    controller.abort()
+
+    await expect(pending).rejects.toThrow('The operation was aborted.')
+  })
+})
+
+describe('ollamaBackend.pullModel', () => {
+  it('asks Ollama to stream the pull and reports every line', async () => {
+    const progress: PullProgress[] = []
+
+    const fetchMock = stubFetch(() =>
+      streamResponse([
+        '{"status":"pulling manifest"}\n',
+        '{"status":"pulling 4c1b0e1e","completed":512,"total":1024}\n',
+        '{"status":"success"}\n'
+      ])
+    )
+
+    await ollamaBackend.pullModel({
+      model: 'qwen2.5-coder:1.5b',
+      onProgress: (update) => progress.push(update)
+    })
+
+    expect(progress).toEqual([
+      { completed: 0, status: 'pulling manifest', total: 0 },
+      { completed: 512, status: 'pulling 4c1b0e1e', total: 1024 },
+      { completed: 0, status: 'success', total: 0 }
+    ])
+
+    const [url, request] = fetchMock.mock.calls[0] ?? []
+
+    expect(url).toEqual('http://127.0.0.1:11434/api/pull')
+    expect(request?.method).toEqual('POST')
+    expect(JSON.parse(String(request?.body))).toEqual({
+      model: 'qwen2.5-coder:1.5b',
+      stream: true
+    })
+  })
+
+  it('joins a line that arrived split across two chunks', async () => {
+    const progress: PullProgress[] = []
+
+    stubFetch(() =>
+      streamResponse([
+        '{"status":"pulling 4c1b',
+        '0e1e","completed":8,"total":16}'
+      ])
+    )
+
+    await ollamaBackend.pullModel({
+      model: 'qwen2.5-coder:1.5b',
+      onProgress: (update) => progress.push(update)
+    })
+
+    expect(progress).toEqual([
+      { completed: 8, status: 'pulling 4c1b0e1e', total: 16 }
+    ])
+  })
+
+  it('ignores a line that is not JSON rather than failing the download', async () => {
+    const progress: PullProgress[] = []
+
+    stubFetch(() => streamResponse(['not json\n', '{"status":"success"}\n']))
+
+    await ollamaBackend.pullModel({
+      model: 'qwen2.5-coder:1.5b',
+      onProgress: (update) => progress.push(update)
+    })
+
+    expect(progress).toEqual([{ completed: 0, status: 'success', total: 0 }])
+  })
+
+  it('rejects with the error Ollama reported mid-stream', async () => {
+    stubFetch(() =>
+      streamResponse([
+        '{"status":"pulling manifest"}\n',
+        '{"error":"no space left on device"}\n'
+      ])
+    )
+
+    await expect(
+      ollamaBackend.pullModel({
+        model: 'qwen2.5-coder:1.5b',
+        onProgress: () => undefined
+      })
+    ).rejects.toThrow('no space left on device')
+  })
+
+  it('names the model when Ollama refuses the pull outright', async () => {
+    stubFetch(() => jsonResponse({ error: 'not found' }, 404))
+
+    await expect(
+      ollamaBackend.pullModel({
+        model: 'nonesuch:1b',
+        onProgress: () => undefined
+      })
+    ).rejects.toThrow(
+      'Ollama answered 404 for /api/pull. There may be no model called "nonesuch:1b".'
+    )
+  })
+
+  it('gives up on a transfer that has gone silent', async () => {
+    vi.useFakeTimers()
+
+    try {
+      globalThis.fetch = vi.fn(
+        async (_input: unknown, request: RequestInit | undefined) =>
+          silentResponse(request?.signal ?? undefined)
+      ) as unknown as typeof fetch
+
+      const pending = ollamaBackend.pullModel({
+        model: 'qwen2.5-coder:1.5b',
+        onProgress: () => undefined
+      })
+
+      const rejects = expect(pending).rejects.toThrow(
+        'Ollama stopped reporting progress while downloading qwen2.5-coder:1.5b.'
+      )
+
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      await rejects
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('lets the caller cancel without dressing it up as a stall', async () => {
+    const controller = new AbortController()
+
+    globalThis.fetch = vi.fn(
+      async (_input: unknown, request: RequestInit | undefined) =>
+        silentResponse(request?.signal ?? undefined)
+    ) as unknown as typeof fetch
+
+    const pending = ollamaBackend.pullModel({
+      model: 'qwen2.5-coder:1.5b',
+      onProgress: () => undefined,
       signal: controller.signal
     })
 

@@ -1,6 +1,7 @@
 export const queryKeys = {
   completionStatus: ['completion-status'] as const,
   databases: ['databases'] as const,
+  modelDownload: ['model-download'] as const,
   queries: ['queries'] as const,
   query: (id: string) => ['query', id] as const,
   schema: (databaseId: string) => ['schema', databaseId] as const,

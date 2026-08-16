@@ -1,13 +1,25 @@
-import { XIcon } from 'lucide-react'
+import { DownloadIcon, XIcon } from 'lucide-react'
 import { ReactElement, ReactNode, useCallback } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 
-import { useCompletionStatus, useSettings } from '@/app/hooks/queries'
-import { useUpdateSettings } from '@/app/hooks/mutations'
+import {
+  useCompletionStatus,
+  useModelDownload,
+  useSettings
+} from '@/app/hooks/queries'
+import {
+  useCancelModelDownload,
+  useStartModelDownload,
+  useUpdateSettings
+} from '@/app/hooks/mutations'
 import { useTheme } from '@/app/hooks/useTheme'
 import { useAppDispatch } from '@/app/store'
 import { uiActions } from '@/app/store/ui-slice'
-import type { CompletionStatusResponse } from '@/glue/api/schemas'
+import type {
+  CompletionStatusResponse,
+  ModelDownloadResponse
+} from '@/glue/api/schemas'
+import { suggestedModel, suggestedModelSize } from '@/glue/completions'
 
 import { Button } from '../ui/button'
 import {
@@ -96,14 +108,103 @@ function resolveStatusMessage(
   return 'Checking whether Ollama is running…'
 }
 
+// Ollama sends its own phase names ("pulling manifest", a layer digest, "verifying
+// sha256 digest"), which are more honest about what is happening than anything we
+// could invent — but a digest is not a sentence, so it is shown small and below.
+function ModelDownload({
+  download
+}: {
+  download: ModelDownloadResponse | undefined
+}): ReactElement {
+  const cancelDownload = useCancelModelDownload()
+  const startDownload = useStartModelDownload()
+
+  const { mutate: cancel } = cancelDownload
+  const { mutate: start } = startDownload
+
+  const handleCancel = useCallback(() => {
+    cancel()
+  }, [cancel])
+
+  const handleStart = useCallback(() => {
+    start()
+  }, [start])
+
+  if (download?.state === 'downloading') {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <div
+            aria-label={`Downloading ${download.model ?? suggestedModel}`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={download.percent}
+            className="h-1.5 flex-1 overflow-hidden rounded-full bg-border"
+            role="progressbar"
+          >
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-300"
+              style={{ width: `${download.percent}%` }}
+            />
+          </div>
+
+          <span className="w-10 text-right text-[12px] tabular-nums text-text2">
+            {download.percent}%
+          </span>
+
+          <Button
+            disabled={cancelDownload.isPending}
+            onClick={handleCancel}
+            size="sm"
+            variant="ghost"
+          >
+            Cancel
+          </Button>
+        </div>
+
+        <span className="truncate text-[12px] text-text3">
+          {download.message}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <Button
+          disabled={startDownload.isPending}
+          onClick={handleStart}
+          size="sm"
+          variant="secondary"
+        >
+          <DownloadIcon className="size-4" />
+          Download {suggestedModel} ({suggestedModelSize})
+        </Button>
+      </div>
+
+      {download?.state === 'error' && (
+        <span className="text-[12px] text-err">{download.message}</span>
+      )}
+    </div>
+  )
+}
+
 function AiSuggestionsSection(): ReactElement {
   const completionStatus = useCompletionStatus()
+  const modelDownload = useModelDownload()
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
 
   const { mutate } = updateSettings
 
   const models = completionStatus.data?.models ?? []
+
+  // Offered only when Ollama answered and had nothing to offer. With Ollama
+  // missing there is nothing to pull through, so the message telling the user to
+  // install it stands on its own.
+  const canDownloadModel =
+    completionStatus.data?.reachable === true && models.length === 0
 
   const handleModelChange = useCallback(
     (value: string) => {
@@ -172,6 +273,8 @@ function AiSuggestionsSection(): ReactElement {
       <p className="text-[12px] text-text2">
         {resolveStatusMessage(completionStatus.isError, completionStatus.data)}
       </p>
+
+      {canDownloadModel && <ModelDownload download={modelDownload.data} />}
 
       <p className="text-[12px] text-text3">
         Tab to accept · ⌘→ for one word · Esc to dismiss

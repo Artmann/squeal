@@ -24,4 +24,25 @@ export const CompletionsLive = HttpApiBuilder.group(
           return yield* completions.complete(payload)
         }).pipe(orDieInternal)
       )
+      .handle('startDownload', () =>
+        Effect.gen(function* () {
+          const completions = yield* Completions
+
+          return yield* completions.startDownload()
+        }).pipe(orDieInternal)
+      )
+      .handle('downloadStatus', () =>
+        Effect.gen(function* () {
+          const completions = yield* Completions
+
+          return yield* completions.downloadStatus()
+        }).pipe(orDieInternal)
+      )
+      .handle('cancelDownload', () =>
+        Effect.gen(function* () {
+          const completions = yield* Completions
+
+          return yield* completions.cancelDownload()
+        }).pipe(orDieInternal)
+      )
 )

@@ -2,7 +2,11 @@ import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { completionMessages } from '@/glue/completions'
+import {
+  completionMessages,
+  downloadMessages,
+  suggestedModel
+} from '@/glue/completions'
 import { maxCompletionContext } from '@/glue/api/schemas'
 import {
   makeAuthorizedClient,
@@ -35,6 +39,7 @@ describe('completion status route', () => {
       enabled: true,
       message: completionMessages.unreachable(testOllamaHost),
       models: [],
+      reachable: false,
       selectedModel: null
     })
   })
@@ -54,6 +59,7 @@ describe('completion status route', () => {
       enabled: true,
       message: completionMessages.using('qwen2.5-coder:1.5b'),
       models: ['llama3.2:3b', 'qwen2.5-coder:1.5b'],
+      reachable: true,
       selectedModel: 'qwen2.5-coder:1.5b'
     })
   })
@@ -147,6 +153,88 @@ describe('create completion route', () => {
           HttpClientRequest.post('/completions').pipe(
             HttpClientRequest.bodyUnsafeJson({ prefix: 'select ', suffix: '' })
           )
+        )
+
+        return { body: yield* result.json, status: result.status }
+      }).pipe(Effect.scoped, Effect.provide(layer))
+    )
+
+    expect(response).toEqual({
+      body: { _tag: 'UnauthorizedError', message: 'Unauthorized' },
+      status: 401
+    })
+  })
+})
+
+describe('model download routes', () => {
+  it('reports an idle download before one is asked for', async () => {
+    const download = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        return yield* client.completions.downloadStatus()
+      }),
+      { ollama: { models: [] } }
+    )
+
+    expect(download).toEqual({
+      message: '',
+      model: null,
+      percent: 0,
+      state: 'idle'
+    })
+  })
+
+  it('starts the download and answers with its progress', async () => {
+    const download = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        yield* client.completions.startDownload()
+
+        yield* Effect.sleep('20 millis')
+
+        return yield* client.completions.downloadStatus()
+      }),
+      { ollama: { models: [] } }
+    )
+
+    expect(download).toEqual({
+      message: downloadMessages.done(suggestedModel),
+      model: suggestedModel,
+      percent: 100,
+      state: 'done'
+    })
+  })
+
+  it('cancels a download back to idle', async () => {
+    const download = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        yield* client.completions.startDownload()
+
+        return yield* client.completions.cancelDownload()
+      }),
+      { ollama: { models: [] } }
+    )
+
+    expect(download).toEqual({
+      message: '',
+      model: null,
+      percent: 0,
+      state: 'idle'
+    })
+  })
+
+  it('rejects a missing token', async () => {
+    const { layer } = makeTestApi()
+
+    const response = await Effect.runPromise(
+      Effect.gen(function* () {
+        const http = yield* HttpClient.HttpClient
+        const result = yield* http.execute(
+          HttpClientRequest.post('/completions/download')
         )
 
         return { body: yield* result.json, status: result.status }

@@ -1,8 +1,12 @@
-import { Effect, Layer } from 'effect'
+import { Deferred, Effect, Layer } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { SchemaInfo } from '@/databases/adapter'
-import { completionMessages } from '@/glue/completions'
+import {
+  completionMessages,
+  downloadMessages,
+  suggestedModel
+} from '@/glue/completions'
 import {
   makeTestAdapterFactory,
   makeTestAppDatabase,
@@ -157,6 +161,7 @@ describe('Completions.status', () => {
       enabled: true,
       message: completionMessages.unreachable(testOllamaHost),
       models: [],
+      reachable: false,
       selectedModel: null
     })
   })
@@ -169,6 +174,7 @@ describe('Completions.status', () => {
       enabled: true,
       message: completionMessages.noModels,
       models: [],
+      reachable: true,
       selectedModel: null
     })
   })
@@ -183,6 +189,7 @@ describe('Completions.status', () => {
       enabled: true,
       message: completionMessages.using('qwen2.5-coder:1.5b'),
       models: ['llama3.2:3b', 'qwen2.5-coder:1.5b'],
+      reachable: true,
       selectedModel: 'qwen2.5-coder:1.5b'
     })
   })
@@ -203,6 +210,7 @@ describe('Completions.status', () => {
       enabled: true,
       message: completionMessages.modelMissing('codegemma:2b'),
       models: ['codegemma:2b'],
+      reachable: true,
       selectedModel: 'codegemma:2b'
     })
   })
@@ -223,6 +231,7 @@ describe('Completions.status', () => {
       enabled: false,
       message: completionMessages.disabled('codegemma:2b'),
       models: ['codegemma:2b'],
+      reachable: true,
       selectedModel: 'codegemma:2b'
     })
   })
@@ -429,5 +438,182 @@ describe('Completions.complete', () => {
     )
 
     expect(ollamaState.listCalls).toEqual(2)
+  })
+})
+
+describe('Completions download', () => {
+  it('reports nothing until a download is asked for', async () => {
+    const { run } = makeHarness({ ollama: { models: [] } })
+
+    expect(await run(Completions.downloadStatus())).toEqual({
+      message: '',
+      model: null,
+      percent: 0,
+      state: 'idle'
+    })
+  })
+
+  it('turns the byte counts Ollama reports into a percentage', async () => {
+    const latch = Effect.runSync(Deferred.make<void>())
+
+    const { run } = makeHarness({
+      ollama: {
+        models: [],
+        pullLatch: latch,
+        pullProgress: [
+          { completed: 0, status: 'pulling manifest', total: 0 },
+          { completed: 250, status: 'pulling 4c1b0e1e', total: 1000 }
+        ]
+      }
+    })
+
+    const status = await run(
+      Effect.gen(function* () {
+        yield* Completions.startDownload()
+
+        // The pull runs in a forked fiber, so the progress it reports lands
+        // after this one yields.
+        yield* Effect.sleep('20 millis')
+
+        return yield* Completions.downloadStatus()
+      })
+    )
+
+    expect(status).toEqual({
+      message: 'pulling 4c1b0e1e',
+      model: suggestedModel,
+      percent: 25,
+      state: 'downloading'
+    })
+  })
+
+  it('says the model is installed once the pull finishes', async () => {
+    const { ollamaState, run } = makeHarness({ ollama: { models: [] } })
+
+    const status = await run(
+      Effect.gen(function* () {
+        yield* Completions.startDownload()
+
+        yield* Effect.sleep('20 millis')
+
+        return yield* Completions.downloadStatus()
+      })
+    )
+
+    expect(status).toEqual({
+      message: downloadMessages.done(suggestedModel),
+      model: suggestedModel,
+      percent: 100,
+      state: 'done'
+    })
+
+    expect(ollamaState.lastModel).toEqual(suggestedModel)
+  })
+
+  it('rereads the model list after a download, so the new model appears', async () => {
+    const { ollamaState, run } = makeHarness({ ollama: { models: [] } })
+
+    await run(
+      Effect.gen(function* () {
+        // Warms the availability cache, which a download is then expected to
+        // drop.
+        yield* Completions.complete({ prefix: 'select ', suffix: '' })
+
+        yield* Completions.startDownload()
+
+        yield* Effect.sleep('20 millis')
+
+        yield* Completions.complete({ prefix: 'select ', suffix: '' })
+      })
+    )
+
+    expect(ollamaState.listCalls).toEqual(2)
+  })
+
+  it('explains a download that failed and leaves it startable again', async () => {
+    const { run } = makeHarness({
+      ollama: { models: [], pullFailure: 'no space left on device' }
+    })
+
+    const status = await run(
+      Effect.gen(function* () {
+        yield* Completions.startDownload()
+
+        yield* Effect.sleep('20 millis')
+
+        return yield* Completions.downloadStatus()
+      })
+    )
+
+    expect(status).toEqual({
+      message: downloadMessages.failed(
+        suggestedModel,
+        'no space left on device'
+      ),
+      model: suggestedModel,
+      percent: 0,
+      state: 'error'
+    })
+  })
+
+  it('does not start a second pull of the same model', async () => {
+    const latch = Effect.runSync(Deferred.make<void>())
+
+    const { ollamaState, run } = makeHarness({
+      ollama: { models: [], pullLatch: latch }
+    })
+
+    const second = await run(
+      Effect.gen(function* () {
+        yield* Completions.startDownload()
+
+        yield* Effect.sleep('20 millis')
+
+        return yield* Completions.startDownload()
+      })
+    )
+
+    expect(second.state).toEqual('downloading')
+    expect(ollamaState.pullCalls).toEqual(1)
+  })
+
+  it('interrupts the pull when the user cancels', async () => {
+    const latch = Effect.runSync(Deferred.make<void>())
+
+    const { ollamaState, run } = makeHarness({
+      ollama: { models: [], pullLatch: latch }
+    })
+
+    const status = await run(
+      Effect.gen(function* () {
+        yield* Completions.startDownload()
+
+        yield* Effect.sleep('20 millis')
+
+        return yield* Completions.cancelDownload()
+      })
+    )
+
+    expect(status).toEqual({
+      message: '',
+      model: null,
+      percent: 0,
+      state: 'idle'
+    })
+
+    expect(ollamaState.pullsInterrupted).toEqual(1)
+  })
+
+  it('cancels nothing when no download is running', async () => {
+    const { ollamaState, run } = makeHarness({ ollama: { models: [] } })
+
+    expect(await run(Completions.cancelDownload())).toEqual({
+      message: '',
+      model: null,
+      percent: 0,
+      state: 'idle'
+    })
+
+    expect(ollamaState.pullCalls).toEqual(0)
   })
 })

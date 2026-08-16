@@ -6,16 +6,21 @@
 // not load, a model that answered with prose — ends as `completion: null` and a
 // log line. Nothing here is ever a user facing error, because the user is in the
 // middle of typing.
-import { Effect, Option } from 'effect'
+import { Effect, FiberMap, Option } from 'effect'
 
 import type {
   CompletionRequest,
   CompletionResponse,
   CompletionStatusResponse,
   DatabaseType,
+  ModelDownloadResponse,
   SchemaInfoDto
 } from '@/glue/api/schemas'
-import { completionMessages } from '@/glue/completions'
+import {
+  completionMessages,
+  downloadMessages,
+  suggestedModel
+} from '@/glue/completions'
 import { buildCompletionPrompt } from '@/main/ai/completion-prompt'
 import { normalizeCompletion } from '@/main/ai/completion-text'
 import { AdapterFactory } from './adapter-factory'
@@ -64,6 +69,18 @@ interface ModelChoice {
   storedModelMissing: boolean
 }
 
+// Only one model can be downloaded at a time, so the FiberMap holds one key.
+// It is a FiberMap rather than a bare fiber because that is what ties the
+// download to the service scope: quitting interrupts it.
+const downloadKey = 'model'
+
+const idleDownload: ModelDownloadResponse = {
+  message: '',
+  model: null,
+  percent: 0,
+  state: 'idle'
+}
+
 // Exported for its own test: which model gets used is the decision most likely
 // to surprise someone, and it depends only on these two lists.
 export function selectModel(
@@ -95,7 +112,7 @@ export class Completions extends Effect.Service<Completions>()('Completions', {
     DatabaseService.Default,
     Ollama.Default
   ],
-  effect: Effect.gen(function* () {
+  scoped: Effect.gen(function* () {
     const adapterFactory = yield* AdapterFactory
     const appSettings = yield* AppSettings
     const databases = yield* DatabaseService
@@ -106,6 +123,10 @@ export class Completions extends Effect.Service<Completions>()('Completions', {
     let availability: Availability | null = null
 
     const schemas = new Map<string, CachedSchema>()
+
+    let download: ModelDownloadResponse = idleDownload
+
+    const downloads = yield* FiberMap.make<string, void, never>()
 
     const checkAvailability = Effect.gen(function* () {
       const models = yield* ollama.listModels.pipe(
@@ -233,6 +254,7 @@ export class Completions extends Effect.Service<Completions>()('Completions', {
           checked.reachable
         ),
         models: checked.models,
+        reachable: checked.reachable,
         selectedModel: choice.selectedModel
       }
 
@@ -291,6 +313,112 @@ export class Completions extends Effect.Service<Completions>()('Completions', {
       )
     )
 
-    return { complete, status } as const
+    const downloadStatus = Effect.fn('Completions.downloadStatus')(
+      function* () {
+        // Read inside a sync so the poller sees whatever the running fiber has
+        // written by now, rather than the value at the time the effect was built.
+        return yield* Effect.sync(() => download)
+      }
+    )
+
+    const runDownload = ollama
+      .pullModel({
+        model: suggestedModel,
+        onProgress: ({ completed, status: phase, total }) => {
+          download = {
+            message: phase,
+            model: suggestedModel,
+            // Ollama reports the manifest phases with no byte counts at all, so
+            // the last real percentage is held rather than dropping to zero.
+            percent:
+              total > 0
+                ? Math.min(100, Math.round((completed / total) * 100))
+                : download.percent,
+            state: 'downloading'
+          }
+        }
+      })
+      .pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            // The model list is cached for five minutes, and the whole point of
+            // the download is that it changed. Dropping it makes the new model
+            // show up on the next status read.
+            availability = null
+
+            download = {
+              message: downloadMessages.done(suggestedModel),
+              model: suggestedModel,
+              percent: 100,
+              state: 'done'
+            }
+          })
+        ),
+        Effect.catchAll((error) =>
+          Effect.logWarning(
+            `Could not download ${suggestedModel}: ${error.message}`
+          ).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                download = {
+                  message: downloadMessages.failed(
+                    suggestedModel,
+                    error.message
+                  ),
+                  model: suggestedModel,
+                  percent: download.percent,
+                  state: 'error'
+                }
+              })
+            )
+          )
+        ),
+        // Reached by a user cancel and by app shutdown alike. Both mean no
+        // download is running, which is what idle says.
+        Effect.onInterrupt(() =>
+          Effect.sync(() => {
+            download = idleDownload
+          })
+        )
+      )
+
+    const startDownload = Effect.fn('Completions.startDownload')(function* () {
+      // Answering with the download already in flight rather than starting a
+      // second one: two pulls of the same model would fight over the same files.
+      if (download.state === 'downloading') {
+        return download
+      }
+
+      download = {
+        message: downloadMessages.starting(suggestedModel),
+        model: suggestedModel,
+        percent: 0,
+        state: 'downloading'
+      }
+
+      yield* FiberMap.run(downloads, downloadKey, runDownload)
+
+      return download
+    })
+
+    const cancelDownload = Effect.fn('Completions.cancelDownload')(
+      function* () {
+        // Interrupts the fiber if there is one, and is a no-op if there is not,
+        // so a cancel that races the last byte is still safe.
+        yield* FiberMap.remove(downloads, downloadKey)
+
+        download = idleDownload
+
+        return download
+      }
+    )
+
+    return {
+      cancelDownload,
+      complete,
+      downloadStatus,
+      startDownload,
+      status
+    } as const
   })
 }) {}

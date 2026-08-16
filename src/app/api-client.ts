@@ -32,6 +32,7 @@ import type {
   DatabaseDto,
   HealthResponse,
   ListTracesUrlParams,
+  ModelDownloadResponse,
   QueryDto,
   ReorderDatabasesResponse,
   ReorderWorksheetsResponse,
@@ -320,6 +321,15 @@ function traced<A, E>(
 }
 
 export const apiClient = {
+  async cancelModelDownload(): Promise<ModelDownloadResponse> {
+    return traced(
+      'HTTP DELETE /completions/download',
+      { method: 'DELETE', path: '/completions/download' },
+      undefined,
+      Effect.flatMap(client, (api) => api.completions.cancelDownload())
+    )
+  },
+
   async cancelQuery(queryId: string): Promise<void> {
     await traced(
       'HTTP POST /queries/:id/cancel',
@@ -456,6 +466,15 @@ export const apiClient = {
   // Untraced: a health probe every few seconds would drown the trace list.
   async getHealth(): Promise<HealthResponse> {
     return run(Effect.flatMap(client, (api) => api.health.get()))
+  },
+
+  // Untraced: polled once a second for as long as a multi-gigabyte download
+  // runs, which is the same argument that keeps the result poller out.
+  async getModelDownload(): Promise<ModelDownloadResponse> {
+    return run(
+      Effect.flatMap(client, (api) => api.completions.downloadStatus()),
+      { sent: false }
+    )
   },
 
   async getQueries(): Promise<QueryDto[]> {
@@ -601,6 +620,15 @@ export const apiClient = {
       { method: 'POST', path: '/secret-storage/skip' },
       undefined,
       Effect.flatMap(client, (api) => api.secretStorage.skip())
+    )
+  },
+
+  async startModelDownload(): Promise<ModelDownloadResponse> {
+    return traced(
+      'HTTP POST /completions/download',
+      { method: 'POST', path: '/completions/download' },
+      undefined,
+      Effect.flatMap(client, (api) => api.completions.startDownload())
     )
   },
 

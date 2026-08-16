@@ -504,6 +504,10 @@ export const CompletionStatusResponse = Schema.Struct({
   enabled: Schema.Boolean,
   message: Schema.String,
   models: Schema.mutable(Schema.Array(Schema.String)),
+  // `available` is false both when Ollama is missing and when it is running
+  // with nothing installed, and only the second of those is worth offering a
+  // download for. This is what tells the two apart.
+  reachable: Schema.Boolean,
   selectedModel: Schema.NullOr(Schema.String)
 })
 export type CompletionStatusResponse = Schema.Schema.Type<
@@ -526,6 +530,20 @@ export const CompletionResponse = Schema.Struct({
   completion: Schema.NullOr(Schema.String)
 })
 export type CompletionResponse = Schema.Schema.Type<typeof CompletionResponse>
+
+// Pulling a model takes minutes, so it runs as a background fiber and this is
+// polled — the same shape as an update check, and for the same reason: there is
+// no way to stream progress to the renderer. `model` is null only while idle,
+// and `percent` stays at 0 through the phases Ollama cannot measure.
+export const ModelDownloadResponse = Schema.Struct({
+  message: Schema.String,
+  model: Schema.NullOr(Schema.String),
+  percent: Schema.Number,
+  state: Schema.Literal('downloading', 'done', 'error', 'idle')
+})
+export type ModelDownloadResponse = Schema.Schema.Type<
+  typeof ModelDownloadResponse
+>
 
 // --- Updates ---------------------------------------------------------------------
 

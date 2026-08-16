@@ -6,7 +6,7 @@ import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 // whose optional peers are not installed.
 import * as NodeHttpServer from '@effect/platform-node/NodeHttpServer'
 import { drizzle } from 'drizzle-orm/libsql'
-import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
+import { ConfigProvider, Deferred, Effect, Layer, Redacted } from 'effect'
 
 import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
@@ -26,7 +26,11 @@ import { AppSettings } from '@/server/services/app-settings'
 import { Completions } from '@/server/services/completions'
 import { DatabaseService } from '@/server/services/database-service'
 import { Ollama } from '@/server/services/ollama'
-import type { OllamaGenerateOptions } from '@/server/services/ollama'
+import type {
+  OllamaGenerateOptions,
+  OllamaPullOptions
+} from '@/server/services/ollama'
+import type { PullProgress } from '@/main/ai/ollama-client'
 import { OllamaError } from '@/server/errors'
 import { QueryRunner } from '@/server/services/query-runner'
 import { SecretStorage } from '@/server/services/secret-storage'
@@ -126,6 +130,13 @@ export interface TestOllamaConfig {
   // Undefined means Ollama is not answering at all — the case every test of
   // the "silently absent" behaviour needs.
   models?: string[]
+  // Each entry is reported before the pull resolves, so a test can drive the
+  // percentage the same way a real download would.
+  pullProgress?: PullProgress[]
+  // When set, the pull fails with this message instead of succeeding.
+  pullFailure?: string
+  // Held open until released, so a test can observe the state mid-download.
+  pullLatch?: Deferred.Deferred<void>
   response?: string
 }
 
@@ -134,6 +145,8 @@ export interface TestOllamaState {
   lastModel: string | null
   lastPrompt: string | null
   listCalls: number
+  pullCalls: number
+  pullsInterrupted: number
 }
 
 export const testOllamaHost = 'http://127.0.0.1:11434'
@@ -146,7 +159,9 @@ export function makeTestOllama(config: TestOllamaConfig = {}) {
     generateCalls: 0,
     lastModel: null,
     lastPrompt: null,
-    listCalls: 0
+    listCalls: 0,
+    pullCalls: 0,
+    pullsInterrupted: 0
   }
 
   const unreachable = new OllamaError({
@@ -177,7 +192,32 @@ export function makeTestOllama(config: TestOllamaConfig = {}) {
         }
 
         return Effect.succeed(config.models)
-      })
+      }),
+      pullModel: ({ model, onProgress }: OllamaPullOptions) =>
+        Effect.gen(function* () {
+          state.pullCalls++
+          state.lastModel = model
+
+          for (const progress of config.pullProgress ?? []) {
+            onProgress(progress)
+          }
+
+          if (config.pullLatch !== undefined) {
+            yield* Deferred.await(config.pullLatch)
+          }
+
+          if (config.pullFailure !== undefined) {
+            return yield* Effect.fail(
+              new OllamaError({ message: config.pullFailure })
+            )
+          }
+        }).pipe(
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              state.pullsInterrupted++
+            })
+          )
+        )
     })
   )
 

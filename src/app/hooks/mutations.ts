@@ -277,6 +277,37 @@ export function useUpdateDatabase() {
 // cache instead of invalidated — the Settings screen shows the saved state
 // without a second request. The status line describes the chosen model, so it
 // is refetched whenever that choice may have moved.
+// Both write the response straight into the download cache so the UI switches
+// to (or away from) the progress bar on the same tick as the click, rather than
+// waiting up to a second for the next poll.
+export function useStartModelDownload() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => apiClient.startModelDownload(),
+    onError: () => {
+      toast.error('Could not start the download. Try again.')
+    },
+    onSuccess: (response) => {
+      queryClient.setQueryData(queryKeys.modelDownload, response)
+    }
+  })
+}
+
+export function useCancelModelDownload() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => apiClient.cancelModelDownload(),
+    onError: () => {
+      toast.error('Could not cancel the download. Try again.')
+    },
+    onSuccess: (response) => {
+      queryClient.setQueryData(queryKeys.modelDownload, response)
+    }
+  })
+}
+
 export function useUpdateSettings() {
   const queryClient = useQueryClient()
 

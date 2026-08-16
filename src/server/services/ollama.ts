@@ -5,12 +5,17 @@
 import { Effect } from 'effect'
 
 import { ollamaBackend, ollamaBaseUrl } from '@/main/ai/ollama-client'
-import type { OllamaBackend } from '@/main/ai/ollama-client'
+import type { OllamaBackend, PullProgress } from '@/main/ai/ollama-client'
 import { OllamaError } from '../errors'
 
 export interface OllamaGenerateOptions {
   model: string
   prompt: string
+}
+
+export interface OllamaPullOptions {
+  model: string
+  onProgress: (progress: PullProgress) => void
 }
 
 function toOllamaError(cause: unknown): OllamaError {
@@ -33,7 +38,14 @@ export function makeOllamaService(backend: OllamaBackend) {
     listModels: Effect.tryPromise({
       catch: toOllamaError,
       try: (signal) => backend.listModels(signal)
-    })
+    }),
+    // Interrupting this fiber is how the user cancels a download: the signal
+    // reaches fetch and the connection closes, so Ollama stops sending.
+    pullModel: ({ model, onProgress }: OllamaPullOptions) =>
+      Effect.tryPromise({
+        catch: toOllamaError,
+        try: (signal) => backend.pullModel({ model, onProgress, signal })
+      })
   }
 }
 

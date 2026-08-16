@@ -1,5 +1,10 @@
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
-import { useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import {
+  useQueries,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery
+} from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { toast } from 'sonner'
 
@@ -10,6 +15,7 @@ import { finishQueryTrace } from '../tracing/query-traces'
 import { consumeErrorNotice } from './use-start-query'
 import type {
   CompletionStatusResponse,
+  ModelDownloadResponse,
   QueryDto,
   SchemaInfoDto,
   SecretStorageResponse,
@@ -108,6 +114,37 @@ export function useCompletionStatus() {
     staleTime: 0,
     throwOnError: false
   })
+}
+
+// Progress on the model download, polled only while one is running — there is
+// no way to stream it to the renderer, so the state is asked for once a second
+// and left alone the rest of the time.
+export function useModelDownload() {
+  const queryClient = useQueryClient()
+
+  const download = useQuery<ModelDownloadResponse>({
+    queryFn: () => apiClient.getModelDownload(),
+    queryKey: queryKeys.modelDownload,
+    refetchInterval: (query) =>
+      query.state.data?.state === 'downloading' ? 1_000 : false,
+    staleTime: 0,
+    throwOnError: false
+  })
+
+  const isDone = download.data?.state === 'done'
+
+  // A finished pull is the one moment the installed model list is known to be
+  // wrong, so the status is asked for again and the section swaps the button for
+  // the model picker on its own.
+  useEffect(() => {
+    if (!isDone) {
+      return
+    }
+
+    void queryClient.invalidateQueries({ queryKey: queryKeys.completionStatus })
+  }, [isDone, queryClient])
+
+  return download
 }
 
 export function useDatabaseSchema(databaseId: string | undefined) {
