@@ -5,6 +5,7 @@
 // ways — they wrap answers in markdown fences, they restate the text they were
 // asked to continue, and they pad with blank lines. None of that is a failure
 // worth surfacing, so it is cleaned up here rather than shown to the user.
+import { promptLabels } from './completion-prompt'
 
 // A model that restates the prompt usually restates the tail of it. Comparing
 // the whole prefix would miss that, and comparing too little would strip real
@@ -25,7 +26,8 @@ export function normalizeCompletion(
   prefix: string
 ): string | null {
   const unfenced = stripFences(raw)
-  const unechoed = stripEchoedPrefix(unfenced, prefix)
+  const answered = cutAtPromptLabel(unfenced)
+  const unechoed = stripEchoedPrefix(answered, prefix)
 
   // Leading blank lines would push the suggestion away from the cursor, but
   // leading spaces on the first line can be meaningful, so only newlines go.
@@ -36,6 +38,24 @@ export function normalizeCompletion(
   }
 
   return trimmed
+}
+
+// The model reaching one of the prompt's own labels means it finished the
+// continuation and started writing the next prompt. Generation is already
+// stopped on these, but a label that arrives with a stray space in it would slip
+// past that and land in the editor, so the answer is cut here as well.
+function cutAtPromptLabel(value: string): string {
+  let end = value.length
+
+  for (const label of promptLabels) {
+    const index = value.indexOf(label)
+
+    if (index !== -1 && index < end) {
+      end = index
+    }
+  }
+
+  return value.slice(0, end)
 }
 
 function stripFences(value: string): string {

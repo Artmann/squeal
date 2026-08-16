@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { promptLabels } from './completion-prompt'
 import {
   ollamaBackend,
   ollamaBaseUrl,
@@ -233,7 +234,9 @@ describe('ollamaBackend.generate', () => {
       model: 'qwen2.5-coder:1.5b',
       options: {
         num_predict: 128,
-        stop: ['\n\n\n', '```'],
+        // The prompt's labels stop generation, so a model that runs past its
+        // answer into a replay of the prompt is cut off at the source.
+        stop: ['\n\n\n', '```', ...promptLabels],
         temperature: 0.1
       },
       prompt: 'select ',

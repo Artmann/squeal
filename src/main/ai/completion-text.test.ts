@@ -66,6 +66,34 @@ describe('normalizeCompletion', () => {
     ).toEqual(null)
   })
 
+  it('cuts the answer where the model started replaying the prompt', () => {
+    // Exactly what qwen2.5-coder:1.5b returns for a half-typed table name: the
+    // continuation, then the next prompt it expected to be given.
+    const raw = 'm\n\nNow complete the real statement.'
+
+    expect(normalizeCompletion(raw, 'select title\nfrom fil')).toEqual('m')
+  })
+
+  it('cuts a replayed prompt that got as far as a new statement', () => {
+    const raw = [
+      'film',
+      '',
+      'Statement so far:',
+      'select * from actor',
+      '',
+      'Continuation:',
+      'where actor_id = 1'
+    ].join('\n')
+
+    expect(normalizeCompletion(raw, 'select * from ')).toEqual('film')
+  })
+
+  it('returns null when the answer is nothing but a replayed label', () => {
+    expect(
+      normalizeCompletion('Now complete the real statement.', 'select ')
+    ).toEqual(null)
+  })
+
   it('keeps only the fenced block when the model explains itself around it', () => {
     const raw = [
       'It looks like your query is incomplete. Here is one that works:',

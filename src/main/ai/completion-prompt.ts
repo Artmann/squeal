@@ -16,6 +16,20 @@ export interface CompletionPromptOptions {
 // so the tail is dropped and the model is told it was.
 const maxSchemaCharacters = 12_000
 
+// The labels this prompt is built out of. A small model that reaches the end of
+// its answer does not stop — it carries on and replays the prompt it was given,
+// so `select title from fil` comes back as "m\n\nNow complete the real
+// statement." These are exported because they are the only reliable marker of
+// where the answer ended: the client stops generation on them, and
+// `normalizeCompletion` cuts at one that slipped through anyway.
+export const promptLabels = [
+  'Continuation:',
+  'Now complete the real statement.',
+  'Schema:',
+  'Statement so far:',
+  'Text after the cursor:'
+]
+
 const dialectNames: Record<DatabaseType, string> = {
   mysql: 'MySQL',
   postgres: 'PostgreSQL',

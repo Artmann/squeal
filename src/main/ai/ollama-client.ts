@@ -5,9 +5,16 @@
 // keeps Electron behind an interface to stay unit-testable. Everything is
 // loopback, so `net.fetch`'s proxy and certificate handling buys nothing here.
 
+import { promptLabels } from './completion-prompt'
+
 // Ollama's own default. Honouring OLLAMA_HOST means a user who moved the
 // server does not have to be told twice.
 const defaultHost = 'http://127.0.0.1:11434'
+
+// Two shapes of runaway answer, and the prompt's own labels. A model that keeps
+// going past the continuation starts replaying the prompt, so the labels are
+// where the useful part of the answer ends.
+const stopSequences = ['\n\n\n', '```', ...promptLabels]
 
 // Listing models is a local, in-memory answer; if it has not come back in two
 // seconds Ollama is not in a state that will produce a suggestion either.
@@ -78,7 +85,7 @@ export const ollamaBackend: OllamaBackend = {
         model,
         options: {
           num_predict: maxPredictedTokens,
-          stop: ['\n\n\n', '```'],
+          stop: stopSequences,
           temperature: 0.1
         },
         prompt,

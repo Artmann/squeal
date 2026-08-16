@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { SchemaInfoDto } from '@/glue/api/schemas'
-import { buildCompletionPrompt } from './completion-prompt'
+import { buildCompletionPrompt, promptLabels } from './completion-prompt'
 
 function makeColumn(
   columnName: string,
@@ -41,6 +41,24 @@ const filmSchema: SchemaInfoDto = {
     }
   ]
 }
+
+describe('promptLabels', () => {
+  // Both the stop sequences and the normalizer's cut are aimed at these exact
+  // strings, so a label that gets reworded in the prompt and not here would let
+  // the prompt's own text into the editor with nothing failing.
+  it('lists every label the prompt is actually built from', () => {
+    const prompt = buildCompletionPrompt({
+      databaseType: 'postgres',
+      prefix: 'select ',
+      schema: filmSchema,
+      suffix: 'from film'
+    })
+
+    for (const label of promptLabels) {
+      expect(prompt).toContain(label)
+    }
+  })
+})
 
 describe('buildCompletionPrompt', () => {
   it('names the dialect and includes the statement so far', () => {
