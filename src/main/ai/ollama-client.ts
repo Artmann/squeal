@@ -23,8 +23,8 @@ const maxPredictedTokens = 128
 
 // A pull is gigabytes over someone else's network, so a fixed deadline like the
 // other two would kill a download that is working. What is measured instead is
-// silence: Ollama reports progress continuously, so a minute without a single
-// line means the transfer has stalled, however long it has been running.
+// standing still: a minute in which no byte arrived and no phase changed means
+// the transfer is stuck, however long it has been running.
 const pullSilenceMilliseconds = 60_000
 
 export interface GenerateOptions {
@@ -188,9 +188,7 @@ export const ollamaBackend: OllamaBackend = {
       // abort back untouched, which is what keeps a cancel from reading as a
       // failure.
       if (stalledOut) {
-        throw new Error(
-          `Ollama stopped reporting progress while downloading ${model}.`
-        )
+        throw new Error('Ollama downloaded nothing for a minute.')
       }
 
       throw cause
@@ -212,6 +210,23 @@ async function readProgress(
   const reader = body.getReader()
 
   let buffer = ''
+  let lastCompleted = -1
+  let lastStatus = ''
+
+  // A line arriving is not progress. Ollama repeats the same line several times
+  // a second for as long as it is trying, so a transfer that has connected to
+  // nothing looks exactly as busy as one running at full speed — the only thing
+  // that separates them is whether the byte count moves or the phase changes.
+  const noteProgress = (progress: PullProgress): void => {
+    if (progress.status === lastStatus && progress.completed <= lastCompleted) {
+      return
+    }
+
+    lastCompleted = progress.completed
+    lastStatus = progress.status
+
+    onActivity()
+  }
 
   try {
     for (;;) {
@@ -220,8 +235,6 @@ async function readProgress(
       if (done) {
         break
       }
-
-      onActivity()
 
       buffer += decoder.decode(value, { stream: true })
 
@@ -232,11 +245,11 @@ async function readProgress(
       buffer = lines.pop() ?? ''
 
       for (const line of lines) {
-        reportLine(line, onProgress)
+        reportLine(line, onProgress, noteProgress)
       }
     }
 
-    reportLine(buffer, onProgress)
+    reportLine(buffer, onProgress, noteProgress)
   } finally {
     reader.releaseLock()
   }
@@ -244,7 +257,8 @@ async function readProgress(
 
 function reportLine(
   line: string,
-  onProgress: (progress: PullProgress) => void
+  onProgress: (progress: PullProgress) => void,
+  noteProgress: (progress: PullProgress) => void
 ): void {
   const trimmed = line.trim()
 
@@ -270,14 +284,19 @@ function reportLine(
     throw new Error(parsed.error)
   }
 
-  onProgress({
+  const progress: PullProgress = {
+    // Omitted entirely until the first byte lands, which is why a stuck
+    // download reports a total and nothing else.
     completed: numberField(parsed, 'completed'),
     status:
       'status' in parsed && typeof parsed.status === 'string'
         ? parsed.status
         : '',
     total: numberField(parsed, 'total')
-  })
+  }
+
+  noteProgress(progress)
+  onProgress(progress)
 }
 
 function numberField(source: object, field: string): number {

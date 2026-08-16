@@ -50,6 +50,35 @@ function silentResponse(signal: AbortSignal | undefined): Response {
   )
 }
 
+// A stubbed fetch whose body the test feeds line by line, so the stall deadline
+// can be driven against a stream that is still open.
+function pushableFetch() {
+  const encoder = new TextEncoder()
+
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
+
+  globalThis.fetch = vi.fn(
+    async (_input: unknown, request: RequestInit | undefined) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller
+
+            request?.signal?.addEventListener('abort', () => {
+              controller.error(new Error('The operation was aborted.'))
+            })
+          }
+        })
+      )
+  ) as unknown as typeof fetch
+
+  return {
+    close: (): void => streamController?.close(),
+    push: (line: string): void =>
+      streamController?.enqueue(encoder.encode(line))
+  }
+}
+
 // The mock is typed rather than inferred so `mock.calls` keeps the URL and the
 // request options — the tests read both back.
 function stubFetch(respond: () => Response) {
@@ -366,12 +395,80 @@ describe('ollamaBackend.pullModel', () => {
       })
 
       const rejects = expect(pending).rejects.toThrow(
-        'Ollama stopped reporting progress while downloading qwen2.5-coder:1.5b.'
+        'Ollama downloaded nothing for a minute.'
       )
 
       await vi.advanceTimersByTimeAsync(60_000)
 
       await rejects
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('gives up when Ollama repeats the same line without moving a byte', async () => {
+    vi.useFakeTimers()
+
+    try {
+      const stream = pushableFetch()
+
+      const pending = ollamaBackend.pullModel({
+        model: 'qwen2.5-coder:1.5b',
+        onProgress: () => undefined
+      })
+
+      const rejects = expect(pending).rejects.toThrow(
+        'Ollama downloaded nothing for a minute.'
+      )
+
+      // The line a stuck pull repeats several times a second: a phase, a
+      // digest, a total, and no `completed` at all. The stream never goes
+      // quiet, so only the byte count tells this apart from a fast download.
+      for (let line = 0; line < 3; line += 1) {
+        stream.push(
+          '{"status":"pulling 29d8c98fa6b0","digest":"sha256:29d8","total":986048576}\n'
+        )
+
+        await vi.advanceTimersByTimeAsync(25_000)
+      }
+
+      await rejects
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps a slow download alive as long as bytes keep arriving', async () => {
+    vi.useFakeTimers()
+
+    try {
+      const progress: PullProgress[] = []
+      const stream = pushableFetch()
+
+      const pending = ollamaBackend.pullModel({
+        model: 'qwen2.5-coder:1.5b',
+        onProgress: (update) => progress.push(update)
+      })
+
+      // Two and a half minutes, in steps longer than half the deadline: this
+      // only survives if a rising byte count pushes the deadline back.
+      for (const completed of [10, 20, 30]) {
+        stream.push(
+          `{"status":"pulling 29d8c98fa6b0","completed":${completed},"total":100}\n`
+        )
+
+        await vi.advanceTimersByTimeAsync(50_000)
+      }
+
+      stream.close()
+
+      await expect(pending).resolves.toBeUndefined()
+
+      expect(progress).toEqual([
+        { completed: 10, status: 'pulling 29d8c98fa6b0', total: 100 },
+        { completed: 20, status: 'pulling 29d8c98fa6b0', total: 100 },
+        { completed: 30, status: 'pulling 29d8c98fa6b0', total: 100 }
+      ])
     } finally {
       vi.useRealTimers()
     }
