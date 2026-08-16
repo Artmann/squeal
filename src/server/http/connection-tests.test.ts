@@ -1,10 +1,14 @@
 import { HttpClient } from '@effect/platform'
+import { eq } from 'drizzle-orm'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { databasesTable } from '@/database/schema'
+import { AppDatabase } from '@/server/services/app-database'
 import {
   makeAuthorizedClient,
   makeTestApi,
+  testEncryptionPrefix,
   type TestApiOptions,
   type TestAdapterState
 } from '@/test/effect-test-helper'
@@ -16,8 +20,10 @@ const connectionInfo = {
   username: 'postgres'
 }
 
+type TestContext = AppDatabase | HttpClient.HttpClient
+
 function run<A, E>(
-  effect: Effect.Effect<A, E, HttpClient.HttpClient>,
+  effect: Effect.Effect<A, E, TestContext>,
   options: TestApiOptions = {}
 ): Promise<{ result: A; adapterState: TestAdapterState }> {
   const { adapterState, layer } = makeTestApi(options)
@@ -106,6 +112,114 @@ describe('connection test route', () => {
     expect(adapterState.lastConnectionInfo).toEqual(connectionInfo)
   })
 
+  // A keychain reset makes every stored secret unreadable. The test cannot
+  // borrow what it cannot read, but the row is still the user's to repair, so
+  // this asks for the password instead of failing the request.
+  it('requires a password when the stored secret cannot be read', async () => {
+    const { adapterState, result } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        yield* appDatabase.execute((database) =>
+          database
+            .update(databasesTable)
+            .set({ connectionInfo: `${testEncryptionPrefix}not-json` })
+            .where(eq(databasesTable.id, created.database.id))
+        )
+
+        return yield* client.connectionTests.create({
+          payload: {
+            connectionInfo: { ...connectionInfo, password: '' },
+            databaseId: created.database.id,
+            type: 'postgres'
+          }
+        })
+      })
+    )
+
+    expect(result).toEqual({ message: 'Password is required.', success: false })
+    expect(adapterState.lastConnectionInfo).toEqual(null)
+  })
+
+  // Repairing an unreadable row saves a blank password, and rows predating the
+  // non-empty rule can hold one too. An empty password is no secret to borrow,
+  // so the honest answer is to ask for one — not to hand `undefined` to the
+  // driver, and not to refuse the way a different server is refused.
+  it('requires a password when the stored password is empty', async () => {
+    const { adapterState, result } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        yield* appDatabase.execute((database) =>
+          database
+            .update(databasesTable)
+            .set({
+              connectionInfo: `${testEncryptionPrefix}${JSON.stringify({
+                ...connectionInfo,
+                password: ''
+              })}`
+            })
+            .where(eq(databasesTable.id, created.database.id))
+        )
+
+        return yield* client.connectionTests.create({
+          payload: {
+            connectionInfo: { ...connectionInfo, password: '' },
+            databaseId: created.database.id,
+            type: 'postgres'
+          }
+        })
+      })
+    )
+
+    expect(result).toEqual({ message: 'Password is required.', success: false })
+    expect(adapterState.lastConnectionInfo).toEqual(null)
+  })
+
+  // The same-server check sits below the "did the request bring its own
+  // password" check. Moving it above would refuse every test against a new
+  // host, even one the user typed the password for.
+  it('allows a different host when the request carries its own password', async () => {
+    const { adapterState, result } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        return yield* client.connectionTests.create({
+          payload: {
+            connectionInfo: {
+              ...connectionInfo,
+              host: 'replica.internal',
+              password: 'typed-again'
+            },
+            databaseId: created.database.id,
+            type: 'postgres'
+          }
+        })
+      })
+    )
+
+    expect(result).toEqual({ success: true })
+    expect(adapterState.lastConnectionInfo).toEqual({
+      ...connectionInfo,
+      host: 'replica.internal',
+      password: 'typed-again'
+    })
+  })
+
   // Otherwise an authenticated caller could aim a saved password at a server
   // they control and read it off the handshake.
   it('refuses to lend the stored password to a different host', async () => {
@@ -132,7 +246,7 @@ describe('connection test route', () => {
     )
 
     expect(result).toEqual({
-      message: 'Enter the password to test a different server.',
+      message: 'Enter the password to test a different server or SSL settings.',
       success: false
     })
 
@@ -160,7 +274,7 @@ describe('connection test route', () => {
     )
 
     expect(result).toEqual({
-      message: 'Enter the password to test a different server.',
+      message: 'Enter the password to test a different server or SSL settings.',
       success: false
     })
   })

@@ -16,6 +16,17 @@ export class DatabaseNotFoundError extends Schema.TaggedError<DatabaseNotFoundEr
   HttpApiSchema.annotations({ status: 404 })
 ) {}
 
+// A stored password is only ever lent back to the server it was saved for, so
+// an edit that moves the connection to another host or port has to carry the
+// password itself.
+export class DifferentServerError extends Schema.TaggedError<DifferentServerError>()(
+  'DifferentServerError',
+  {
+    message: Schema.String
+  },
+  HttpApiSchema.annotations({ status: 400 })
+) {}
+
 export class NoDatabaseAvailableError extends Schema.TaggedError<NoDatabaseAvailableError>()(
   'NoDatabaseAvailableError',
   {

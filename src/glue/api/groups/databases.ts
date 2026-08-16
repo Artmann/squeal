@@ -2,6 +2,7 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 
 import {
   DatabaseNotFoundError,
+  DifferentServerError,
   SchemaLoadFailedError,
   UnknownDatabaseIdsError
 } from '../errors'
@@ -50,6 +51,7 @@ export const databasesGroup = HttpApiGroup.make('databases')
       .setPayload(UpdateDatabaseRequest)
       .addSuccess(UpdateDatabaseResponse)
       .addError(DatabaseNotFoundError)
+      .addError(DifferentServerError)
   )
   .middleware(Authorization)
   .prefix('/databases')
