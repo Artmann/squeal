@@ -155,7 +155,6 @@ function ModelDownload({
           <Button
             disabled={cancelDownload.isPending}
             onClick={handleCancel}
-            size="sm"
             variant="ghost"
           >
             Cancel
@@ -175,10 +174,9 @@ function ModelDownload({
         <Button
           disabled={startDownload.isPending}
           onClick={handleStart}
-          size="sm"
           variant="secondary"
         >
-          <DownloadIcon className="size-4" />
+          <DownloadIcon className="size-3.5" />
           Download {suggestedModel} ({suggestedModelSize})
         </Button>
       </div>
