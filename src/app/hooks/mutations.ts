@@ -1,6 +1,7 @@
 import { createOptimisticAction } from '@tanstack/react-db'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
@@ -10,7 +11,8 @@ import {
   CreateDatabaseRequest,
   type CreateWorksheetRequest,
   type QueryDto,
-  UpdateDatabaseRequest
+  UpdateDatabaseRequest,
+  type UpdateSettingsRequest
 } from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
 
@@ -266,6 +268,29 @@ export function useUpdateDatabase() {
 
       void queryClient.invalidateQueries({
         queryKey: queryKeys.schema(response.database.id)
+      })
+    }
+  })
+}
+
+// The response is the whole settings row, so it is written straight into the
+// cache instead of invalidated — the Settings screen shows the saved state
+// without a second request. The status line describes the chosen model, so it
+// is refetched whenever that choice may have moved.
+export function useUpdateSettings() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (request: UpdateSettingsRequest) =>
+      apiClient.updateSettings(request),
+    onError: () => {
+      toast.error('Could not save your settings. Try again.')
+    },
+    onSuccess: (response) => {
+      queryClient.setQueryData(queryKeys.settings, response)
+
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.completionStatus
       })
     }
   })

@@ -287,6 +287,7 @@ export function App(): ReactElement {
                 <WorksheetEditor
                   activeStatementIndex={activeStatementIndex}
                   content={content}
+                  databaseId={currentDatabase?.id}
                   databaseType={currentDatabase?.type}
                   statements={statements}
                   onChange={handleUpdateContent}

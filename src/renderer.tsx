@@ -8,6 +8,7 @@ import { App } from './app/App'
 import { AppShell } from './app/AppShell'
 import { createCollections } from './app/collections'
 import { CollectionsProvider } from './app/collections-context'
+import { SettingsHost } from './app/components/settings/SettingsHost'
 import { ThemeProvider } from './app/components/ThemeProvider'
 import { TraceDashboardHost } from './app/components/traces/TraceDashboardHost'
 import { hydrateThemeFromStorage } from './app/hooks/useTheme'
@@ -54,8 +55,10 @@ function main() {
                 />
               </AppShell>
 
-              {/* Outside AppShell so traces stay reachable when app data
-                  fails to load — that is when they matter most. */}
+              {/* Outside AppShell so traces and settings stay reachable when
+                  app data fails to load — that is when they matter most. */}
+              <SettingsHost />
+
               <TraceDashboardHost />
             </ThemeProvider>
           </Provider>

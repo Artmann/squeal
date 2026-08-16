@@ -28,6 +28,11 @@ describe('shouldSkipTracing', () => {
     expect(shouldSkipTracing('POST', '/updates/install')).toEqual(false)
   })
 
+  it('skips suggestions but not the status read', () => {
+    expect(shouldSkipTracing('POST', '/completions')).toEqual(true)
+    expect(shouldSkipTracing('GET', '/completions/status')).toEqual(false)
+  })
+
   it('traces everything else', () => {
     expect(shouldSkipTracing('GET', '/databases')).toEqual(false)
     expect(shouldSkipTracing('POST', '/worksheets')).toEqual(false)

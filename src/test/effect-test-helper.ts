@@ -22,7 +22,12 @@ import {
   makeAppDatabaseService
 } from '@/server/services/app-database'
 import { AdapterFactory } from '@/server/services/adapter-factory'
+import { AppSettings } from '@/server/services/app-settings'
+import { Completions } from '@/server/services/completions'
 import { DatabaseService } from '@/server/services/database-service'
+import { Ollama } from '@/server/services/ollama'
+import type { OllamaGenerateOptions } from '@/server/services/ollama'
+import { OllamaError } from '@/server/errors'
 import { QueryRunner } from '@/server/services/query-runner'
 import { SecretStorage } from '@/server/services/secret-storage'
 import { SecretStorageSettings } from '@/server/services/secret-storage-settings'
@@ -117,6 +122,68 @@ function makeTestUpdater(status: UpdateStatus = idleUpdateStatus) {
   return { layer, state }
 }
 
+export interface TestOllamaConfig {
+  // Undefined means Ollama is not answering at all — the case every test of
+  // the "silently absent" behaviour needs.
+  models?: string[]
+  response?: string
+}
+
+export interface TestOllamaState {
+  generateCalls: number
+  lastModel: string | null
+  lastPrompt: string | null
+  listCalls: number
+}
+
+export const testOllamaHost = 'http://127.0.0.1:11434'
+
+// The real service talks to a local HTTP server, so tests substitute it rather
+// than building Default. `src/main/ai/ollama-client.test.ts` covers the wire
+// format; what matters here is which model was asked and with what prompt.
+export function makeTestOllama(config: TestOllamaConfig = {}) {
+  const state: TestOllamaState = {
+    generateCalls: 0,
+    lastModel: null,
+    lastPrompt: null,
+    listCalls: 0
+  }
+
+  const unreachable = new OllamaError({
+    message: 'fetch failed'
+  })
+
+  const layer = Layer.succeed(
+    Ollama,
+    Ollama.make({
+      generate: ({ model, prompt }: OllamaGenerateOptions) =>
+        Effect.suspend(() => {
+          state.generateCalls++
+          state.lastModel = model
+          state.lastPrompt = prompt
+
+          if (config.models === undefined) {
+            return Effect.fail(unreachable)
+          }
+
+          return Effect.succeed(config.response ?? '')
+        }),
+      host: testOllamaHost,
+      listModels: Effect.suspend(() => {
+        state.listCalls++
+
+        if (config.models === undefined) {
+          return Effect.fail(unreachable)
+        }
+
+        return Effect.succeed(config.models)
+      })
+    })
+  )
+
+  return { layer, state }
+}
+
 export function makeTestAppDatabase(): Layer.Layer<AppDatabase> {
   return Layer.effect(
     AppDatabase,
@@ -203,6 +270,9 @@ export interface TestApiOptions {
   // Defaults to the packaged profile: one allowed origin, so the CORS fast-path
   // regression stays covered.
   allowedOrigins?: string[]
+  // Defaults to an Ollama that is not running, which is the state most
+  // machines — and most test runs — are in.
+  ollama?: TestOllamaConfig
   publicTraceReads?: boolean
   // What the keychain answers when the user asks for encryption.
   secretStorageProbe?: KeychainProbeResult
@@ -211,17 +281,21 @@ export interface TestApiOptions {
 
 export function makeTestApi(options: TestApiOptions = {}) {
   const adapterFactory = makeTestAdapterFactory(options.adapter)
+  const ollama = makeTestOllama(options.ollama)
   const secretStorage = makeTestSecretStorage(options.secretStorageProbe)
   const updater = makeTestUpdater(options.updateStatus)
 
   const services = Layer.mergeAll(
+    Completions.DefaultWithoutDependencies,
     QueryRunner.DefaultWithoutDependencies,
     SecretStorageSettings.DefaultWithoutDependencies,
     TraceStore.DefaultWithoutDependencies,
     WorksheetService.DefaultWithoutDependencies
   ).pipe(
+    Layer.provideMerge(AppSettings.DefaultWithoutDependencies),
     Layer.provideMerge(DatabaseService.DefaultWithoutDependencies),
     Layer.provideMerge(adapterFactory.layer),
+    Layer.provideMerge(ollama.layer),
     Layer.provideMerge(makeTestAppDatabase()),
     Layer.provideMerge(secretStorage.layer),
     Layer.provideMerge(updater.layer)
@@ -250,6 +324,7 @@ export function makeTestApi(options: TestApiOptions = {}) {
   return {
     adapterState: adapterFactory.state,
     layer,
+    ollamaState: ollama.state,
     updaterState: updater.state
   }
 }

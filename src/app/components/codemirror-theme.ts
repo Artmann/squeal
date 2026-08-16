@@ -46,6 +46,13 @@ export const squealEditorTheme = EditorView.theme({
   '.cm-activeStatementGutter': {
     backgroundColor: 'color-mix(in oklab, var(--accent) 20%, transparent)'
   },
+  // The inline AI suggestion. `pre-wrap` is what lets a multi-line suggestion
+  // keep the formatting the model produced instead of collapsing onto one line.
+  '.cm-ghostText': {
+    color: 'var(--text3)',
+    opacity: '0.85',
+    whiteSpace: 'pre-wrap'
+  },
   '.cm-matchingBracket, .cm-nonmatchingBracket': {
     backgroundColor: 'var(--hover)',
     outline: '1px solid var(--text3)'

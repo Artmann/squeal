@@ -9,9 +9,11 @@ import { queryKeys } from '../query-keys'
 import { finishQueryTrace } from '../tracing/query-traces'
 import { consumeErrorNotice } from './use-start-query'
 import type {
+  CompletionStatusResponse,
   QueryDto,
   SchemaInfoDto,
   SecretStorageResponse,
+  SettingsResponse,
   UpdateStatusResponse
 } from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
@@ -80,6 +82,32 @@ const secretStorageQueryOptions = {
 // the consent screen at every returning user.
 export function useSecretStorage(): SecretStorageResponse {
   return useSuspenseQuery(secretStorageQueryOptions).data
+}
+
+// The general settings row. It never changes behind the app's back — the only
+// writer is this window — so it is fetched once and then kept current by
+// useUpdateSettings writing the response into the cache.
+export function useSettings() {
+  return useQuery<SettingsResponse>({
+    queryFn: () => apiClient.getSettings(),
+    queryKey: queryKeys.settings,
+    staleTime: Infinity,
+    // Suggestions being off for a moment longer is not worth an error screen.
+    throwOnError: false
+  })
+}
+
+// Whether Ollama is reachable, and with which models. Refetched on every mount
+// because the Settings screen is mounted precisely when the user has just
+// installed Ollama or pulled a model and wants to see it appear.
+export function useCompletionStatus() {
+  return useQuery<CompletionStatusResponse>({
+    queryFn: () => apiClient.getCompletionStatus(),
+    queryKey: queryKeys.completionStatus,
+    refetchOnMount: 'always',
+    staleTime: 0,
+    throwOnError: false
+  })
 }
 
 export function useDatabaseSchema(databaseId: string | undefined) {

@@ -1,4 +1,4 @@
-import { ActivityIcon } from 'lucide-react'
+import { ActivityIcon, SettingsIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
 import type { QueryDto } from '@/glue/api/schemas'
@@ -121,6 +121,16 @@ export function StatusBar({
           onClick={() => dispatch(uiActions.toggleTraceDashboard())}
         >
           <ActivityIcon className="size-[11px]" />
+        </button>
+
+        <button
+          aria-label="Open settings"
+          className="flex-none text-text3 hover:text-text"
+          title="Settings ⌘,"
+          type="button"
+          onClick={() => dispatch(uiActions.toggleSettings())}
+        >
+          <SettingsIcon className="size-[11px]" />
         </button>
       </div>
     </footer>

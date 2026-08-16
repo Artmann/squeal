@@ -469,6 +469,64 @@ export type SecretStorageResponse = Schema.Schema.Type<
   typeof SecretStorageResponse
 >
 
+// --- Settings ---------------------------------------------------------------------
+
+// The app-wide preferences, one row in the database and one object here.
+// `aiCompletionModel` is null until the user picks one, which means "use the
+// best model Ollama has" rather than "no model".
+export const SettingsResponse = Schema.Struct({
+  aiCompletionModel: Schema.NullOr(Schema.String),
+  aiCompletionsEnabled: Schema.Boolean
+})
+export type SettingsResponse = Schema.Schema.Type<typeof SettingsResponse>
+
+// Every field optional: the Settings screen changes one control at a time and
+// must never write back a value it did not touch.
+export const UpdateSettingsRequest = Schema.Struct({
+  aiCompletionModel: Schema.optional(Schema.NullOr(Schema.String)),
+  aiCompletionsEnabled: Schema.optional(Schema.Boolean)
+})
+export type UpdateSettingsRequest = Schema.Schema.Type<
+  typeof UpdateSettingsRequest
+>
+
+// --- Completions ---------------------------------------------------------------------
+
+// Enough context for the model to continue any realistic statement, and a hard
+// bound on what one keystroke pause can send. The editor slices to this before
+// asking, so a long worksheet narrows the window rather than failing.
+export const maxCompletionContext = 4_000
+
+// An unavailable Ollama is data, not a fault: `available` is false, `message`
+// says what to do about it, and nothing anywhere shows an error.
+export const CompletionStatusResponse = Schema.Struct({
+  available: Schema.Boolean,
+  enabled: Schema.Boolean,
+  message: Schema.String,
+  models: Schema.mutable(Schema.Array(Schema.String)),
+  selectedModel: Schema.NullOr(Schema.String)
+})
+export type CompletionStatusResponse = Schema.Schema.Type<
+  typeof CompletionStatusResponse
+>
+
+export const CompletionRequest = Schema.Struct({
+  // Absent when the worksheet has no database attached: the suggestion is then
+  // made from the statement alone, with no schema to draw names from.
+  databaseId: Schema.optional(Schema.String),
+  prefix: Schema.String.pipe(Schema.maxLength(maxCompletionContext)),
+  suffix: Schema.String.pipe(Schema.maxLength(maxCompletionContext))
+})
+export type CompletionRequest = Schema.Schema.Type<typeof CompletionRequest>
+
+// Null covers every way a suggestion can fail to arrive — Ollama missing,
+// turned off, a model that answered with nothing. None of them are worth
+// interrupting someone who is typing.
+export const CompletionResponse = Schema.Struct({
+  completion: Schema.NullOr(Schema.String)
+})
+export type CompletionResponse = Schema.Schema.Type<typeof CompletionResponse>
+
 // --- Updates ---------------------------------------------------------------------
 
 // A failed check is data, not an error channel: the renderer shows `message`

@@ -5,6 +5,11 @@
 // for the life of the app and would quietly eat a fifth of the span
 // retention budget. POST /updates/install stays traced — it happens once and
 // is worth seeing.
+//
+// POST /completions is skipped for the same reason: it fires on every pause in
+// typing, so a single afternoon of editing would push every query trace out of
+// the retention window. GET /completions/status is read when Settings opens and
+// stays traced.
 const queryPollPattern = /^\/queries\/[^/]+$/
 
 export function shouldSkipTracing(method: string, path: string): boolean {
@@ -21,6 +26,10 @@ export function shouldSkipTracing(method: string, path: string): boolean {
   }
 
   if (method === 'GET' && path === '/updates') {
+    return true
+  }
+
+  if (method === 'POST' && path === '/completions') {
     return true
   }
 

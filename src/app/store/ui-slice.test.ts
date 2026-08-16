@@ -77,4 +77,30 @@ describe('uiSlice', () => {
       expect(state.traceDashboardOpen).toEqual(false)
     })
   })
+
+  describe('toggleSettings', () => {
+    it('opens settings from the initial state', () => {
+      const state = reducer(initialState, uiActions.toggleSettings())
+
+      expect(state.settingsOpen).toEqual(true)
+    })
+
+    it('closes settings when they are already open', () => {
+      const openState: UiState = { settingsOpen: true }
+
+      const state = reducer(openState, uiActions.toggleSettings())
+
+      expect(state.settingsOpen).toEqual(false)
+    })
+  })
+
+  describe('closeSettings', () => {
+    it('closes settings', () => {
+      const openState: UiState = { settingsOpen: true }
+
+      const state = reducer(openState, uiActions.closeSettings())
+
+      expect(state.settingsOpen).toEqual(false)
+    })
+  })
 })

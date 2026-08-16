@@ -21,6 +21,9 @@ import {
 
 import { SquealApi } from '@/glue/api/api'
 import type {
+  CompletionRequest,
+  CompletionResponse,
+  CompletionStatusResponse,
   ConnectionTestResponse,
   CreateDatabaseRequest,
   CreateDatabaseResponse,
@@ -34,11 +37,13 @@ import type {
   ReorderWorksheetsResponse,
   SchemaInfoDto,
   SecretStorageResponse,
+  SettingsResponse,
   SpanDto,
   TraceSummaryDto,
   UpdateDatabaseConnection,
   UpdateDatabaseRequest,
   UpdateDatabaseResponse,
+  UpdateSettingsRequest,
   UpdateStatusResponse,
   UpdateWorksheetRequest,
   WorksheetDto
@@ -229,15 +234,29 @@ function toThrowable(
   )
 }
 
+// `signal` reaches the fiber, not just the promise: aborting it interrupts the
+// effect, which closes the connection, which lets the server interrupt its own
+// handler. That is how a superseded ghost-text request stops costing anything.
 function run<A, E>(
   effect: Effect.Effect<A, E, HttpClient.HttpClient>,
-  phase: RequestPhase = { sent: false }
+  phase: RequestPhase = { sent: false },
+  signal?: AbortSignal
 ): Promise<A> {
   return runtime
-    .runPromiseExit(Effect.locally(effect, currentRequestPhase, phase))
+    .runPromiseExit(
+      Effect.locally(effect, currentRequestPhase, phase),
+      signal === undefined ? undefined : { signal }
+    )
     .then((exit) => {
       if (Exit.isSuccess(exit)) {
         return exit.value
+      }
+
+      // The caller abandoned the request, so nothing went wrong and there is
+      // nothing to log. The rejection still has to happen so awaiting code
+      // does not carry on with no value.
+      if (Cause.isInterruptedOnly(exit.cause)) {
+        throw new ApiError(499, 'The request was canceled.')
       }
 
       throw toThrowable(exit.cause, phase)
@@ -309,6 +328,22 @@ export const apiClient = {
       Effect.flatMap(client, (api) =>
         api.queries.cancel({ path: { id: queryId } })
       )
+    )
+  },
+
+  // Untraced: this fires on every pause in typing, so tracing it would eat the
+  // span retention budget — the backend skips it too, see
+  // src/server/tracing/trace-skip.ts.
+  async createCompletion(
+    request: CompletionRequest,
+    signal?: AbortSignal
+  ): Promise<CompletionResponse> {
+    return run(
+      Effect.flatMap(client, (api) =>
+        api.completions.create({ payload: request })
+      ),
+      { sent: false },
+      signal
     )
   },
 
@@ -385,6 +420,15 @@ export const apiClient = {
     )
   },
 
+  async getCompletionStatus(): Promise<CompletionStatusResponse> {
+    return traced(
+      'HTTP GET /completions/status',
+      { method: 'GET', path: '/completions/status' },
+      undefined,
+      Effect.flatMap(client, (api) => api.completions.status())
+    )
+  },
+
   async getDatabaseSchema(databaseId: string): Promise<SchemaInfoDto> {
     const data = await traced(
       'HTTP GET /databases/:id/schema',
@@ -442,6 +486,15 @@ export const apiClient = {
       { method: 'GET', path: '/secret-storage' },
       undefined,
       Effect.flatMap(client, (api) => api.secretStorage.get())
+    )
+  },
+
+  async getSettings(): Promise<SettingsResponse> {
+    return traced(
+      'HTTP GET /settings',
+      { method: 'GET', path: '/settings' },
+      undefined,
+      Effect.flatMap(client, (api) => api.settings.get())
     )
   },
 
@@ -586,6 +639,17 @@ export const apiClient = {
           ? api.databases.update({ path: { id: databaseId }, payload: request })
           : api.databases.update({ path: { id: databaseId }, payload: request })
       )
+    )
+  },
+
+  async updateSettings(
+    request: UpdateSettingsRequest
+  ): Promise<SettingsResponse> {
+    return traced(
+      'HTTP PATCH /settings',
+      { method: 'PATCH', path: '/settings' },
+      undefined,
+      Effect.flatMap(client, (api) => api.settings.update({ payload: request }))
     )
   },
 

@@ -1,6 +1,5 @@
-import { autocompletion } from '@codemirror/autocomplete'
 import { sql } from '@codemirror/lang-sql'
-import { Prec, RangeSetBuilder } from '@codemirror/state'
+import { Compartment, Prec, RangeSetBuilder } from '@codemirror/state'
 import type { ViewUpdate } from '@codemirror/view'
 import {
   EditorView,
@@ -14,19 +13,29 @@ import { ReactElement, useCallback, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 
 import type { DatabaseType } from '@/glue/api/schemas'
+import { apiClient } from '../api-client'
+import { useDatabaseSchema, useSettings } from '../hooks/queries'
 import { type Statement } from '../sql-parser'
 import { squealEditorTheme, squealHighlighting } from './codemirror-theme'
+import { toEditorDialect, toSqlNamespace } from './sql-schema-completion'
 import { formatEditorContent } from './worksheet-editor-format'
 import {
   type CursorPosition,
   isSameCursorPosition,
   toCursorPosition
 } from './worksheet-editor-cursor'
+import {
+  acceptGhostText,
+  acceptGhostTextWord,
+  dismissGhostText,
+  ghostText
+} from './worksheet-editor-ghost-text'
 import { findGutterMarkerPositions } from './worksheet-editor-lines'
 
 export interface WorksheetEditorProps {
   activeStatementIndex: number | null
   content: string
+  databaseId?: string
   databaseType?: DatabaseType
   statements: Statement[]
   onChange?: (value: string) => void
@@ -57,6 +66,7 @@ function runFormatCommand(
 export function WorksheetEditor({
   activeStatementIndex,
   content,
+  databaseId,
   databaseType,
   statements,
   onChange,
@@ -64,18 +74,29 @@ export function WorksheetEditor({
   onCursorPositionChange,
   onRunQuery
 }: WorksheetEditorProps): ReactElement {
+  // Already in the cache — the sidebar prefetches every database's schema — so
+  // this is a read rather than a request.
+  const schema = useDatabaseSchema(databaseId)
+  const settings = useSettings()
+
+  const databaseIdRef = useRef(databaseId)
   const databaseTypeRef = useRef(databaseType)
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const lastCursorPositionRef = useRef<CursorPosition | null>(null)
   const onRunQueryRef = useRef(onRunQuery)
+  const suggestionsEnabledRef = useRef(false)
 
   // The keymap is built once, so it reads the current props through refs
   // rather than being rebuilt on every change. Syncing them in an effect
   // rather than during render keeps the render pure; the keymap only fires on
   // user input, which is always after the effect has run.
   useEffect(() => {
+    databaseIdRef.current = databaseId
     databaseTypeRef.current = databaseType
     onRunQueryRef.current = onRunQuery
+    // Off until the settings have loaded: a suggestion the user turned off must
+    // never appear, not even once.
+    suggestionsEnabledRef.current = settings.data?.aiCompletionsEnabled ?? false
   })
 
   const handleClickOutsideTheEditor = useCallback(() => {
@@ -116,15 +137,82 @@ export function WorksheetEditor({
     [onCursorChange, onCursorPositionChange]
   )
 
+  // The language extension changes whenever the worksheet's database or its
+  // schema does. It lives in a compartment so those reconfigurations do not
+  // rebuild the whole extension array, which would throw away the ghost text
+  // state field along with everything else.
+  const sqlCompartment = useMemo(() => new Compartment(), [])
+
+  const sqlExtension = useMemo(
+    () =>
+      sql({
+        dialect: toEditorDialect(databaseType),
+        upperCaseKeywords: true,
+        ...(schema.data === undefined
+          ? {}
+          : { schema: toSqlNamespace(schema.data) })
+      }),
+    [databaseType, schema.data]
+  )
+
+  useEffect(() => {
+    const view = editorRef.current?.view
+
+    if (!view) {
+      return
+    }
+
+    view.dispatch({ effects: sqlCompartment.reconfigure(sqlExtension) })
+  }, [sqlCompartment, sqlExtension])
+
   const extensions = useMemo(() => {
     return [
       squealEditorTheme,
       squealHighlighting,
-      sql(),
+      // Filled in by the effect above, which runs right after mount. Starting
+      // empty keeps this array free of props, so it is built exactly once.
+      sqlCompartment.of([]),
       EditorView.lineWrapping,
-      autocompletion(),
+      // `autocompletion()` is not registered here: basicSetup already adds it,
+      // and a second one would open two dropdowns.
+      ghostText({
+        fetchSuggestion: async (request, signal) => {
+          const currentDatabaseId = databaseIdRef.current
+
+          const response = await apiClient.createCompletion(
+            {
+              ...(currentDatabaseId === undefined
+                ? {}
+                : { databaseId: currentDatabaseId }),
+              ...request
+            },
+            signal
+          )
+
+          return response.completion
+        },
+        isEnabled: () => suggestionsEnabledRef.current
+      }),
       Prec.highest(
         keymap.of([
+          // These sit at the highest precedence because they have to win
+          // against bindings CodeMirror registers first: `Escape` against the
+          // dropdown's own close, and `Tab` against indentWithTab, which
+          // @uiw/react-codemirror unshifts ahead of these extensions. Each
+          // command returns false when no suggestion is showing, so the
+          // original binding still runs.
+          {
+            key: 'Escape',
+            run: dismissGhostText
+          },
+          {
+            key: 'Mod-ArrowRight',
+            run: acceptGhostTextWord
+          },
+          {
+            key: 'Tab',
+            run: acceptGhostText
+          },
           {
             key: 'Mod-Enter',
             run: () => {
@@ -148,7 +236,7 @@ export function WorksheetEditor({
         ])
       )
     ]
-  }, [])
+  }, [sqlCompartment])
 
   const activeStatement =
     activeStatementIndex !== null ? statements[activeStatementIndex] : null

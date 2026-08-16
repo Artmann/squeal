@@ -20,6 +20,16 @@ export class ConnectionFailedError extends Schema.TaggedError<ConnectionFailedEr
   }
 ) {}
 
+// Never remapped and never reaches a handler: Completions catches it and
+// answers with no suggestion, because a local model that did not answer is not
+// something to interrupt someone typing with.
+export class OllamaError extends Schema.TaggedError<OllamaError>()(
+  'OllamaError',
+  {
+    message: Schema.String
+  }
+) {}
+
 export class QueryExecutionError extends Schema.TaggedError<QueryExecutionError>()(
   'QueryExecutionError',
   {

@@ -62,6 +62,8 @@ const statements: SQL[] = [
   sql`
     CREATE TABLE IF NOT EXISTS settings (
       id TEXT PRIMARY KEY NOT NULL,
+      aiCompletionModel TEXT,
+      aiCompletionsEnabled INTEGER NOT NULL DEFAULT 1,
       createdAt INTEGER NOT NULL,
       secretStorageMode TEXT NOT NULL DEFAULT 'undecided',
       updatedAt INTEGER NOT NULL

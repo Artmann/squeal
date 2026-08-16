@@ -18,11 +18,13 @@ import {
   AuthorizationLive,
   TraceReadAuthorizationLive
 } from './authorization-live'
+import { CompletionsLive } from './handlers/completions'
 import { ConnectionTestsLive } from './handlers/connection-tests'
 import { DatabasesLive } from './handlers/databases'
 import { HealthLive } from './handlers/health'
 import { QueriesLive } from './handlers/queries'
 import { SecretStorageLive } from './handlers/secret-storage'
+import { SettingsLive } from './handlers/settings'
 import { TracesLive } from './handlers/traces'
 import { UpdatesLive } from './handlers/updates'
 import { WorksheetsLive } from './handlers/worksheets'
@@ -30,11 +32,13 @@ import { WorksheetsLive } from './handlers/worksheets'
 const apiPort = 7847
 
 const HandlersLive = Layer.mergeAll(
+  CompletionsLive,
   ConnectionTestsLive,
   DatabasesLive,
   HealthLive,
   QueriesLive,
   SecretStorageLive,
+  SettingsLive,
   TracesLive,
   UpdatesLive,
   WorksheetsLive

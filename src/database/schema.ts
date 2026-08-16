@@ -74,6 +74,12 @@ export const settingsTable = sqliteTable('settings', {
   // A single row, always keyed 'default' — hence no generated id. These are
   // app-wide choices, not a collection of things.
   id: text().primaryKey(),
+  // Null means "pick the best installed model" rather than "no model": the
+  // user has not overridden the choice, so it follows whatever Ollama has.
+  aiCompletionModel: text(),
+  // On by default. With Ollama absent the feature is invisible anyway, so
+  // defaulting off would only hide it from the people who can already use it.
+  aiCompletionsEnabled: integer().notNull().default(1),
   createdAt: integer()
     .notNull()
     .$defaultFn(() => Date.now()),

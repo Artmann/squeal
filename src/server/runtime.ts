@@ -10,7 +10,10 @@ import { HttpLive } from './http/server'
 import { RetentionLive } from './retention'
 import { AdapterFactory } from './services/adapter-factory'
 import { AppDatabase } from './services/app-database'
+import { AppSettings } from './services/app-settings'
+import { Completions } from './services/completions'
 import { DatabaseService } from './services/database-service'
+import { Ollama } from './services/ollama'
 import { QueryRunner } from './services/query-runner'
 import { SecretStorage } from './services/secret-storage'
 import { SecretStorageSettings } from './services/secret-storage-settings'
@@ -29,7 +32,10 @@ export interface MainRuntimeOptions {
 const ServicesLive = Layer.mergeAll(
   AdapterFactory.Default,
   AppDatabase.Default,
+  AppSettings.Default,
+  Completions.Default,
   DatabaseService.Default,
+  Ollama.Default,
   QueryRunner.Default,
   SecretStorage.Default,
   SecretStorageSettings.Default,
