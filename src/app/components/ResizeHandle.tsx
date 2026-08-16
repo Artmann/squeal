@@ -17,8 +17,6 @@ interface ResizeHandleProps {
   // leading edge, like the results splitter, grows toward 'start'.
   growsToward?: ResizeGrowth
   onResize: (size: number) => void
-  onResizeEnd?: () => void
-  onResizeStart?: () => void
   orientation: ResizeOrientation
   size: number
 }
@@ -32,8 +30,6 @@ export function ResizeHandle({
   className,
   growsToward = 'end',
   onResize,
-  onResizeEnd,
-  onResizeStart,
   orientation,
   size
 }: ResizeHandleProps): ReactElement {
@@ -42,20 +38,38 @@ export function ResizeHandle({
   // that no longer exists.
   const detachRef = useRef<(() => void) | null>(null)
 
-  useEffect(() => {
-    return () => {
-      detachRef.current?.()
-      detachRef.current = null
-    }
+  // The only place a drag is released. A mouseup, a second mousedown that
+  // never got one, and unmount all end a drag the same way, so they all come
+  // through here instead of each undoing its own subset.
+  const endDrag = useCallback(() => {
+    detachRef.current?.()
+    detachRef.current = null
   }, [])
+
+  // `endDrag` has to keep its empty dependency list. This effect re-runs its
+  // cleanup whenever `endDrag` changes, and that cleanup aborts a live drag —
+  // so giving `endDrag` a render-state dependency would kill every drag on its
+  // first pixel, since `size` changes on every mousemove.
+  useEffect(() => {
+    return endDrag
+  }, [endDrag])
 
   const handleMouseDown = useCallback(
     (event: React.MouseEvent) => {
+      // Only the primary button drags. A right-click opening the context menu
+      // is one of the ways a mouseup goes missing, so refusing it removes a
+      // cause instead of only recovering from one.
+      if (event.button !== 0) {
+        return
+      }
+
+      // A second mousedown without a mouseup should never stack listeners.
+      endDrag()
+
       const direction = growsToward === 'start' ? -1 : 1
       const startPosition =
         orientation === 'col' ? event.clientX : event.clientY
       const startSize = size
-      const previousUserSelect = document.body.style.userSelect
 
       function handleMouseMove(moveEvent: MouseEvent): void {
         const position =
@@ -66,27 +80,24 @@ export function ResizeHandle({
 
       function detach(): void {
         document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        document.body.style.userSelect = previousUserSelect
-      }
+        document.removeEventListener('mouseup', endDrag)
 
-      function handleMouseUp(): void {
-        detach()
-        detachRef.current = null
-        onResizeEnd?.()
+        // Released by removing the property, never by restoring a value read
+        // at mousedown. Both of the handles the app mounts write to this one
+        // global style, so a handle that sampled it while the other sat
+        // mid-drag would capture 'none' and restore 'none' on every drag
+        // afterwards — text selection dead app-wide with no drag in sight.
+        // With nothing sampled there is nothing to poison, and releasing
+        // twice or out of order is harmless.
+        document.body.style.removeProperty('user-select')
       }
-
-      // A second mousedown without a mouseup should never stack listeners.
-      detachRef.current?.()
 
       document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
+      document.addEventListener('mouseup', endDrag)
       document.body.style.userSelect = 'none'
       detachRef.current = detach
-
-      onResizeStart?.()
     },
-    [growsToward, onResize, onResizeEnd, onResizeStart, orientation, size]
+    [endDrag, growsToward, onResize, orientation, size]
   )
 
   const handleKeyDown = useCallback(
