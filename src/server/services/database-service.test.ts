@@ -43,6 +43,52 @@ function run<A, E>(
   return Effect.runPromise(Effect.provide(effect, makeLayer()))
 }
 
+const differentServerError = expect.objectContaining({
+  _tag: 'DifferentServerError',
+  message: 'Enter the password to change the server or its SSL settings.'
+})
+
+function storedConnectionInfo(row: { connectionInfo: string }): unknown {
+  return JSON.parse(row.connectionInfo.slice(testEncryptionPrefix.length))
+}
+
+// Every field that decides where the password goes, or how it travels, is
+// tested the same way: save a connection, edit one of those fields with the
+// blank password the renderer sends, and read the row before and after.
+function updateWithBlankPassword(
+  saved: ServerConnectionInfo,
+  changes: Partial<ServerConnectionInfo>
+) {
+  return run(
+    Effect.gen(function* () {
+      const service = yield* DatabaseService
+      const appDatabase = yield* AppDatabase
+
+      const created = yield* service.create('Pagila', {
+        connectionInfo: saved,
+        type: 'postgres'
+      })
+
+      const [before] = yield* appDatabase.execute((client) =>
+        client.select().from(databasesTable)
+      )
+
+      const result = yield* Effect.either(
+        service.update(created.database.id, 'Renamed', {
+          connectionInfo: { ...saved, ...changes, password: '' },
+          type: 'postgres'
+        })
+      )
+
+      const [after] = yield* appDatabase.execute((client) =>
+        client.select().from(databasesTable)
+      )
+
+      return { after, before, result }
+    })
+  )
+}
+
 describe('DatabaseService', () => {
   it('stores connection info encrypted and never returns the password', async () => {
     const { row, result } = await run(
@@ -91,7 +137,123 @@ describe('DatabaseService', () => {
     expect(result.updatedWorksheet?.databaseId).toEqual(result.database.id)
   })
 
-  it('keeps the stored password when an update sends a blank one', async () => {
+  // The stored password is only lent back to the server it was saved for,
+  // reached the same way. Without this an authenticated caller walks around the
+  // connection-test guard in two steps: PATCH the host with a blank password,
+  // and the saved secret is re-encrypted against a server they control, ready
+  // to be handed over on the next connection.
+  it('refuses to lend the stored password to a different host', async () => {
+    const { after, before, result } = await updateWithBlankPassword(
+      connectionInfo,
+      { host: 'attacker.example' }
+    )
+
+    expect(result._tag).toEqual('Left')
+
+    if (result._tag === 'Left') {
+      expect(result.left).toEqual(differentServerError)
+    }
+
+    // Nothing was written: the row still names the original server.
+    expect(after).toEqual(before)
+  })
+
+  it('refuses to lend the stored password to a different port', async () => {
+    const { after, before, result } = await updateWithBlankPassword(
+      connectionInfo,
+      { port: 6000 }
+    )
+
+    expect(result._tag).toEqual('Left')
+
+    if (result._tag === 'Left') {
+      expect(result.left).toEqual(differentServerError)
+    }
+
+    expect(after).toEqual(before)
+  })
+
+  // Turning TLS off keeps the destination but changes who can read the password
+  // on the way there, so it is a different server for lending purposes. Left
+  // unguarded, the same PATCH that may no longer move the host could still
+  // strip `sslMode` and put the stored secret on the wire in the clear.
+  it('refuses to lend the stored password when the SSL mode changes', async () => {
+    const { after, before, result } = await updateWithBlankPassword(
+      { ...connectionInfo, sslMode: 'verify-full' },
+      { sslMode: 'disable' }
+    )
+
+    expect(result._tag).toEqual('Left')
+
+    if (result._tag === 'Left') {
+      expect(result.left).toEqual(differentServerError)
+    }
+
+    expect(after).toEqual(before)
+  })
+
+  // Swapping the pinned certificate is a MITM behind a CA the user never chose,
+  // which the mode alone does not catch.
+  it('refuses to lend the stored password when the SSL root certificate changes', async () => {
+    const { after, before, result } = await updateWithBlankPassword(
+      {
+        ...connectionInfo,
+        sslMode: 'verify-full',
+        sslRootCert: '/etc/ssl/pagila.pem'
+      },
+      { sslRootCert: '/tmp/attacker.pem' }
+    )
+
+    expect(result._tag).toEqual('Left')
+
+    if (result._tag === 'Left') {
+      expect(result.left).toEqual(differentServerError)
+    }
+
+    expect(after).toEqual(before)
+  })
+
+  // Rows written before the SSL fields existed carry neither key, and the form
+  // submits an empty root certificate for "none". Both mean the same transport
+  // as `disable`, so an untouched SSL section must not read as a change.
+  it('keeps the stored password when absent SSL fields come back empty', async () => {
+    const { after, result } = await updateWithBlankPassword(connectionInfo, {
+      sslRootCert: ''
+    })
+
+    expect(result._tag).toEqual('Right')
+    expect(storedConnectionInfo(after)).toEqual({
+      database: 'pagila',
+      host: 'localhost',
+      password: 'secret',
+      sslRootCert: '',
+      username: 'postgres'
+    })
+  })
+
+  // Editing the username or the database name still targets the same trusted
+  // server, so requiring a re-typed password there would be friction without a
+  // security gain.
+  it('keeps the stored password when only the username and database name change', async () => {
+    const { after, result } = await updateWithBlankPassword(connectionInfo, {
+      database: 'other',
+      username: 'reader'
+    })
+
+    expect(result._tag).toEqual('Right')
+    expect(storedConnectionInfo(after)).toEqual({
+      database: 'other',
+      host: 'localhost',
+      password: 'secret',
+      username: 'reader'
+    })
+    expect(after.name).toEqual('Renamed')
+  })
+
+  // The guard sits below the "did the request bring its own password" check, so
+  // moving a connection is still possible — the user just has to type the
+  // password. Tightening the order would lock them out of it entirely.
+  it('allows a host change when the update carries its own password', async () => {
     const row = await run(
       Effect.gen(function* () {
         const service = yield* DatabaseService
@@ -99,12 +261,11 @@ describe('DatabaseService', () => {
 
         const created = yield* service.create('Pagila', connection)
 
-        yield* service.update(created.database.id, 'Renamed', {
+        yield* service.update(created.database.id, 'Moved', {
           connectionInfo: {
-            database: 'pagila',
-            host: 'other-host',
-            password: '',
-            username: 'postgres'
+            ...connectionInfo,
+            host: 'replica.internal',
+            password: 'typed-again'
           },
           type: 'postgres'
         })
@@ -117,15 +278,63 @@ describe('DatabaseService', () => {
       })
     )
 
-    expect(
-      JSON.parse(row.connectionInfo.slice(testEncryptionPrefix.length))
-    ).toEqual({
+    expect(storedConnectionInfo(row)).toEqual({
       database: 'pagila',
-      host: 'other-host',
-      password: 'secret',
+      host: 'replica.internal',
+      password: 'typed-again',
       username: 'postgres'
     })
-    expect(row.name).toEqual('Renamed')
+  })
+
+  // An empty stored password is no secret at all, so there is nothing to
+  // refuse. Reachable without any fixture surgery: repairing a row whose secret
+  // this build cannot read saves a blank password, and the user then has to be
+  // able to move the connection like any other.
+  it('lets an update move a connection whose stored password is empty', async () => {
+    const row = await run(
+      Effect.gen(function* () {
+        const service = yield* DatabaseService
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* service.create('Pagila', connection)
+
+        yield* appDatabase.execute((client) =>
+          client
+            .update(databasesTable)
+            .set({ connectionInfo: 'not-decryptable' })
+            .where(eq(databasesTable.id, created.database.id))
+        )
+
+        // The repair: a blank password against an unreadable secret stores a
+        // blank password.
+        yield* service.update(created.database.id, 'Repaired', {
+          connectionInfo: { ...connectionInfo, password: '' },
+          type: 'postgres'
+        })
+
+        yield* service.update(created.database.id, 'Moved', {
+          connectionInfo: {
+            ...connectionInfo,
+            host: 'replica.internal',
+            password: ''
+          },
+          type: 'postgres'
+        })
+
+        const [row] = yield* appDatabase.execute((client) =>
+          client.select().from(databasesTable)
+        )
+
+        return row
+      })
+    )
+
+    expect(storedConnectionInfo(row)).toEqual({
+      database: 'pagila',
+      host: 'replica.internal',
+      password: '',
+      username: 'postgres'
+    })
   })
 
   it('fails with DatabaseNotFoundError when updating an unknown id', async () => {

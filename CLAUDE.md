@@ -155,9 +155,19 @@ from older databases. A new table or column goes in both
 - Database `connectionInfo` is encrypted at rest with Electron `safeStorage`
   once the user has granted permission (`enc:v1:` prefix in the `databases`
   table; see Secret storage below). API responses never include passwords —
-  internal callers use `getDatabaseWithSecrets()`, updates with a blank password
-  keep the stored one, and connection tests can pass a `databaseId` to borrow
-  it.
+  internal callers use `getDatabaseWithSecrets()`. A request that omits the
+  password borrows the stored one (an update by its own id, a connection test by
+  the `databaseId` it sends), and both go through
+  `DatabaseService.resolveConnection`, which lends the secret only back to the
+  server it was saved for, reached the way it was saved to be reached: `host`,
+  `port`, `sslMode`, and `sslRootCert` must all match. Editing the username or
+  database name keeps borrowing; changing where the password goes or how it
+  travels answers `DifferentServerError` (400) on the update and a
+  `success: false` message on the test, and the user re-types the password. An
+  empty stored password counts as no stored password, so a row repaired after an
+  unreadable secret is never refused over a password it does not have. The
+  update route used to merge the password in on its own, without any of that,
+  which made a PATCH a two-step way around the connection test's refusal.
 - Don't include the Claude footer in commits
 
 ## Secret storage

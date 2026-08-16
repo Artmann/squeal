@@ -118,6 +118,65 @@ describe('database routes', () => {
     }
   })
 
+  // The connection-test route already refuses to aim a stored password at
+  // another server. Without the same guard here, a PATCH with a blank password
+  // was the two-step way around it: persist the secret against the new host
+  // first, then let any later connection hand it over.
+  it('answers 400 and stores nothing when an update aims the stored password at another host', async () => {
+    const { layer } = makeTestApi({})
+
+    // One layer for both halves, so the row check reads the same database the
+    // rejected request was aimed at.
+    const { after, before, body, status } = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const http = yield* HttpClient.HttpClient
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        const [before] = yield* appDatabase.execute((db) =>
+          db.select().from(databasesTable)
+        )
+
+        const response = yield* http.execute(
+          HttpClientRequest.patch(`/databases/${created.database.id}`).pipe(
+            HttpClientRequest.setHeader(
+              'authorization',
+              `Bearer ${testApiToken}`
+            ),
+            HttpClientRequest.bodyUnsafeJson({
+              connectionInfo: {
+                ...connectionInfo,
+                host: 'attacker.example',
+                password: ''
+              },
+              name: 'Renamed',
+              type: 'postgres'
+            })
+          )
+        )
+
+        const body = yield* response.json
+
+        const [after] = yield* appDatabase.execute((db) =>
+          db.select().from(databasesTable)
+        )
+
+        return { after, before, body, status: response.status }
+      }).pipe(Effect.scoped, Effect.provide(layer))
+    )
+
+    expect(status).toEqual(400)
+    expect(body).toEqual({
+      _tag: 'DifferentServerError',
+      message: 'Enter the password to change the server or its SSL settings.'
+    })
+    expect(after).toEqual(before)
+  })
+
   it('deletes a database and empties the list', async () => {
     const { removal, remaining } = await run(
       Effect.gen(function* () {

@@ -327,6 +327,10 @@ export type SchemaInfoDto = Schema.Schema.Type<typeof SchemaInfoDto>
 
 // --- Connection tests ------------------------------------------------------------
 
+// Only the schema is exported. The route decodes against it and the handler
+// hands the decoded payload straight to DatabaseService.resolveConnection,
+// which takes the borrow-from id and the requested connection as two arguments
+// — so nothing needs to name this request's shape as a type.
 export const ConnectionTestRequest = Schema.Union(
   Schema.Struct({
     ...updateServerConnectionFields,
@@ -337,9 +341,6 @@ export const ConnectionTestRequest = Schema.Union(
     databaseId: Schema.optional(Schema.String)
   })
 )
-export type ConnectionTestRequest = Schema.Schema.Type<
-  typeof ConnectionTestRequest
->
 
 // A failed test is data, not an error — the endpoint always answers 200 so
 // the renderer can show the driver message inline.
