@@ -14,7 +14,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger
 } from './ui/context-menu'
-import { getColumnWidths, rowNumberColumnWidth } from './query-result-columns'
+import { getResultColumns, rowNumberColumnWidth } from './query-result-columns'
 import {
   formatCellValue,
   formatRowAsCsv,
@@ -38,17 +38,23 @@ export const QueryResultTable = memo(function QueryResultTable({
 
   // Fall back to the row keys if the adapter returned rows without field
   // metadata, so a fields/rows desync can never blank out the columns.
-  const fieldNames = useMemo(
+  const columns = useMemo(
     () =>
-      result.fields.length > 0
-        ? result.fields.map((field) => field.name)
-        : Object.keys(result.rows[0] ?? {}),
+      getResultColumns({
+        fieldNames:
+          result.fields.length > 0
+            ? result.fields.map((field) => field.name)
+            : Object.keys(result.rows[0] ?? {}),
+        rows: result.rows
+      }),
     [result.fields, result.rows]
   )
 
-  const columnWidths = useMemo(
-    () => getColumnWidths({ fieldNames, rows: result.rows }),
-    [fieldNames, result.rows]
+  // Derived once rather than inside the per-cell CSV closure, which would
+  // rebuild it for every rendered cell.
+  const columnNames = useMemo(
+    () => columns.map((column) => column.name),
+    [columns]
   )
 
   const virtualizer = useVirtualizer({
@@ -78,10 +84,10 @@ export const QueryResultTable = memo(function QueryResultTable({
         <colgroup>
           <col style={{ width: `${rowNumberColumnWidth}px` }} />
 
-          {fieldNames.map((name) => (
+          {columns.map((column) => (
             <col
-              key={name}
-              style={{ width: `${columnWidths[name]}px` }}
+              key={column.key}
+              style={{ width: `${column.width}px` }}
             />
           ))}
         </colgroup>
@@ -90,13 +96,18 @@ export const QueryResultTable = memo(function QueryResultTable({
           <tr>
             <th className="sticky top-0 z-[5] h-[31px] border-b border-border bg-panel2" />
 
-            {fieldNames.map((name) => (
+            {columns.map((column) => (
               <th
-                className="sticky top-0 z-[5] h-[31px] whitespace-nowrap border-b border-border bg-panel2 px-[14px] text-left text-[12px] font-medium text-text2"
-                key={name}
+                className={cn(
+                  'sticky top-0 z-[5] h-[31px] whitespace-nowrap border-b border-border bg-panel2 px-[14px] text-[12px] font-medium text-text2',
+                  // The header sits over its values, so it takes the column's
+                  // alignment rather than always hugging the left edge.
+                  column.align === 'right' ? 'text-right' : 'text-left'
+                )}
+                key={column.key}
                 scope="col"
               >
-                {name}
+                {column.name}
               </th>
             ))}
           </tr>
@@ -106,7 +117,7 @@ export const QueryResultTable = memo(function QueryResultTable({
           {paddingTop > 0 && (
             <tr aria-hidden="true">
               <td
-                colSpan={fieldNames.length + 1}
+                colSpan={columns.length + 1}
                 style={{ height: `${paddingTop}px` }}
               />
             </tr>
@@ -124,16 +135,21 @@ export const QueryResultTable = memo(function QueryResultTable({
                   {virtualRow.index + 1}
                 </td>
 
-                {fieldNames.map((name) => {
-                  const value = row?.[name]
+                {columns.map((column) => {
+                  // Known wrong for a result with two identically-named fields:
+                  // the driver's row is keyed by name, so both columns read the
+                  // first field's value. The columns are at least distinct
+                  // elements now; showing the right value needs an array row
+                  // mode in the adapter.
+                  const value = row?.[column.name]
 
                   return (
-                    <ContextMenu key={`${virtualRow.key}-${name}`}>
+                    <ContextMenu key={`${virtualRow.key}-${column.key}`}>
                       <ContextMenuTrigger asChild>
                         <td
                           className={cn(
                             'h-[var(--row-h)] whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
-                            typeof value === 'number'
+                            column.align === 'right'
                               ? 'text-right'
                               : 'text-left',
                             value === null && 'text-text3 italic'
@@ -157,7 +173,9 @@ export const QueryResultTable = memo(function QueryResultTable({
 
                         <ContextMenuItem
                           className="text-xs"
-                          onSelect={() => navigator.clipboard.writeText(name)}
+                          onSelect={() =>
+                            navigator.clipboard.writeText(column.name)
+                          }
                         >
                           Copy Column Name
                         </ContextMenuItem>
@@ -174,7 +192,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                               className="text-xs"
                               onSelect={() =>
                                 navigator.clipboard.writeText(
-                                  formatRowAsCsv(row ?? {}, fieldNames)
+                                  formatRowAsCsv(row ?? {}, columnNames)
                                 )
                               }
                             >
@@ -204,7 +222,7 @@ export const QueryResultTable = memo(function QueryResultTable({
           {paddingBottom > 0 && (
             <tr aria-hidden="true">
               <td
-                colSpan={fieldNames.length + 1}
+                colSpan={columns.length + 1}
                 style={{ height: `${paddingBottom}px` }}
               />
             </tr>

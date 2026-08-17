@@ -15,9 +15,19 @@ const cellPadding = 28
 
 export const rowNumberColumnWidth = 44
 
-export interface ColumnWidthInput {
+interface ResultColumnsInput {
   fieldNames: string[]
   rows: Record<string, unknown>[]
+}
+
+export interface ResultColumn {
+  align: 'left' | 'right'
+  // Position, not name: a result can carry two fields with one name (`SELECT *
+  // FROM a JOIN b` where both have an `id`), and nothing upstream forbids it —
+  // so the name is not usable as an identity or a React key.
+  key: string
+  name: string
+  width: number
 }
 
 function widthForCharacters(characters: number): number {
@@ -27,31 +37,61 @@ function widthForCharacters(characters: number): number {
 }
 
 /**
- * Pins a pixel width per column, measured from the header and the first page of
- * rows. Values further down the result can be wider than the sample — those
- * cells are clipped by `whitespace-nowrap` rather than being allowed to reflow
- * every other column mid-scroll.
+ * Describes each column of a result: its identity, its pinned pixel width, and
+ * the alignment its header and cells share.
+ *
+ * The width is measured from the header and the first page of rows. Values
+ * further down the result can be wider than the sample — those cells are
+ * clipped by `whitespace-nowrap` rather than being allowed to reflow every
+ * other column mid-scroll. The alignment is inferred from that same page for
+ * the same reason, so a column holding numbers throughout the sample and text
+ * further down keeps the alignment the sample implied, and a column whose whole
+ * sample is null is left-aligned even if numbers appear later.
+ *
+ * Only values the driver hands over as JS numbers count. Postgres returns
+ * `bigint`, `numeric`, `decimal` and `money` as strings, so those columns stay
+ * left-aligned — header and cells together, which is the mismatch this exists to
+ * remove. Right-aligning them needs the column's declared type, which the
+ * adapter currently drops.
  */
-export function getColumnWidths({
+export function getResultColumns({
   fieldNames,
   rows
-}: ColumnWidthInput): Record<string, number> {
+}: ResultColumnsInput): ResultColumn[] {
   const sample = rows.slice(0, columnSampleSize)
-  const widths: Record<string, number> = {}
 
-  for (const fieldName of fieldNames) {
+  return fieldNames.map((fieldName, index) => {
+    let everyValueIsNumeric = true
     let longest = fieldName.length
+    let sawValue = false
 
     for (const row of sample) {
-      const length = formatCellValue(row[fieldName]).length
+      const value = row[fieldName]
+      const length = formatCellValue(value).length
 
       if (length > longest) {
         longest = length
       }
+
+      // Nulls do not vote on alignment: a numeric column keeps its alignment
+      // through them, which is what stops a null from hanging off the left edge
+      // of a column of right-aligned numbers.
+      if (value === null || value === undefined) {
+        continue
+      }
+
+      sawValue = true
+
+      if (typeof value !== 'number') {
+        everyValueIsNumeric = false
+      }
     }
 
-    widths[fieldName] = widthForCharacters(longest)
-  }
-
-  return widths
+    return {
+      align: sawValue && everyValueIsNumeric ? 'right' : 'left',
+      key: `${index}:${fieldName}`,
+      name: fieldName,
+      width: widthForCharacters(longest)
+    }
+  })
 }

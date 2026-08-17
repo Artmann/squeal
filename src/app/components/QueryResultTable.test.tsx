@@ -169,6 +169,112 @@ describe('QueryResultTable', () => {
     expect(screen.getByText('Copy Column Name')).toBeInTheDocument()
     expect(screen.getByText('Copy Row')).toBeInTheDocument()
   })
+
+  describe('alignment', () => {
+    const numericResult = {
+      fields: [{ name: 'name' }, { name: 'total' }],
+      rowCount: 2,
+      rows: [
+        { name: 'Alice', total: 1000 },
+        { name: 'Bob', total: 25 }
+      ],
+      truncated: false
+    }
+
+    // Asserted as "has one and not the other", because an element carrying both
+    // `text-left` and `text-right` would satisfy a presence-only check while
+    // rendering whichever the stylesheet happened to order last.
+    it('right-aligns a numeric column header over its values', () => {
+      render(<QueryResultTable result={numericResult} />)
+
+      const header = screen.getByRole('columnheader', { name: 'total' })
+
+      expect({
+        left: header.classList.contains('text-left'),
+        right: header.classList.contains('text-right')
+      }).toEqual({ left: false, right: true })
+    })
+
+    it('leaves a text column header left-aligned', () => {
+      render(<QueryResultTable result={numericResult} />)
+
+      const header = screen.getByRole('columnheader', { name: 'name' })
+
+      expect({
+        left: header.classList.contains('text-left'),
+        right: header.classList.contains('text-right')
+      }).toEqual({ left: true, right: false })
+    })
+
+    // A null used to be aligned on its own type, so it hung off the left edge
+    // of a column of right-aligned numbers.
+    it('aligns a null in a numeric column with the rest of the column', () => {
+      render(
+        <QueryResultTable
+          result={{
+            fields: [{ name: 'total' }],
+            rowCount: 2,
+            rows: [{ total: 1000 }, { total: null }],
+            truncated: false
+          }}
+        />
+      )
+
+      const [, , nullRow] = screen.getAllByRole('row')
+
+      expect(within(nullRow).getAllByRole('cell')[1]).toHaveClass('text-right')
+    })
+  })
+
+  // Two fields can carry one name — `SELECT * FROM a JOIN b` where both have an
+  // `id`. Keying the columns by name collapsed them and gave siblings a
+  // duplicate React key, in a virtualized body that remounts constantly.
+  describe('duplicate column names', () => {
+    const duplicateResult = {
+      fields: [{ name: 'id' }, { name: 'name' }, { name: 'id' }],
+      rowCount: 1,
+      rows: [{ id: 1, name: 'Alice' }],
+      truncated: false
+    }
+
+    it('renders one header per field', () => {
+      render(<QueryResultTable result={duplicateResult} />)
+
+      expect(screen.getAllByRole('columnheader')).toHaveLength(4)
+    })
+
+    // Asserting the count, not the values: the driver's row is keyed by name, so
+    // both `id` columns still show the first one's value. That is a known limit
+    // of fixing the key model without an array row mode in the adapter.
+    it('renders one cell per field', () => {
+      render(<QueryResultTable result={duplicateResult} />)
+
+      const [, firstRow] = screen.getAllByRole('row')
+
+      // Three fields plus the row-number gutter.
+      expect(within(firstRow).getAllByRole('cell')).toHaveLength(4)
+    })
+
+    it('does not warn about duplicate keys', () => {
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined)
+
+      try {
+        render(<QueryResultTable result={duplicateResult} />)
+
+        expect(
+          consoleError.mock.calls.filter((call) =>
+            String(call[0]).includes('same key')
+          )
+        ).toEqual([])
+      } finally {
+        // In a finally so a failure here does not leave console.error stubbed
+        // for every test after it, silently swallowing their warnings.
+        consoleError.mockRestore()
+      }
+    })
+  })
 })
 
 describe('formatRowAsCsv', () => {
