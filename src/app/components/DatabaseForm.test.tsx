@@ -262,6 +262,211 @@ describe('DatabaseForm', () => {
     })
   })
 
+  // A test result describes the connection values it was produced from. Once
+  // those change it is no longer about anything the form is holding, so it must
+  // stop being shown rather than assert a connection that was never tried.
+  describe('connection test invalidation', () => {
+    it('clears the success icon when the host changes', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: true }))
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('connection-success-icon')
+        ).toBeInTheDocument()
+      })
+
+      await user.type(screen.getByLabelText('Host'), '.invalid')
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('connection-success-icon')
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    it('clears the error icon when the failing field is fixed', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ message: 'Connection refused', success: false })
+      )
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(screen.getByTestId('connection-error-icon')).toBeInTheDocument()
+      })
+
+      const portInput = screen.getByLabelText('Port')
+      await user.clear(portInput)
+      await user.type(portInput, '5433')
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('connection-error-icon')
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    // The display name is not part of the connection, so renaming the entry
+    // does not invalidate a result.
+    it('keeps the success icon when only the display name changes', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: true }))
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('connection-success-icon')
+        ).toBeInTheDocument()
+      })
+
+      await user.type(screen.getByLabelText('Name'), ' (staging)')
+
+      expect(screen.getByTestId('connection-success-icon')).toBeInTheDocument()
+    })
+
+    // The values can change while the request is in flight — the fields are not
+    // disabled — so the verdict has to be dropped on arrival, not just hidden.
+    // The toast is part of that: it names the host that was tested.
+    it('drops a verdict that arrives after the connection changed', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(jsonResponse({ success: true }))
+            }, 50)
+          })
+      )
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await user.type(screen.getByLabelText('Host'), '.invalid')
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: 'Test Connection' })
+        ).toBeEnabled()
+      })
+
+      expect(
+        screen.queryByTestId('connection-success-icon')
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('Connection successful!')
+      ).not.toBeInTheDocument()
+    })
+
+    // The testing flag is cleared in a `finally`, so nothing thrown while
+    // handling the response can leave the form stuck behind a spinner with
+    // Test, Save and Cancel all disabled.
+    it('re-enables the form when the test throws', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockRejectedValueOnce(new Error('network is down'))
+
+      renderDatabaseForm({ onCancel: vi.fn() })
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: 'Test Connection' })
+        ).toBeEnabled()
+      })
+
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    })
+
+    // Retired by value, not by a generation counter, so undoing the edit brings
+    // the verdict back — it is still true of what the form holds.
+    it('shows the verdict again when the edit is undone', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: true }))
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('connection-success-icon')
+        ).toBeInTheDocument()
+      })
+
+      const host = screen.getByLabelText('Host')
+
+      await user.type(host, 'x')
+
+      expect(
+        screen.queryByTestId('connection-success-icon')
+      ).not.toBeInTheDocument()
+
+      await user.clear(host)
+      await user.type(host, 'localhost')
+
+      expect(screen.getByTestId('connection-success-icon')).toBeInTheDocument()
+    })
+
+    // Changing the type replaces every connection field, so the result stops
+    // applying. This is what the deleted explicit reset used to cover.
+    it('clears the error icon when the database type changes', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ message: 'Connection refused', success: false })
+      )
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(screen.getByTestId('connection-error-icon')).toBeInTheDocument()
+      })
+
+      // The type select has no accessible name; it is the first combobox, and
+      // its trigger shows the current type.
+      const [typeSelect] = screen.getAllByRole('combobox')
+
+      expect(typeSelect).toHaveTextContent('PostgreSQL')
+
+      await user.click(typeSelect)
+      await user.click(screen.getByRole('option', { name: 'MySQL' }))
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('connection-error-icon')
+        ).not.toBeInTheDocument()
+      })
+    })
+  })
+
   describe('edit mode', () => {
     const editProps = {
       databaseId: 'db-123',
@@ -300,6 +505,32 @@ describe('DatabaseForm', () => {
 
       expect(body.databaseId).toEqual('db-123')
       expect(body.connectionInfo.password).toEqual('')
+    })
+
+    // The blank password field is what borrows the stored one, so typing a
+    // password sends a different credential than the one that passed.
+    it('clears the success icon when a password is typed', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: true }))
+
+      renderDatabaseForm(editProps)
+
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('connection-success-icon')
+        ).toBeInTheDocument()
+      })
+
+      await user.type(screen.getByLabelText('Password'), 'a-new-password')
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('connection-success-icon')
+        ).not.toBeInTheDocument()
+      })
     })
 
     it('submits without a password', async () => {

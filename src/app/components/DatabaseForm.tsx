@@ -6,13 +6,20 @@ import {
   Loader2Icon,
   XCircleIcon
 } from 'lucide-react'
-import { ReactElement, ReactNode, useCallback, useMemo, useState } from 'react'
+import {
+  ReactElement,
+  ReactNode,
+  useCallback,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { useForm, type Resolver, type UseFormReturn } from 'react-hook-form'
 import { toast } from 'sonner'
+import invariant from 'tiny-invariant'
 import { z } from 'zod'
 
 import type {
-  ConnectionTestResponse,
   CreateDatabaseRequest,
   DatabaseType,
   SslMode,
@@ -36,6 +43,7 @@ import {
   useUpdateDatabase
 } from '../hooks/mutations'
 import { useSecretStorage } from '../hooks/queries'
+import { cn } from '../lib/utils'
 import { Button } from './ui/button'
 import {
   Form,
@@ -214,12 +222,8 @@ export function DatabaseForm({
   const databaseType = form.watch('type')
   const connectionInfo = form.watch('connectionInfo')
 
-  const {
-    connectionTestIcon,
-    handleTestConnection,
-    isTestingConnection,
-    resetConnectionTest
-  } = useConnectionTest({ connectionInfo, databaseId, databaseType, form })
+  const { connectionTestIcon, handleTestConnection, isTestingConnection } =
+    useConnectionTest({ connectionInfo, databaseId, databaseType, form })
 
   const { handleSubmit, isSaving } = useSaveDatabase({
     databaseId,
@@ -239,14 +243,16 @@ export function DatabaseForm({
     (newType: string) => {
       const validatedType = databaseTypeSchema.parse(newType)
 
+      // The type is part of the connection fingerprint, so changing it retires
+      // any test result on its own — that, not the field reset below, is what
+      // replaces the explicit reset this used to call.
       form.setValue('type', validatedType)
       form.setValue(
         'connectionInfo',
         getDefaultConnectionInfo(validatedType, undefined)
       )
-      resetConnectionTest()
     },
-    [form, resetConnectionTest]
+    [form]
   )
 
   const handleBrowseFile = useCallback(async () => {
@@ -388,20 +394,82 @@ interface UseConnectionTestOptions {
   form: DatabaseFormApi
 }
 
+// A result carries the connection it was produced from, so "this result is about
+// the values on screen" is something the code can check rather than assume. That
+// is what stops a green check from asserting a connection to a host the user has
+// since replaced, and a red X from outliving the field it blamed.
+//
+// A result is retired by value, not by a generation counter, so undoing an edit
+// back to the values that were tested does bring the verdict back. That is
+// deliberate: the verdict is still true of what the form holds.
+type ConnectionTestState =
+  | { kind: 'failed'; testedConnection: string }
+  | { kind: 'idle' }
+  | { kind: 'passed'; testedConnection: string }
+  | { kind: 'testing'; testedConnection: string }
+
+const resultIconClasses =
+  'motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:[animation-duration:300ms]'
+
+/**
+ * Fingerprints the values a connection test is about, as a short hash.
+ *
+ * Both ends of the comparison go through here: `form.watch('connectionInfo')`
+ * returns a fresh object every render, so identity is useless, and two
+ * hand-rolled `JSON.stringify` calls would differ on key order.
+ *
+ * It is hashed rather than kept verbatim because `connectionInfo` includes the
+ * password, and this value lives in component state for the life of the form —
+ * somewhere the cleartext should not sit, and did not before. Equality of the
+ * hash is all the comparison needs.
+ */
+function connectionFingerprint(
+  connectionInfo: FormInput['connectionInfo'],
+  databaseType: DatabaseType
+): string {
+  const entries = Object.entries(connectionInfo ?? {})
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => [key, String(value)] as const)
+    // Plain comparison rather than localeCompare: these are fixed ASCII keys,
+    // and this runs on every keystroke in the form.
+    .sort(([left], [right]) => (left < right ? -1 : 1))
+
+  return hashString(JSON.stringify([databaseType, entries]))
+}
+
+// Two independent 32-bit rolling hashes, so the pair is wide enough that a
+// collision — which would show a verdict for values it does not describe, the
+// bug this all exists to prevent — is not a practical concern.
+function hashString(value: string): string {
+  let djb2 = 5381
+  let fnv = 0x811c9dc5
+
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index)
+
+    djb2 = (djb2 * 33) ^ code
+    fnv = Math.imul(fnv ^ code, 0x01000193)
+  }
+
+  return `${(djb2 >>> 0).toString(36)}:${(fnv >>> 0).toString(36)}`
+}
+
 function useConnectionTest({
   connectionInfo,
   databaseId,
   databaseType,
   form
 }: UseConnectionTestOptions) {
-  const [connectTestResult, setConnectTestResult] = useState<
-    ConnectionTestResponse | undefined
-  >()
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
+  const [state, setState] = useState<ConnectionTestState>({ kind: 'idle' })
 
-  const resetConnectionTest = useCallback(() => {
-    setConnectTestResult(undefined)
-  }, [])
+  // What the form holds right now. A result is only about the values it was
+  // produced from, so this is what a stored fingerprint is compared against.
+  const currentConnection = connectionFingerprint(connectionInfo, databaseType)
+
+  // Read by the response handlers, which need the values as they are when the
+  // response lands rather than the ones captured when the request went out.
+  const currentConnectionRef = useRef(currentConnection)
+  currentConnectionRef.current = currentConnection
 
   const handleTestConnection = useCallback(
     (event: React.FormEvent) => {
@@ -409,8 +477,14 @@ function useConnectionTest({
 
       form.clearErrors()
 
-      setIsTestingConnection(true)
-      setConnectTestResult(undefined)
+      // The same value the icon compares against. Normalizing `port` below does
+      // not change it, because the fingerprint stringifies every value.
+      const testedConnection = connectionFingerprint(
+        connectionInfo,
+        databaseType
+      )
+
+      setState({ kind: 'testing', testedConnection })
 
       let normalizedConnectionInfo = connectionInfo
 
@@ -436,58 +510,95 @@ function useConnectionTest({
 
       Promise.all([apiClient.testConnection(connection, databaseId), minDelay])
         .then(([result]) => {
+          // Dropped outright when the values moved on while the request was in
+          // flight. The toast has to be inside this check too: it names the host
+          // that was tested, so firing it for a connection the user has already
+          // replaced asserts something about values that are no longer there.
+          if (testedConnection !== currentConnectionRef.current) {
+            return
+          }
+
           if (result.success) {
             toast.success('Connection successful!')
           } else {
             toast.error('Connection failed', { description: result.message })
           }
 
-          setConnectTestResult(result)
+          // The message is delivered by the toast above; the state only has to
+          // remember the verdict and what it was about.
+          setState({
+            kind: result.success ? 'passed' : 'failed',
+            testedConnection
+          })
         })
-        .catch((error) => {
-          toast.error('Connection test failed', { description: error.message })
+        .catch((error: unknown) => {
+          if (testedConnection !== currentConnectionRef.current) {
+            return
+          }
 
-          form.setError('root', { message: error.message })
+          const message =
+            error instanceof Error ? error.message : 'The test could not run.'
+
+          toast.error('Connection test failed', { description: message })
+
+          form.setError('root', { message })
           applyServerFieldErrors(form, error)
         })
         .finally(() => {
-          setIsTestingConnection(false)
+          // In a finally, so nothing thrown above can leave the form stuck
+          // behind a spinner with Test, Save and Cancel all disabled.
+          setState((previous) =>
+            previous.kind === 'testing' &&
+            previous.testedConnection === testedConnection
+              ? { kind: 'idle' }
+              : previous
+          )
         })
     },
     [connectionInfo, databaseId, databaseType, form]
   )
 
   const connectionTestIcon = useMemo(() => {
-    if (isTestingConnection) {
-      return <Loader2Icon className="animate-spin" />
-    }
+    // A verdict is shown only while it still describes what the form holds; an
+    // edit changes the fingerprint, which retires it. A verdict that lands for
+    // values the user already changed never gets stored in the first place.
+    const describesCurrentValues =
+      state.kind !== 'idle' && state.testedConnection === currentConnection
 
-    if (connectTestResult?.success === true) {
-      return (
-        <CheckCircle2Icon
-          className="text-ok motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:[animation-duration:300ms]"
-          data-testid="connection-success-icon"
-        />
-      )
-    }
+    switch (state.kind) {
+      case 'failed':
+        return describesCurrentValues ? (
+          <XCircleIcon
+            className={cn('text-err', resultIconClasses)}
+            data-testid="connection-error-icon"
+          />
+        ) : null
 
-    if (connectTestResult?.success === false) {
-      return (
-        <XCircleIcon
-          className="text-err motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:[animation-duration:300ms]"
-          data-testid="connection-error-icon"
-        />
-      )
-    }
+      case 'idle':
+        return null
 
-    return null
-  }, [isTestingConnection, connectTestResult])
+      case 'passed':
+        return describesCurrentValues ? (
+          <CheckCircle2Icon
+            className={cn('text-ok', resultIconClasses)}
+            data-testid="connection-success-icon"
+          />
+        ) : null
+
+      case 'testing':
+        return <Loader2Icon className="animate-spin" />
+
+      default:
+        // A new variant has to decide what it renders rather than silently
+        // rendering nothing.
+        invariant(false, 'Unhandled connection test state.')
+    }
+  }, [currentConnection, state])
 
   return {
     connectionTestIcon,
     handleTestConnection,
-    isTestingConnection,
-    resetConnectionTest
+    isTestingConnection: state.kind === 'testing'
   }
 }
 
