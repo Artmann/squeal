@@ -1,5 +1,6 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { ReactElement } from 'react'
+import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DatabaseDto } from '@/glue/databases'
@@ -205,6 +206,51 @@ describe('running a query', () => {
   })
 })
 
+// `title-bar` is the class `index.css` hangs `-webkit-app-region: no-drag` off,
+// so it is a contract rather than a styling detail.
+function getTitleBar(): HTMLElement {
+  const titleBar = document.querySelector<HTMLElement>('.title-bar')
+
+  invariant(titleBar, 'The title bar is not in the document.')
+
+  return titleBar
+}
+
+// The single slot every screen shares, found by where it sits rather than by
+// what it is called: the element directly after the title bar.
+function getScreenSlot(): HTMLElement {
+  const slot = getTitleBar().nextElementSibling
+
+  invariant(
+    slot instanceof HTMLElement,
+    'Nothing follows the title bar, so there is no screen slot.'
+  )
+
+  return slot
+}
+
+/**
+ * What issue #60 is actually about: the title bar is painted above `element`
+ * and cannot be covered by it. Two separate things make that true, and both are
+ * asserted because either can be deleted without the other noticing.
+ *
+ * - `element` lives in the slot that follows the title bar, so it cannot reach
+ *   the title bar through the flow. A `fixed inset-0` screen — what #60 was —
+ *   fails this.
+ * - That slot is a positioned containing block, so an `absolute inset-0` child
+ *   of it cannot reach the title bar around the flow either. This is a class
+ *   check only because jsdom loads no CSS, which leaves `position` unobservable
+ *   any other way; without it, dropping `relative` from the slot silently
+ *   reopens #60 for the editor screen.
+ */
+function expectTitleBarAbove(element: HTMLElement): void {
+  const slot = getScreenSlot()
+
+  expect(getTitleBar().contains(element)).toEqual(false)
+  expect(slot.contains(element)).toEqual(true)
+  expect(slot).toHaveClass('relative')
+}
+
 describe('App', () => {
   it('shows the getting started screen when there are no databases', () => {
     renderWithProviders(<App />, { databases: [], queries: [], worksheets: [] })
@@ -245,5 +291,88 @@ describe('App', () => {
 
     expect(screen.getByText('Connect a database')).toBeInTheDocument()
     expect(screen.queryByText('Welcome to Squeal')).not.toBeInTheDocument()
+  })
+
+  // The window is frameless, so the title bar is the only minimize, maximize,
+  // close and drag region Windows and Linux have. A first-run screen that
+  // covers it leaves the window unmovable and unclosable.
+  it('leaves the window controls uncovered while the getting started screen shows', () => {
+    renderWithProviders(<App />, { databases: [], queries: [], worksheets: [] })
+
+    // Scoped to the title bar because the getting started screen has an X of
+    // its own with the same accessible name.
+    const windowControls = within(getTitleBar())
+
+    expect(
+      windowControls.getByRole('button', { name: 'Close' })
+    ).toBeInTheDocument()
+    expect(
+      windowControls.getByRole('button', { name: 'Maximize' })
+    ).toBeInTheDocument()
+    expect(
+      windowControls.getByRole('button', { name: 'Minimize' })
+    ).toBeInTheDocument()
+
+    expectTitleBarAbove(screen.getByText('Connect a database'))
+  })
+
+  // The editor screen's scrim is translucent, so it left the title bar visible
+  // but unclickable and its drag region dead — the same defect, harder to see.
+  it('leaves the window controls uncovered while the editor screen shows', () => {
+    renderWithProviders(<App />, {
+      databases: [testDatabase],
+      queries: [],
+      ui: { editorScreen: { databaseId: 'database-1', type: 'edit-database' } },
+      worksheets: []
+    })
+
+    expect(
+      within(getTitleBar()).getByRole('button', { name: 'Close' })
+    ).toBeInTheDocument()
+
+    expectTitleBarAbove(screen.getByText('Edit database'))
+  })
+
+  // Every workspace hook and poller used to run behind an opaque first-run
+  // screen, keyboard-reachable with nothing trapping focus.
+  it('does not mount the workspace behind the getting started screen', () => {
+    renderWithProviders(<App />, { databases: [], queries: [], worksheets: [] })
+
+    expect(screen.getByText('Connect a database')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Resize sidebar')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Open traces')).not.toBeInTheDocument()
+  })
+
+  // A stored editor screen and a first run were both representable at once,
+  // which stacked two panels with two live connection forms in them.
+  it('shows a single add-database form when the editor screen is open on first run', () => {
+    renderWithProviders(<App />, {
+      databases: [],
+      queries: [],
+      ui: { editorScreen: { type: 'create-database' } },
+      worksheets: []
+    })
+
+    expect(screen.getByText('Connect a database')).toBeInTheDocument()
+    expect(screen.queryByText('Add database')).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('Name')).toHaveLength(1)
+  })
+
+  // Reachable: delete the last connection while its "Add database" modal is
+  // open, and the first-run screen takes the slot with the modal still stored.
+  // Leaving the screen then popped a modal nobody asked for.
+  it('drops a stale editor screen while the getting started screen shows', () => {
+    const { store } = renderWithProviders(<App />, {
+      databases: [],
+      queries: [],
+      ui: { editorScreen: { type: 'create-database' } },
+      worksheets: []
+    })
+
+    expect(store.getState().ui.editorScreen).toBeUndefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
+
+    expect(screen.queryByText('Add database')).not.toBeInTheDocument()
   })
 })

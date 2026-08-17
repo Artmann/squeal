@@ -55,7 +55,7 @@ export function EditorScreen({
 
   if (mode === 'edit' && !database) {
     return (
-      <div className="fixed inset-0 z-100 bg-bg/70 flex justify-center items-center">
+      <div className="absolute inset-0 z-100 bg-bg/70 flex justify-center items-center">
         <div className="rounded-md border border-border bg-panel px-6 py-5 text-text2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
           Database not found.
         </div>
@@ -79,9 +79,17 @@ export function EditorScreen({
       }
     : undefined
 
+  // Absolute rather than fixed, so it covers the screen slot App gives it and
+  // not the title bar above it — the frameless window has no other close button
+  // and no other drag region.
+  //
+  // Centered by an auto margin on the card rather than by `items-center`,
+  // because centering something taller than its scroller splits the overflow
+  // across both edges, and `scrollTop` cannot go negative — the top of the form
+  // is then unreachable on a short window.
   return (
-    <div className="fixed inset-0 z-100 bg-bg/70 flex justify-center items-center overflow-y-auto py-10">
-      <div className="w-full max-w-md flex flex-col gap-6 rounded-md border border-border bg-panel p-6 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
+    <div className="absolute inset-0 z-100 bg-bg/70 flex justify-center items-start overflow-y-auto py-10">
+      <div className="w-full max-w-md my-auto flex flex-col gap-6 rounded-md border border-border bg-panel p-6 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">{title}</h1>
 
