@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect'
+import { Deferred, Effect, Layer, Schedule } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { queriesTable } from '@/database/schema'
@@ -10,12 +10,14 @@ import { makeSquealTracer } from '@/server/tracing/effect-tracer'
 import {
   makeTestAdapterFactory,
   makeTestAppDatabase,
+  testEncryptionPrefix,
   TestSecretStorage,
   type TestAdapterConfig
 } from '@/test/effect-test-helper'
 import { AppDatabase } from './app-database'
 import { DatabaseService } from './database-service'
 import { QueryRunner } from './query-runner'
+import { SecretStorage } from './secret-storage'
 
 const connectionInfo: ConnectionInfo = {
   database: 'pagila',
@@ -42,6 +44,56 @@ function makeLayer(config?: TestAdapterConfig) {
   )
 
   return { layer }
+}
+
+/**
+ * A SecretStorage whose decrypt can be held open on demand, so a test can sit
+ * inside the window `loadConnection` spends waiting on the keychain — which is
+ * exactly where a cancel used to land on nothing at all.
+ */
+function makeGatedSecretStorage() {
+  // A Deferred rather than a bare promise, so a failure elsewhere in the test
+  // interrupts the parked fiber instead of hanging until the vitest timeout.
+  let gate: Deferred.Deferred<void> | undefined
+
+  const layer = Layer.succeed(
+    SecretStorage,
+    SecretStorage.make({
+      decrypt: (value: string) =>
+        Effect.gen(function* () {
+          if (gate !== undefined) {
+            yield* Deferred.await(gate)
+          }
+
+          return value.startsWith(testEncryptionPrefix)
+            ? value.slice(testEncryptionPrefix.length)
+            : value
+        }),
+      encrypt: (value: string) =>
+        Effect.succeed(`${testEncryptionPrefix}${value}`),
+      mode: Effect.sync(() => 'keychain' as const),
+      probe: Effect.sync(() => 'available' as const),
+      setMode: () => Effect.void
+    })
+  )
+
+  return {
+    // A fresh Deferred each time, so gating twice in one test really gates
+    // twice rather than sailing through an already-completed one.
+    closeGate: Effect.gen(function* () {
+      gate = yield* Deferred.make<void>()
+    }),
+    layer,
+    openGate: Effect.gen(function* () {
+      const current = gate
+
+      gate = undefined
+
+      if (current !== undefined) {
+        yield* Deferred.succeed(current, undefined)
+      }
+    })
+  }
 }
 
 type TestContext = AppDatabase | DatabaseService | QueryRunner
@@ -170,15 +222,18 @@ describe('QueryRunner', () => {
 
         yield* runner.createAndRun({ ...queryInput, databaseId: database.id })
 
-        // The background fiber registers its adapter asynchronously; retry
-        // the cancel until it lands.
+        // Cancel is total over the fiber's whole life, so this waits for the
+        // query to actually be running rather than retrying the cancel until
+        // the adapter happens to have registered.
         yield* Effect.gen(function* () {
-          yield* runner.cancel(queryInput.id)
-
           if (rejectRunningQuery === undefined) {
             return yield* Effect.fail(new Error('adapter not running yet'))
           }
-        }).pipe(Effect.retry({ times: 100 }), Effect.delay('1 millis'))
+        }).pipe(
+          Effect.retry({ schedule: Schedule.spaced('1 millis'), times: 100 })
+        )
+
+        yield* runner.cancel(queryInput.id)
 
         yield* runner.awaitIdle
 
@@ -190,6 +245,176 @@ describe('QueryRunner', () => {
     expect(cancelCalls).toBeGreaterThanOrEqual(1)
     expect(finished.error).toEqual(canceledQueryMessage)
     expect(finished.result).toBeNull()
+  })
+
+  // The persisted row, the fiber and the adapter all start at different
+  // instants. Loading the connection decrypts the stored password through the OS
+  // keychain, so there is a real window in which the query is running and no
+  // adapter exists yet — cancel has to be answerable there too.
+  it('cancels a query that has not finished loading its connection', async () => {
+    const secretStorage = makeGatedSecretStorage()
+    let runQueryCalls = 0
+
+    const adapterFactory = makeTestAdapterFactory({
+      runQuery: () => {
+        runQueryCalls = runQueryCalls + 1
+
+        return Promise.resolve({
+          fields: [{ name: 'value' }],
+          rowCount: 1,
+          rows: [{ value: 1 }],
+          truncated: false
+        })
+      }
+    })
+
+    const layer = QueryRunner.DefaultWithoutDependencies.pipe(
+      Layer.provideMerge(DatabaseService.DefaultWithoutDependencies),
+      Layer.provideMerge(adapterFactory.layer),
+      Layer.provideMerge(makeTestAppDatabase()),
+      Layer.provideMerge(secretStorage.layer)
+    )
+
+    const finished = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const runner = yield* QueryRunner
+          const database = yield* createDatabase
+
+          // Everything from here on decrypts through a keychain that will not
+          // answer until the cancel has landed.
+          yield* secretStorage.closeGate
+
+          yield* runner.createAndRun({
+            ...queryInput,
+            databaseId: database.id
+          })
+
+          // No retry: the cancel has to be recorded on its own.
+          yield* runner.cancel(queryInput.id)
+
+          yield* secretStorage.openGate
+
+          yield* runner.awaitIdle
+
+          return yield* runner.get(queryInput.id)
+        }),
+        layer
+      )
+    )
+
+    expect({
+      error: finished.error,
+      finishedAt: finished.finishedAt,
+      result: finished.result,
+      runQueryCalls
+    }).toEqual({
+      error: canceledQueryMessage,
+      finishedAt: expect.any(Number),
+      result: null,
+      runQueryCalls: 0
+    })
+  })
+
+  // `cancel` is optional on the adapter interface and only Postgres implements
+  // it, so for MySQL and SQLite there is nothing to interrupt a running
+  // statement. The recorded intent is what makes cancel mean something there:
+  // the statement finishes, and its result is discarded rather than reported
+  // after the user was told the query was canceled.
+  it('honors a cancel an adapter cannot carry out', async () => {
+    let hasStartedQuery = false
+    let releaseQuery = (): void => undefined
+
+    const running = new Promise<void>((resolve) => {
+      releaseQuery = resolve
+    })
+
+    const finished = await run(
+      Effect.gen(function* () {
+        const runner = yield* QueryRunner
+        const database = yield* createDatabase
+
+        yield* runner.createAndRun({ ...queryInput, databaseId: database.id })
+
+        yield* Effect.gen(function* () {
+          if (!hasStartedQuery) {
+            return yield* Effect.fail(new Error('query not running yet'))
+          }
+        }).pipe(
+          Effect.retry({ schedule: Schedule.spaced('1 millis'), times: 100 })
+        )
+
+        yield* runner.cancel(queryInput.id)
+
+        // Only now does the statement complete, successfully.
+        releaseQuery()
+
+        yield* runner.awaitIdle
+
+        return yield* runner.get(queryInput.id)
+      }),
+      {
+        // No `cancel` at all — the shape MySQL and SQLite present.
+        runQuery: async () => {
+          hasStartedQuery = true
+
+          await running
+
+          return {
+            fields: [{ name: 'value' }],
+            rowCount: 1,
+            rows: [{ value: 1 }],
+            truncated: false
+          }
+        }
+      }
+    )
+
+    expect({
+      error: finished.error,
+      finishedAt: finished.finishedAt,
+      result: finished.result
+    }).toEqual({
+      error: canceledQueryMessage,
+      finishedAt: expect.any(Number),
+      result: null
+    })
+  })
+
+  // The entry's lifetime is exactly the fiber's, so once the query is done there
+  // is nothing left to cancel and the adapter is never asked — a result the user
+  // already has is never rewritten. The adapter is also unpublished the moment
+  // the statement settles, so a cancel arriving while the result is being saved
+  // finds nothing to signal without relying on any adapter's internals.
+  it('leaves a finished result intact when the cancel arrives too late', async () => {
+    let cancelCalls = 0
+
+    const finished = await run(
+      Effect.gen(function* () {
+        const runner = yield* QueryRunner
+        const database = yield* createDatabase
+
+        yield* runner.createAndRun({ ...queryInput, databaseId: database.id })
+        yield* runner.awaitIdle
+
+        yield* runner.cancel(queryInput.id)
+
+        return yield* runner.get(queryInput.id)
+      }),
+      {
+        cancel: () => {
+          cancelCalls = cancelCalls + 1
+
+          return Promise.resolve()
+        }
+      }
+    )
+
+    expect({
+      cancelCalls,
+      error: finished.error,
+      hasResult: finished.result !== null
+    }).toEqual({ cancelCalls: 0, error: null, hasResult: true })
   })
 
   it('fails with QueryNotFoundError for an unknown query id', async () => {
