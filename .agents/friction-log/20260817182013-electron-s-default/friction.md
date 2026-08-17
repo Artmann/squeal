@@ -1,5 +1,7 @@
 ---
-title: 'Electron''s default menu owns ⌘R and ⌘⇧R, so renderer refresh shortcuts silently reload the window'
+title:
+  "Electron's default menu owns ⌘R and ⌘⇧R, so renderer refresh shortcuts
+  silently reload the window"
 severity: 'minor'
 ---
 
