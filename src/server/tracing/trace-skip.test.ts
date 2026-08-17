@@ -28,6 +28,12 @@ describe('shouldSkipTracing', () => {
     expect(shouldSkipTracing('POST', '/updates/install')).toEqual(false)
   })
 
+  it('skips CORS preflights, including for routes that are otherwise traced', () => {
+    expect(shouldSkipTracing('OPTIONS', '/queries')).toEqual(true)
+    expect(shouldSkipTracing('OPTIONS', '/queries/some-id')).toEqual(true)
+    expect(shouldSkipTracing('OPTIONS', '/worksheets/some-id')).toEqual(true)
+  })
+
   it('traces everything else', () => {
     expect(shouldSkipTracing('GET', '/databases')).toEqual(false)
     expect(shouldSkipTracing('POST', '/worksheets')).toEqual(false)
