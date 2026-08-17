@@ -181,20 +181,29 @@ describe('QueryResultTable', () => {
       truncated: false
     }
 
+    // Asserted as "has one and not the other", because an element carrying both
+    // `text-left` and `text-right` would satisfy a presence-only check while
+    // rendering whichever the stylesheet happened to order last.
     it('right-aligns a numeric column header over its values', () => {
       render(<QueryResultTable result={numericResult} />)
 
-      expect(screen.getByRole('columnheader', { name: 'total' })).toHaveClass(
-        'text-right'
-      )
+      const header = screen.getByRole('columnheader', { name: 'total' })
+
+      expect({
+        left: header.classList.contains('text-left'),
+        right: header.classList.contains('text-right')
+      }).toEqual({ left: false, right: true })
     })
 
     it('leaves a text column header left-aligned', () => {
       render(<QueryResultTable result={numericResult} />)
 
-      expect(screen.getByRole('columnheader', { name: 'name' })).toHaveClass(
-        'text-left'
-      )
+      const header = screen.getByRole('columnheader', { name: 'name' })
+
+      expect({
+        left: header.classList.contains('text-left'),
+        right: header.classList.contains('text-right')
+      }).toEqual({ left: true, right: false })
     })
 
     // A null used to be aligned on its own type, so it hung off the left edge
