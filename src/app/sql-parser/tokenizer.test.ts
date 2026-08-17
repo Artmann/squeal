@@ -512,13 +512,73 @@ describe('tokenize', () => {
       })
     })
 
+    // The three fields of a token have to agree: `value` is what the slice
+    // says, and `end` is where the slice stopped. Nothing downstream should have
+    // to defend against a token pointing past its own input, and `tokenize`
+    // advances by `end`, so a token has to consume at least one character.
     it('positions match the original string indices', () => {
-      const sql = 'SELECT id'
+      const inputs = [
+        'SELECT id',
+        'SELECT * FROM users WHERE id = 1',
+        "SELECT 'abc",
+        "SELECT 'abc''def",
+        "SELECT 'abc''",
+        '/*abc',
+        '/*abc*',
+        '/*/',
+        '"abc',
+        '`abc',
+        '-- trailing comment',
+        "SELECT * FROM t WHERE name = 'a"
+      ]
+
+      for (const sql of inputs) {
+        for (const token of tokenize(sql)) {
+          expect({
+            end: token.end,
+            sliced: sql.slice(token.start, token.end)
+          }).toEqual({
+            end: Math.min(token.end, sql.length),
+            sliced: token.value
+          })
+
+          expect(token.end).toBeGreaterThan(token.start)
+        }
+      }
+    })
+  })
+
+  // An unterminated string, comment or quoted identifier exists on every
+  // keystroke while the user is still typing one, and the parse runs on every
+  // keystroke — so these are the common case, not an edge case.
+  describe('unterminated input', () => {
+    it('does not run a string past the end of the input', () => {
+      const sql = "SELECT 'abc"
       const tokens = tokenize(sql)
 
-      for (const token of tokens) {
-        expect(sql.slice(token.start, token.end)).toEqual(token.value)
-      }
+      expect(tokens).toEqual([
+        { end: 6, start: 0, type: 'keyword', value: 'SELECT' },
+        { end: 7, start: 6, type: 'whitespace', value: ' ' },
+        { end: sql.length, start: 7, type: 'string', value: "'abc" }
+      ])
+    })
+
+    it('does not run a block comment past the end of the input', () => {
+      const sql = '/*abc'
+      const tokens = tokenize(sql)
+
+      expect(tokens).toEqual([
+        { end: sql.length, start: 0, type: 'comment', value: '/*abc' }
+      ])
+    })
+
+    it('does not run a quoted identifier past the end of the input', () => {
+      const sql = '"abc'
+      const tokens = tokenize(sql)
+
+      expect(tokens).toEqual([
+        { end: sql.length, start: 0, type: 'identifier', value: '"abc' }
+      ])
     })
   })
 
