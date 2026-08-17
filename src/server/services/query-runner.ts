@@ -1,5 +1,6 @@
 import { desc, eq, isNull } from 'drizzle-orm'
 import { Cause, Clock, Effect, FiberMap, Option } from 'effect'
+import invariant from 'tiny-invariant'
 
 import { databasesTable, queriesTable } from '@/database/schema'
 import {
@@ -34,6 +35,15 @@ type AdapterOutcome =
   | { readonly _tag: 'canceled' }
   | { readonly _tag: 'completed'; readonly result: QueryResult }
 
+// One entry per forked query, created before the fork so cancel is answerable
+// for the fiber's whole life. `adapter` attaches once the connection is loaded;
+// `isCanceled` is sticky, the same way the adapters themselves record a cancel
+// that arrives before there is a socket to end.
+interface InFlightQuery {
+  adapter: DatabaseAdapter | undefined
+  isCanceled: boolean
+}
+
 export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
   accessors: true,
   dependencies: [
@@ -53,7 +63,15 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
     // The link between the cancel route and in-flight work: user cancel goes
     // through adapter.cancel() (for Postgres, pg_cancel_backend), never fiber
     // interruption, so results that just completed are not lost.
-    const adapters = new Map<string, DatabaseAdapter>()
+    //
+    // The entry carries the intent as well as the adapter, because the two do
+    // not begin at the same instant: loading the connection decrypts the stored
+    // password through the OS keychain, so a query can be running with no
+    // adapter yet. A map of adapters alone could only say "an adapter exists",
+    // leaving "the user wants this canceled" nowhere to live until one did —
+    // and a cancel landing in that window did nothing at all while the query ran
+    // on to a successful result.
+    const inFlight = new Map<string, InFlightQuery>()
 
     const loadConnection = (query: QueryRow) =>
       Effect.gen(function* () {
@@ -168,19 +186,58 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
 
     const execute = (query: QueryRow) =>
       Effect.gen(function* () {
+        const entry = inFlight.get(query.id)
+
+        // Registered synchronously before the fork, so it is always here.
+        invariant(entry !== undefined, `Query ${query.id} is not registered.`)
+
         const { adapter, databaseType } = yield* loadConnection(query)
 
-        adapters.set(query.id, adapter)
+        // A cancel that arrived while the connection was loading had nothing to
+        // act on, so it is answered here instead — and the terminal row still
+        // has to be written, or the query stays "running" until the boot
+        // reconciler notices.
+        if (entry.isCanceled) {
+          yield* recordCanceledEvent
+          yield* writeFailure(query.id, canceledQueryMessage)
+
+          return
+        }
+
+        // Published only now: an adapter that is never going to run a statement
+        // should not be reachable by a second cancel.
+        entry.adapter = adapter
 
         const outcome = yield* runAdapterQuery(
           adapter,
           databaseType,
           query
-        ).pipe(Effect.ensuring(Effect.sync(() => adapters.delete(query.id))))
+        ).pipe(
+          // Unpublished the moment the statement settles, so a cancel landing
+          // during the write below cannot reach a finished adapter. The entry
+          // itself still lives as long as the fiber.
+          Effect.ensuring(
+            Effect.sync(() => {
+              entry.adapter = undefined
+            })
+          )
+        )
 
         if (outcome._tag === 'canceled') {
           // The event is recorded on the db.query span inside runAdapterQuery,
           // which is the span that represents the canceled statement.
+          yield* writeFailure(query.id, canceledQueryMessage)
+
+          return
+        }
+
+        // The statement finished, but the user asked for it to stop and this
+        // adapter could not carry that out — `cancel` is optional, and only the
+        // Postgres adapter implements it. Honoring the intent here is what stops
+        // MySQL and SQLite from reporting a cancel and then producing the result
+        // anyway.
+        if (entry.isCanceled) {
+          yield* recordCanceledEvent
           yield* writeFailure(query.id, canceledQueryMessage)
 
           return
@@ -198,19 +255,38 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
           Cause.isInterruptedOnly(cause)
             ? Effect.void
             : writeFailure(query.id, messageFromCause(cause))
-        )
+        ),
+        // Released here rather than around the adapter call, so the entry's
+        // lifetime is the fiber's lifetime and no path — including a failure to
+        // load the connection — can leak one.
+        Effect.ensuring(Effect.sync(() => inFlight.delete(query.id)))
       )
 
     const cancel = Effect.fn('QueryRunner.cancel')(function* (id: string) {
-      const adapter = adapters.get(id)
+      const entry = inFlight.get(id)
 
       // Canceling an unknown or already finished query is a deliberate
       // no-op.
+      if (entry === undefined) {
+        return
+      }
+
+      // Recorded first, so it counts even when there is no adapter to act on —
+      // either because the connection is still loading, or because this adapter
+      // has no cancel at all. `execute` honors it either way.
+      entry.isCanceled = true
+
+      const adapter = entry.adapter
+
       if (adapter === undefined) {
         return
       }
 
       yield* Effect.promise(() => adapter.cancel?.() ?? Promise.resolve()).pipe(
+        // Bounded for the same reason the shutdown path bounds it: cancel opens
+        // a fresh connection to the user's database, which can hang on an
+        // unreachable host, and this one is awaited by an HTTP handler.
+        Effect.timeout(cancelTimeout),
         Effect.catchAllCause((cause) =>
           Effect.logError(`Could not cancel query ${id}`, cause)
         )
@@ -254,12 +330,32 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
           .returning()
       )
 
+      // Registered synchronously, before the fork, so the query is cancelable
+      // from the same instant it starts running. Registering it from inside the
+      // fiber would reopen the window this closes.
+      //
+      // Uninterruptible as a pair: the release lives in `runInBackground`, so an
+      // interrupt landing between the two would retain the entry forever.
+      //
       // Fork-and-return: the response carries the unfinished row and the
       // renderer polls for the result. The forked fiber inherits this span
       // as its parent, which is what used to require capturing the
       // AsyncLocalStorage context by hand. A duplicate key cannot reach the
       // fork — the primary-key insert above fails first.
-      yield* FiberMap.run(running, insertedRow.id, runInBackground(insertedRow))
+      yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          inFlight.set(insertedRow.id, {
+            adapter: undefined,
+            isCanceled: false
+          })
+
+          yield* FiberMap.run(
+            running,
+            insertedRow.id,
+            runInBackground(insertedRow)
+          )
+        })
+      )
 
       return transformQueryRow(insertedRow)
     })
