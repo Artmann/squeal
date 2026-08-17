@@ -7,11 +7,13 @@ import {
   Database,
   Pencil,
   Plus,
+  RefreshCwIcon,
   SearchIcon,
   Table2Icon,
   Trash2
 } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
@@ -23,8 +25,10 @@ import {
 import {
   useCreateWorksheet,
   useDeleteDatabase,
+  useRefreshDatabases,
   useReorderDatabases
 } from '../hooks/mutations'
+import { getRefreshShortcut } from '../refresh-shortcut'
 import {
   staticListStrategy,
   useDropIndicator,
@@ -130,6 +134,46 @@ function useConfirmedDatabaseDeletion(): (database: DatabaseDto) => void {
     },
     [deleteDatabase]
   )
+}
+
+interface DatabaseTreeRefresh {
+  isRefreshing: boolean
+  /** One database, or every database when called with nothing. */
+  refresh: (database?: DatabaseDto) => void
+}
+
+// A refresh is the user asking to see the truth, so a failure has to say so
+// rather than leaving the stale tree in place looking current. The backend's
+// SchemaLoadFailedError already names the database and the reason — "Failed to
+// load schema for "Pagila": connection refused" — so the description carries
+// it. With several connections failing at once the first error speaks for all
+// of them; the ones that answered are updated either way.
+function useRefreshDatabaseTree(): DatabaseTreeRefresh {
+  const refreshDatabases = useRefreshDatabases()
+
+  const refresh = useCallback(
+    (database?: DatabaseDto) => {
+      refreshDatabases.mutate(
+        { databaseId: database?.id },
+        {
+          onError: (error) => {
+            const message =
+              error instanceof Error ? error.message : 'Unknown error'
+
+            toast.error(
+              database
+                ? `Failed to refresh "${database.name}"`
+                : 'Failed to refresh databases',
+              { description: message }
+            )
+          }
+        }
+      )
+    },
+    [refreshDatabases]
+  )
+
+  return { isRefreshing: refreshDatabases.isPending, refresh }
 }
 
 // Opens a fresh worksheet querying the given table, marks it as the open, most
@@ -265,6 +309,20 @@ export function DatabaseExplorer(): ReactElement {
     dispatch(uiActions.openCreateDatabase())
   }, [dispatch])
 
+  const { isRefreshing, refresh } = useRefreshDatabaseTree()
+
+  const handleRefreshAll = useCallback(() => {
+    refresh()
+  }, [refresh])
+
+  // Enabled on form tags and content-editables so the shortcut still works with
+  // focus in the filter input or the SQL editor.
+  useHotkeys('mod+alt+r', handleRefreshAll, {
+    enableOnContentEditable: true,
+    enableOnFormTags: true,
+    preventDefault: true
+  })
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-none items-center justify-between pt-[10px] pr-3 pb-2 pl-4">
@@ -272,15 +330,34 @@ export function DatabaseExplorer(): ReactElement {
           Databases
         </h2>
 
-        <button
-          aria-label="Add connection"
-          className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
-          title="Add connection"
-          type="button"
-          onClick={handleCreateDatabase}
-        >
-          <Plus className="size-3" />
-        </button>
+        <div className="flex flex-none items-center gap-[2px]">
+          {/* Nothing to reload without a connection, and the empty state below
+              already carries its own call to action. */}
+          {databases.data.length > 0 && (
+            <button
+              aria-label="Refresh databases"
+              className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover disabled:opacity-50"
+              disabled={isRefreshing}
+              title={`Refresh databases (${getRefreshShortcut()})`}
+              type="button"
+              onClick={handleRefreshAll}
+            >
+              <RefreshCwIcon
+                className={cn('size-3', isRefreshing && 'animate-spin')}
+              />
+            </button>
+          )}
+
+          <button
+            aria-label="Add connection"
+            className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
+            title="Add connection"
+            type="button"
+            onClick={handleCreateDatabase}
+          >
+            <Plus className="size-3" />
+          </button>
+        </div>
       </div>
 
       <div className="mx-3 mb-2 flex-none">
@@ -319,6 +396,7 @@ export function DatabaseExplorer(): ReactElement {
                 searchQuery={normalizedSearchQuery}
                 onDelete={handleDeleteDatabase}
                 onEdit={handleEditDatabase}
+                onRefresh={refresh}
               />
             ))}
           </SortableContext>
@@ -357,6 +435,7 @@ interface DatabaseRowProps {
   isSortingDisabled: boolean
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
+  onRefresh: (database: DatabaseDto) => void
   searchMatch?: DatabaseMatch
   /** Normalized, so trailing whitespace does not count as a new question. */
   searchQuery: string
@@ -412,6 +491,7 @@ function DatabaseRow({
   isSortingDisabled,
   onDelete,
   onEdit,
+  onRefresh,
   searchMatch,
   searchQuery
 }: DatabaseRowProps): ReactElement {
@@ -465,6 +545,7 @@ function DatabaseRow({
         sortableProps={isSortingDisabled ? {} : { ...attributes, ...listeners }}
         onDelete={onDelete}
         onEdit={onEdit}
+        onRefresh={onRefresh}
         onToggle={handleToggle}
       />
 
@@ -484,6 +565,7 @@ interface DatabaseRowHeaderProps {
   isExpanded: boolean
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
+  onRefresh: (database: DatabaseDto) => void
   onToggle: () => void
   sortableProps: Record<string, unknown>
 }
@@ -493,6 +575,7 @@ function DatabaseRowHeader({
   isExpanded,
   onDelete,
   onEdit,
+  onRefresh,
   onToggle,
   sortableProps
 }: DatabaseRowHeaderProps): ReactElement {
@@ -522,6 +605,14 @@ function DatabaseRowHeader({
       </ContextMenuTrigger>
 
       <ContextMenuContent>
+        <ContextMenuItem
+          className="flex items-center gap-2 min-w-32 text-xs"
+          onClick={() => onRefresh(database)}
+        >
+          <RefreshCwIcon className="size-3" />
+          Refresh
+        </ContextMenuItem>
+
         <ContextMenuItem
           className="flex items-center gap-2 min-w-32 text-xs"
           onClick={() => onEdit(database.id)}
