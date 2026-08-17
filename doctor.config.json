@@ -18,13 +18,16 @@
         "files": ["src/app/hooks/mutations.ts"],
         "rules": ["react-doctor/query-mutation-missing-invalidation"]
       },
-      // Both modules only load through React.lazy(() => import(...)) in
-      // App.tsx, so the CodeMirror packages already sit in an on-demand
-      // chunk. The rule is per-file and cannot see the dynamic import chain.
+      // These modules only load through React.lazy(() => import(...)) in
+      // App.tsx — the editor's hook reaches them only through
+      // WorksheetEditor — so the CodeMirror packages already sit in an
+      // on-demand chunk. The rule is per-file and cannot see the dynamic
+      // import chain.
       {
         "files": [
           "src/app/components/WorksheetEditor.tsx",
-          "src/app/components/codemirror-theme.ts"
+          "src/app/components/codemirror-theme.ts",
+          "src/app/components/use-worksheet-editor.ts"
         ],
         "rules": ["react-doctor/prefer-dynamic-import"]
       },
