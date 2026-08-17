@@ -138,8 +138,8 @@ function useConfirmedDatabaseDeletion(): (database: DatabaseDto) => void {
 
 interface DatabaseTreeRefresh {
   isRefreshing: boolean
-  /** One database, or every database when called with nothing. */
-  refresh: (database?: DatabaseDto) => void
+  refresh: (database: DatabaseDto) => void
+  refreshAll: () => void
 }
 
 // A refresh is the user asking to see the truth, so a failure has to say so
@@ -148,6 +148,11 @@ interface DatabaseTreeRefresh {
 // load schema for "Pagila": connection refused" — so the description carries
 // it. With several connections failing at once the first error speaks for all
 // of them; the ones that answered are updated either way.
+//
+// The shortcut lives here rather than in the component because it is the same
+// concern: refresh everything, from wherever the user is. Enabled on form tags
+// and content-editables so it still fires with focus in the filter input or the
+// SQL editor.
 function useRefreshDatabaseTree(): DatabaseTreeRefresh {
   const refreshDatabases = useRefreshDatabases()
 
@@ -173,7 +178,17 @@ function useRefreshDatabaseTree(): DatabaseTreeRefresh {
     [refreshDatabases]
   )
 
-  return { isRefreshing: refreshDatabases.isPending, refresh }
+  const refreshAll = useCallback(() => {
+    refresh()
+  }, [refresh])
+
+  useHotkeys('mod+alt+r', refreshAll, {
+    enableOnContentEditable: true,
+    enableOnFormTags: true,
+    preventDefault: true
+  })
+
+  return { isRefreshing: refreshDatabases.isPending, refresh, refreshAll }
 }
 
 // Opens a fresh worksheet querying the given table, marks it as the open, most
@@ -309,56 +324,16 @@ export function DatabaseExplorer(): ReactElement {
     dispatch(uiActions.openCreateDatabase())
   }, [dispatch])
 
-  const { isRefreshing, refresh } = useRefreshDatabaseTree()
-
-  const handleRefreshAll = useCallback(() => {
-    refresh()
-  }, [refresh])
-
-  // Enabled on form tags and content-editables so the shortcut still works with
-  // focus in the filter input or the SQL editor.
-  useHotkeys('mod+alt+r', handleRefreshAll, {
-    enableOnContentEditable: true,
-    enableOnFormTags: true,
-    preventDefault: true
-  })
+  const { isRefreshing, refresh, refreshAll } = useRefreshDatabaseTree()
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-none items-center justify-between pt-[10px] pr-3 pb-2 pl-4">
-        <h2 className="text-[11px] font-semibold tracking-[0.08em] text-text3 uppercase">
-          Databases
-        </h2>
-
-        <div className="flex flex-none items-center gap-[2px]">
-          {/* Nothing to reload without a connection, and the empty state below
-              already carries its own call to action. */}
-          {databases.data.length > 0 && (
-            <button
-              aria-label="Refresh databases"
-              className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover disabled:opacity-50"
-              disabled={isRefreshing}
-              title={`Refresh databases (${getRefreshShortcut()})`}
-              type="button"
-              onClick={handleRefreshAll}
-            >
-              <RefreshCwIcon
-                className={cn('size-3', isRefreshing && 'animate-spin')}
-              />
-            </button>
-          )}
-
-          <button
-            aria-label="Add connection"
-            className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
-            title="Add connection"
-            type="button"
-            onClick={handleCreateDatabase}
-          >
-            <Plus className="size-3" />
-          </button>
-        </div>
-      </div>
+      <DatabaseExplorerHeader
+        hasDatabases={databases.data.length > 0}
+        isRefreshing={isRefreshing}
+        onCreate={handleCreateDatabase}
+        onRefresh={refreshAll}
+      />
 
       <div className="mx-3 mb-2 flex-none">
         <SearchInput
@@ -421,6 +396,57 @@ export function DatabaseExplorer(): ReactElement {
               </Button>
             </div>
           ))}
+      </div>
+    </div>
+  )
+}
+
+interface DatabaseExplorerHeaderProps {
+  hasDatabases: boolean
+  isRefreshing: boolean
+  onCreate: () => void
+  onRefresh: () => void
+}
+
+function DatabaseExplorerHeader({
+  hasDatabases,
+  isRefreshing,
+  onCreate,
+  onRefresh
+}: DatabaseExplorerHeaderProps): ReactElement {
+  return (
+    <div className="flex flex-none items-center justify-between pt-[10px] pr-3 pb-2 pl-4">
+      <h2 className="text-[11px] font-semibold tracking-[0.08em] text-text3 uppercase">
+        Databases
+      </h2>
+
+      <div className="flex flex-none items-center gap-[2px]">
+        {/* Nothing to reload without a connection, and the empty state below
+            already carries its own call to action. */}
+        {hasDatabases && (
+          <button
+            aria-label="Refresh databases"
+            className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover disabled:opacity-50"
+            disabled={isRefreshing}
+            title={`Refresh databases (${getRefreshShortcut()})`}
+            type="button"
+            onClick={onRefresh}
+          >
+            <RefreshCwIcon
+              className={cn('size-3', isRefreshing && 'animate-spin')}
+            />
+          </button>
+        )}
+
+        <button
+          aria-label="Add connection"
+          className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
+          title="Add connection"
+          type="button"
+          onClick={onCreate}
+        >
+          <Plus className="size-3" />
+        </button>
       </div>
     </div>
   )
