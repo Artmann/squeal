@@ -17,6 +17,13 @@ export async function initializeDatabase() {
   // failing instantly.
   await database.run(sql`PRAGMA busy_timeout = 5000`)
   await database.run(sql`PRAGMA journal_mode = WAL`)
+  // The driver is synchronous and runs on the main process's event loop, so
+  // every fsync it waits for is a stall the whole window feels. SQLite's default
+  // of `FULL` fsyncs the WAL on every single commit; `NORMAL` is the standard
+  // pairing with WAL, where an OS crash can lose the most recent commits but the
+  // database still cannot corrupt. Query history and spans are both worth less
+  // than a responsive window.
+  await database.run(sql`PRAGMA synchronous = NORMAL`)
 
   await createTables(database)
 
