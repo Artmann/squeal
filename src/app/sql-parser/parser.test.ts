@@ -193,6 +193,25 @@ DELETE FROM users`
       })
     })
 
+    // A statement takes its end from its last token, so a token running past
+    // the input would put the statement past it too.
+    it('ends an unterminated string literal at the end of the input', () => {
+      const sql = "SELECT 'abc"
+
+      const result = createAstFromSql(sql)
+
+      expect(result).toEqual({
+        statements: [
+          {
+            end: sql.length,
+            start: 0,
+            text: "SELECT 'abc",
+            type: 'select'
+          }
+        ]
+      })
+    })
+
     it('handles just a keyword', () => {
       const result = createAstFromSql('SELECT')
 

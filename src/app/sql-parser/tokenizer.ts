@@ -1,3 +1,5 @@
+import invariant from 'tiny-invariant'
+
 export type TokenType =
   | 'comment'
   | 'identifier'
@@ -30,6 +32,15 @@ export function tokenize(sql: string): Token[] {
       continue
     }
 
+    // Every reader must consume at least one character. A zero-width token
+    // would leave `position` where it is and spin here forever, freezing the
+    // renderer with no error — and this runs on every keystroke, so the loop
+    // says so rather than trusting it.
+    invariant(
+      token.end > position,
+      `Tokenizer made no progress at position ${position}.`
+    )
+
     tokens.push(token)
     position = token.end
   }
@@ -37,13 +48,25 @@ export function tokenize(sql: string): Token[] {
   return tokens
 }
 
+// The readers that consume a closing delimiter step past it unconditionally, so
+// on unterminated input they ask for an `end` beyond the string. Deriving `end`
+// from the slice clamps it here — the one place every token is built — instead
+// of leaving each consumer to defend against a token that points past its own
+// input.
+//
+// This has to stay a clamp and never a decrement: `tokenize` advances by
+// `token.end`, so a token ending at or before its start would loop forever. It
+// is a clamp because `position < sql.length` on entry guarantees the slice keeps
+// at least one character, and `tokenize` asserts the progress it depends on.
 function createToken(
   sql: string,
   start: number,
   end: number,
   type: TokenType
 ): Token {
-  return { end, start, type, value: sql.slice(start, end) }
+  const value = sql.slice(start, end)
+
+  return { end: start + value.length, start, type, value }
 }
 
 function readBlockComment(sql: string, position: number): Token | null {
@@ -173,10 +196,11 @@ function readWord(sql: string, position: number): Token | null {
   }
 
   const end = scanWhile(sql, position, /[a-zA-Z0-9_]/)
-  const value = sql.slice(position, end)
-  const type = keywords.has(value.toUpperCase()) ? 'keyword' : 'identifier'
+  const type = keywords.has(sql.slice(position, end).toUpperCase())
+    ? 'keyword'
+    : 'identifier'
 
-  return { end, start: position, type, value }
+  return createToken(sql, position, end, type)
 }
 
 function scanWhile(sql: string, position: number, pattern: RegExp): number {
