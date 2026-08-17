@@ -14,6 +14,7 @@ vi.mock('../api-client', () => ({
     createQuery: vi.fn(),
     createWorksheet: vi.fn(),
     deleteDatabase: vi.fn(),
+    getDatabaseSchema: vi.fn(),
     getDatabases: vi.fn(async () => []),
     getQueries: vi.fn(async () => []),
     getWorksheets: vi.fn(async () => []),
@@ -662,6 +663,125 @@ describe('DatabaseExplorer', () => {
 
     expect(store.getState().ui.editorScreen).toEqual({
       type: 'create-database'
+    })
+  })
+
+  describe('refreshing', () => {
+    const firstDatabase = { ...testDatabase, id: 'db-1', name: 'Production' }
+    const secondDatabase = { ...testDatabase, id: 'db-2', name: 'Staging' }
+    const bothDatabases = [firstDatabase, secondDatabase]
+
+    // Seeded caches are never stale (staleTime: Infinity), so nothing is
+    // fetched before the refresh and every recorded call belongs to it.
+    const seededOptions = {
+      databases: bothDatabases,
+      schemas: { 'db-1': testSchema, 'db-2': testSchema }
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      vi.mocked(apiClient.getDatabases).mockResolvedValue(bothDatabases)
+      vi.mocked(apiClient.getDatabaseSchema).mockResolvedValue(testSchema)
+    })
+
+    it('has no refresh button while there are no databases', () => {
+      renderWithProviders(<DatabaseExplorer />, { databases: [] })
+
+      expect(
+        screen.queryByRole('button', { name: 'Refresh databases' })
+      ).not.toBeInTheDocument()
+    })
+
+    it('reloads the connection list and every schema from the header button', async () => {
+      const user = userEvent.setup()
+
+      renderWithProviders(<DatabaseExplorer />, seededOptions)
+
+      await user.click(
+        screen.getByRole('button', { name: 'Refresh databases' })
+      )
+
+      await waitFor(() => {
+        expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('db-1')
+      })
+
+      expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('db-2')
+      expect(apiClient.getDatabases).toHaveBeenCalled()
+    })
+
+    it('reloads every schema from the keyboard shortcut', async () => {
+      renderWithProviders(<DatabaseExplorer />, seededOptions)
+
+      // The matcher reads event.code, and `mod` accepts either meta or ctrl.
+      fireEvent.keyDown(document, {
+        altKey: true,
+        code: 'KeyR',
+        key: 'r',
+        metaKey: true
+      })
+
+      await waitFor(() => {
+        expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('db-1')
+      })
+
+      expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('db-2')
+    })
+
+    it('reloads one schema from the row context menu', async () => {
+      const user = userEvent.setup()
+
+      renderWithProviders(<DatabaseExplorer />, seededOptions)
+
+      fireEvent.contextMenu(screen.getByText('Staging'))
+
+      await user.click(await screen.findByRole('menuitem', { name: 'Refresh' }))
+
+      await waitFor(() => {
+        expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('db-2')
+      })
+
+      expect(apiClient.getDatabaseSchema).not.toHaveBeenCalledWith('db-1')
+    })
+
+    it('reports a refresh that failed', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.getDatabaseSchema).mockRejectedValue(
+        new Error('Failed to load schema for "Staging": connection refused')
+      )
+
+      renderWithProviders(<DatabaseExplorer />, seededOptions)
+
+      await user.click(
+        screen.getByRole('button', { name: 'Refresh databases' })
+      )
+
+      expect(
+        await screen.findByText('Failed to refresh databases')
+      ).toBeVisible()
+      expect(
+        await screen.findByText(
+          'Failed to load schema for "Staging": connection refused'
+        )
+      ).toBeVisible()
+    })
+
+    it('names the database when a single-connection refresh fails', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.getDatabaseSchema).mockRejectedValue(
+        new Error('Failed to load schema for "Staging": connection refused')
+      )
+
+      renderWithProviders(<DatabaseExplorer />, seededOptions)
+
+      fireEvent.contextMenu(screen.getByText('Staging'))
+
+      await user.click(await screen.findByRole('menuitem', { name: 'Refresh' }))
+
+      expect(
+        await screen.findByText('Failed to refresh "Staging"')
+      ).toBeVisible()
     })
   })
 })

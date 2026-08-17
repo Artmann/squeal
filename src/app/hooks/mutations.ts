@@ -180,6 +180,40 @@ export function useInstallUpdate() {
   })
 }
 
+interface RefreshDatabasesRequest {
+  /** One connection's schema, or every connection's when omitted. */
+  databaseId?: string
+}
+
+// Not a server mutation: schemas are cached with staleTime: Infinity, so
+// nothing ever refetches them on its own and this marks them stale to let the
+// mounted queries reload. `useMutation` is here for the pending state the
+// spinner reads. `throwOnError` is load-bearing — invalidateQueries swallows
+// refetch failures by default, which would leave a stale tree looking freshly
+// loaded.
+export function useRefreshDatabases() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ databaseId }: RefreshDatabasesRequest) => {
+      const schemaKey = databaseId
+        ? queryKeys.schema(databaseId)
+        : queryKeys.schemas
+
+      await Promise.all([
+        queryClient.invalidateQueries(
+          { queryKey: queryKeys.databases },
+          { throwOnError: true }
+        ),
+        queryClient.invalidateQueries(
+          { queryKey: schemaKey },
+          { throwOnError: true }
+        )
+      ])
+    }
+  })
+}
+
 export function useReorderDatabases() {
   const { databases } = useCollections()
   const queryClient = useQueryClient()
