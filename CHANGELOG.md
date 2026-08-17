@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.4.0](https://github.com/Artmann/squeal/compare/v1.3.1...v1.4.0) (2026-08-17)
+
+
+### Features
+
+* **explorer:** refresh the database tree without restarting ([dc1536a](https://github.com/Artmann/squeal/commit/dc1536aa54b277ed14c987f74d5c4f2f0e2b21a6))
+* **secret-storage:** ask before using the OS keychain ([fb25d98](https://github.com/Artmann/squeal/commit/fb25d98b086a568b68610d6ae336abdfe502bf7b))
+* **worksheets:** run the query when you pick "Query Table" ([a9cc11f](https://github.com/Artmann/squeal/commit/a9cc11fbff0771603f6349c668e69049e9038a69))
+
+
+### Bug Fixes
+
+* **app:** load every collection at once and show an error when a load fails ([cf98cab](https://github.com/Artmann/squeal/commit/cf98cabe25e7b831b949855c1131aa445bd39079))
+* **build:** label the macOS bundle "Squeal" instead of "squeal" ([7c6c961](https://github.com/Artmann/squeal/commit/7c6c961c758b80c83fdfa98064237db124439927))
+* **database:** add columns missing from databases created by older versions ([4388fcd](https://github.com/Artmann/squeal/commit/4388fcd05bf64bf1d05b2c0a9ec233041d4e5a0e))
+* **databases:** only lend a stored password to the server it was saved for ([0c95572](https://github.com/Artmann/squeal/commit/0c95572af13e85fa244fa407b2419de51d54e69a)), closes [#49](https://github.com/Artmann/squeal/issues/49)
+* **databases:** roll back a created database when linking a worksheet fails ([c3c9c9e](https://github.com/Artmann/squeal/commit/c3c9c9ee29c0bf5f8ac3e73a55ca067394d33992))
+* **editor:** stop reconfiguring CodeMirror on every keystroke ([d97bd21](https://github.com/Artmann/squeal/commit/d97bd21b089ca4228404ed41cdebb2a058c2a8f7))
+* **explorer:** keep the refresh under the complexity and format gates ([f63e941](https://github.com/Artmann/squeal/commit/f63e941fe1e85f49de7a824512e71430dfdafb52))
+* **explorer:** let a click collapse a row the search forced open ([d45bd5f](https://github.com/Artmann/squeal/commit/d45bd5f0265d82323ec24408120e857ba2cfde6a)), closes [#61](https://github.com/Artmann/squeal/issues/61)
+* **postgres:** report a canceled query as canceled on any server locale ([4ceaf41](https://github.com/Artmann/squeal/commit/4ceaf41cc2c41d8458ec0c3096729c515366a5bf)), closes [#55](https://github.com/Artmann/squeal/issues/55)
+* **tabs:** keep the last worksheet tab closed ([e2dea38](https://github.com/Artmann/squeal/commit/e2dea38bb32507ea78ebb8b9fe6ddcb9e3685913)), closes [#59](https://github.com/Artmann/squeal/issues/59)
+* **ui:** keep the window controls reachable behind first-run screens ([8fcae7e](https://github.com/Artmann/squeal/commit/8fcae7e4cba8106d6ce1620a90cbaae63e2b8323)), closes [#60](https://github.com/Artmann/squeal/issues/60)
+* **ui:** stop ResizeHandle from pinning user-select app-wide ([886cbb2](https://github.com/Artmann/squeal/commit/886cbb240d8a7c437d18577ed7f799240907596d)), closes [#68](https://github.com/Artmann/squeal/issues/68)
+
+
+### Performance Improvements
+
+* **database:** pair WAL with synchronous = NORMAL ([cbf2113](https://github.com/Artmann/squeal/commit/cbf2113cdc6c64610c4c513c10773d58963b4dd1))
+* **http:** cache CORS preflights, and stop tracing them ([a9e5a6e](https://github.com/Artmann/squeal/commit/a9e5a6e6cad83a7628276c75358b1ed061f88a49))
+* **tracing:** batch span writes with a linger window ([700be63](https://github.com/Artmann/squeal/commit/700be63a817a1f1a90d16109af31229add5e7fa5))
+
 ## [1.3.1](https://github.com/Artmann/squeal/compare/v1.3.0...v1.3.1) (2026-08-03)
 
 
