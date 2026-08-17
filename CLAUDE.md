@@ -7,6 +7,22 @@ Ergonomic SQL Client for Humans. Electron desktop app with React frontend.
 - Use assertions like tiny-invariant to throw on invalid states.
 - Use Conventional Commits.
 
+## Friction log
+
+Papercuts in this project's own tooling, docs, APIs, tests, and conventions get
+written down as they are hit, so the next person does not rediscover them.
+Entries live in `.agents/friction-log/`, one directory each, committed with the
+code.
+
+- Run `npx frog list` first — the friction may already be known.
+- Log what cost you time with `npx frog log`, at the moment you hit it.
+- Only friction belonging to _this_ project. Global, system, and internal
+  friction does not go here.
+
+No GitHub automation is wired up: entries stay in the repo as files. The issue
+form at `.github/ISSUE_TEMPLATE/friction.yml` is for humans filing friction by
+hand, and `npx frog publish` is a deliberate, manual step.
+
 ## Code Style
 
 - Don't use CONSTANT_CASE. This is not JAVA.
