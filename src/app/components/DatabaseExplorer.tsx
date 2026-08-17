@@ -37,7 +37,11 @@ import { tabsActions } from '../store/tabs-slice'
 import { uiActions } from '../store/ui-slice'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
-import { expandDatabase, expandTable } from '../store/database-explorer-slice'
+import {
+  DatabaseExpansion,
+  expandTable,
+  setDatabaseExpanded
+} from '../store/database-explorer-slice'
 import { computeDatabaseMatch, DatabaseMatch } from './database-explorer-search'
 import { SearchInput } from './SearchInput'
 import { buildTableQuery } from './table-query'
@@ -205,7 +209,12 @@ export function DatabaseExplorer(): ReactElement {
     (state) => state.editor.databaseSearchQuery ?? ''
   )
 
-  const isSearching = databaseSearchQuery.trim().length > 0
+  // Normalized the way `computeDatabaseMatch` normalizes, because it is what
+  // an expansion is scoped to: a decision answers the question the user asked,
+  // so adding a trailing space must not count as asking a new one.
+  const normalizedSearchQuery = databaseSearchQuery.trim().toLowerCase()
+
+  const isSearching = normalizedSearchQuery.length > 0
 
   // Prefetch every schema in the background so search and expansion are instant,
   // and reuse those results as the source for matching tables and columns.
@@ -303,10 +312,11 @@ export function DatabaseExplorer(): ReactElement {
                 key={row.database.id}
                 database={row.database}
                 dropIndicator={dropIndicatorFor(index)}
+                expansion={expandedDatabases[row.database.id]}
                 hasMultipleSchemas={row.hasMultipleSchemas}
-                isExpanded={Boolean(expandedDatabases[row.database.id])}
                 isSortingDisabled={isSortingDisabled}
                 searchMatch={row.searchMatch}
+                searchQuery={normalizedSearchQuery}
                 onDelete={handleDeleteDatabase}
                 onEdit={handleEditDatabase}
               />
@@ -341,33 +351,86 @@ export function DatabaseExplorer(): ReactElement {
 interface DatabaseRowProps {
   database: DatabaseDto
   dropIndicator: DropIndicator
+  /** The user's own decision, or `undefined` if they have never made one. */
+  expansion: DatabaseExpansion | undefined
   hasMultipleSchemas: boolean
-  isExpanded: boolean
   isSortingDisabled: boolean
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
   searchMatch?: DatabaseMatch
+  /** Normalized, so trailing whitespace does not count as a new question. */
+  searchQuery: string
 }
 
-// While searching, a matching row is forced open to reveal its tables.
+// A decision only speaks for the context it was made in:
+//
+//   not searching                       → their decision, absent → collapsed
+//   decided under *this* query          → what they decided
+//   stale decision, table match         → open: the match wins
+//   stale decision, name-only match     → their decision
+//
+// The two search outcomes are deliberately not symmetric, because the search's
+// two proposals are not the same kind of thing. `expandDatabase: true` is an
+// active instruction — reveal these matching tables — so it has to beat a
+// stale decision: otherwise one collapse made while browsing would veto every
+// later search for that database, leaving the row listed as a match with its
+// matches missing, and silently, because the filter still looks like it ran.
+// `expandDatabase: false` is not an instruction at all, only the absence of
+// one — the query matched the database's name and said nothing about its
+// tables — so it has nothing to say against a row the user opened themselves.
+// Merging the two with `||` instead — the original bug — made a click on a
+// forced-open row unrepresentable: it flipped a bit nothing read, so it moved
+// nothing.
 function isRowExpanded(
+  expansion: DatabaseExpansion | undefined,
   searchMatch: DatabaseMatch | undefined,
-  isExpanded: boolean
+  searchQuery: string
 ): boolean {
-  return searchMatch ? searchMatch.expandDatabase || isExpanded : isExpanded
+  const expandedByUser = expansion?.isExpanded ?? false
+
+  // No test can tell this branch from the fall-through below, because callers
+  // pass no match while not searching, and that path lands on the same value.
+  // It stays because it makes the rule true here rather than true by a
+  // caller's habit: if a match ever outlived its query, the fall-through would
+  // start consulting a proposal for a search that is no longer running.
+  if (searchQuery.length === 0) {
+    return expandedByUser
+  }
+
+  if (expansion?.query === searchQuery) {
+    return expandedByUser
+  }
+
+  return searchMatch?.expandDatabase === true ? true : expandedByUser
 }
 
 function DatabaseRow({
   database,
   dropIndicator,
+  expansion,
   hasMultipleSchemas,
-  isExpanded,
   isSortingDisabled,
   onDelete,
   onEdit,
-  searchMatch
+  searchMatch,
+  searchQuery
 }: DatabaseRowProps): ReactElement {
-  const isDatabaseExpanded = isRowExpanded(searchMatch, isExpanded)
+  const dispatch = useAppDispatch()
+
+  const isDatabaseExpanded = isRowExpanded(expansion, searchMatch, searchQuery)
+
+  // Stamped with the query it answers, and derived from the resolved state —
+  // what the user is actually looking at — so the write always matches what
+  // they just clicked.
+  const handleToggle = useCallback(() => {
+    dispatch(
+      setDatabaseExpanded({
+        databaseId: database.id,
+        isExpanded: !isDatabaseExpanded,
+        query: searchQuery
+      })
+    )
+  }, [database.id, dispatch, isDatabaseExpanded, searchQuery])
 
   const {
     attributes,
@@ -402,6 +465,7 @@ function DatabaseRow({
         sortableProps={isSortingDisabled ? {} : { ...attributes, ...listeners }}
         onDelete={onDelete}
         onEdit={onEdit}
+        onToggle={handleToggle}
       />
 
       {isDatabaseExpanded && (
@@ -420,6 +484,7 @@ interface DatabaseRowHeaderProps {
   isExpanded: boolean
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
+  onToggle: () => void
   sortableProps: Record<string, unknown>
 }
 
@@ -428,18 +493,18 @@ function DatabaseRowHeader({
   isExpanded,
   onDelete,
   onEdit,
+  onToggle,
   sortableProps
 }: DatabaseRowHeaderProps): ReactElement {
-  const dispatch = useAppDispatch()
-
   return (
     <ContextMenu>
       <ContextMenuTrigger>
         <button
           {...sortableProps}
+          aria-expanded={isExpanded}
           className="flex h-[var(--item-h)] w-full cursor-default items-center gap-[6px] rounded-[6px] px-[6px] text-left text-text2 hover:bg-hover"
           type="button"
-          onClick={() => dispatch(expandDatabase(database.id))}
+          onClick={onToggle}
         >
           <ChevronRight
             className={cn(
@@ -545,6 +610,7 @@ function DatabaseTableRow({
       <ContextMenu>
         <ContextMenuTrigger>
           <button
+            aria-expanded={isExpanded}
             className="flex h-[26px] w-full cursor-default items-center gap-[6px] rounded-[6px] pr-[6px] pl-5 text-left text-text2 hover:bg-hover"
             type="button"
             onClick={onToggle}

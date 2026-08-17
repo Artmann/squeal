@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import reducer, {
   DatabaseExplorerState,
-  expandDatabase,
-  expandTable
+  expandTable,
+  setDatabaseExpanded
 } from './database-explorer-slice'
 
 describe('databaseExplorerSlice', () => {
@@ -12,38 +12,121 @@ describe('databaseExplorerSlice', () => {
     expandedTables: {}
   }
 
-  describe('expandDatabase', () => {
-    it('should set database as expanded when not expanded', () => {
-      const state = reducer(initialState, expandDatabase('db-123'))
+  describe('setDatabaseExpanded', () => {
+    it('should record an explicit expand for a database with no entry', () => {
+      const state = reducer(
+        initialState,
+        setDatabaseExpanded({
+          databaseId: 'db-123',
+          isExpanded: true,
+          query: ''
+        })
+      )
 
-      expect(state.expandedDatabases).toEqual({ 'db-123': true })
+      expect(state.expandedDatabases).toEqual({
+        'db-123': { isExpanded: true, query: '' }
+      })
     })
 
-    it('should toggle database to collapsed when already expanded', () => {
+    it('should record an explicit collapse for a database with no entry', () => {
+      const state = reducer(
+        initialState,
+        setDatabaseExpanded({
+          databaseId: 'db-123',
+          isExpanded: false,
+          query: ''
+        })
+      )
+
+      // Absent means "follow the search"; a stored collapse is the user saying
+      // no, so the two must stay distinguishable.
+      expect(state.expandedDatabases).toEqual({
+        'db-123': { isExpanded: false, query: '' }
+      })
+    })
+
+    it('should stamp the query the decision was made under', () => {
+      const state = reducer(
+        initialState,
+        setDatabaseExpanded({
+          databaseId: 'db-123',
+          isExpanded: false,
+          query: 'user'
+        })
+      )
+
+      expect(state.expandedDatabases).toEqual({
+        'db-123': { isExpanded: false, query: 'user' }
+      })
+    })
+
+    it('should overwrite a stored expand with a collapse', () => {
       const expandedState: DatabaseExplorerState = {
-        expandedDatabases: { 'db-123': true },
+        expandedDatabases: { 'db-123': { isExpanded: true, query: '' } },
         expandedTables: {}
       }
 
-      const state = reducer(expandedState, expandDatabase('db-123'))
+      const state = reducer(
+        expandedState,
+        setDatabaseExpanded({
+          databaseId: 'db-123',
+          isExpanded: false,
+          query: ''
+        })
+      )
 
-      expect(state.expandedDatabases).toEqual({ 'db-123': false })
+      expect(state.expandedDatabases).toEqual({
+        'db-123': { isExpanded: false, query: '' }
+      })
+    })
+
+    it('should overwrite a stored collapse with an expand', () => {
+      const collapsedState: DatabaseExplorerState = {
+        expandedDatabases: { 'db-123': { isExpanded: false, query: 'user' } },
+        expandedTables: {}
+      }
+
+      const state = reducer(
+        collapsedState,
+        setDatabaseExpanded({
+          databaseId: 'db-123',
+          isExpanded: true,
+          query: 'user'
+        })
+      )
+
+      expect(state.expandedDatabases).toEqual({
+        'db-123': { isExpanded: true, query: 'user' }
+      })
     })
 
     it('should handle multiple databases independently', () => {
-      let state = reducer(initialState, expandDatabase('db-1'))
-      state = reducer(state, expandDatabase('db-2'))
+      let state = reducer(
+        initialState,
+        setDatabaseExpanded({ databaseId: 'db-1', isExpanded: true, query: '' })
+      )
+      state = reducer(
+        state,
+        setDatabaseExpanded({ databaseId: 'db-2', isExpanded: true, query: '' })
+      )
 
       expect(state.expandedDatabases).toEqual({
-        'db-1': true,
-        'db-2': true
+        'db-1': { isExpanded: true, query: '' },
+        'db-2': { isExpanded: true, query: '' }
       })
 
-      state = reducer(state, expandDatabase('db-1'))
+      state = reducer(
+        state,
+        setDatabaseExpanded({
+          databaseId: 'db-1',
+          isExpanded: false,
+          query: ''
+        })
+      )
 
       expect(state.expandedDatabases).toEqual({
-        'db-1': false,
-        'db-2': true
+        'db-1': { isExpanded: false, query: '' },
+        'db-2': { isExpanded: true, query: '' }
       })
     })
   })

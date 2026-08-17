@@ -162,7 +162,9 @@ describe('DatabaseExplorer', () => {
 
   it('shows tables when a database is already expanded', () => {
     renderWithProviders(<DatabaseExplorer />, {
-      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databaseExplorer: {
+        expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+      },
       databases: [testDatabase],
       schemas: { 'db-123': testSchema }
     })
@@ -178,7 +180,9 @@ describe('DatabaseExplorer', () => {
     const user = userEvent.setup()
 
     renderWithProviders(<DatabaseExplorer />, {
-      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databaseExplorer: {
+        expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+      },
       databases: [testDatabase],
       schemas: { 'db-123': testSchema }
     })
@@ -201,7 +205,9 @@ describe('DatabaseExplorer', () => {
     ]
 
     renderWithProviders(<DatabaseExplorer />, {
-      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databaseExplorer: {
+        expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+      },
       databases: [testDatabase],
       schemas: {
         'db-123': { ...testSchema, tables: multiSchemaTables }
@@ -220,7 +226,9 @@ describe('DatabaseExplorer', () => {
     ]
 
     renderWithProviders(<DatabaseExplorer />, {
-      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databaseExplorer: {
+        expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+      },
       databases: [testDatabase],
       schemas: {
         'db-123': { ...testSchema, tables: duplicatedTables }
@@ -241,7 +249,9 @@ describe('DatabaseExplorer', () => {
     const user = userEvent.setup()
 
     renderWithProviders(<DatabaseExplorer />, {
-      databaseExplorer: { expandedDatabases: { 'db-123': true } },
+      databaseExplorer: {
+        expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+      },
       databases: [testDatabase],
       schemas: { 'db-123': testSchema }
     })
@@ -251,6 +261,195 @@ describe('DatabaseExplorer', () => {
     await user.click(screen.getByText('Test Database'))
 
     expect(screen.queryByText('users')).not.toBeInTheDocument()
+  })
+
+  it('collapses a database the search forced open', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    // "users" matches, so the row is forced open by the search.
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'user')
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+
+    await user.click(screen.getByText('Test Database'))
+
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+  })
+
+  it('keeps a database expanded after the search is cleared', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    const searchInput = screen.getByPlaceholderText('Filter tables')
+
+    // Only the name matches "test", so the search proposes a collapsed row and
+    // expanding it is the user's own decision.
+    await user.type(searchInput, 'test')
+    await user.click(screen.getByText('Test Database'))
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+
+    await user.clear(searchInput)
+
+    // Back to the unfiltered tree, their decision is still the latest thing
+    // they said about this database.
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByText('posts')).toBeInTheDocument()
+  })
+
+  it('keeps a database collapsed after the search is cleared', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    const searchInput = screen.getByPlaceholderText('Filter tables')
+
+    await user.type(searchInput, 'user')
+    await user.click(screen.getByText('Test Database'))
+    await user.clear(searchInput)
+
+    expect(screen.getByText('Test Database')).toBeInTheDocument()
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+    expect(screen.queryByText('posts')).not.toBeInTheDocument()
+  })
+
+  it('lets a search expand a database the user collapsed while browsing', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    // The ordinary browsing loop: expand a database, look at it, close it
+    // again. No search is involved, so this says nothing about any query.
+    await user.click(screen.getByText('Test Database'))
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+
+    await user.click(screen.getByText('Test Database'))
+
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'user')
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+  })
+
+  it('follows a new query after collapsing a row the previous one forced open', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    const searchInput = screen.getByPlaceholderText('Filter tables')
+
+    await user.type(searchInput, 'user')
+    await user.click(screen.getByText('Test Database'))
+
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+
+    // A different query is a different question, so the collapse that answered
+    // the last one has nothing to say about this one.
+    await user.clear(searchInput)
+    await user.type(searchInput, 'post')
+
+    expect(screen.getByText('posts')).toBeInTheDocument()
+  })
+
+  it('keeps a manually expanded database open when only its name matches', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    await user.click(screen.getByText('Test Database'))
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+
+    // Only the database name matches "test", so the query said nothing about
+    // this database's tables. That is the absence of an instruction, not an
+    // instruction to hide a row the user opened themselves — and the match
+    // keeps the full table list precisely so it can still be shown.
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'test')
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByText('posts')).toBeInTheDocument()
+  })
+
+  it('keeps a database the user expanded during this query open', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    // No table is named after "test", so only the database name matches and
+    // the search proposes a collapsed row.
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'test')
+
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+
+    await user.click(screen.getByText('Test Database'))
+
+    // Expanding answers this query, so the whole table list stays revealed.
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByText('posts')).toBeInTheDocument()
+  })
+
+  it('reports expansion to assistive technology', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    const header = screen.getByRole('button', { name: 'Test Database' })
+
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(header)
+
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'users' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  })
+
+  it('reports a search-forced expansion to assistive technology', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'user')
+
+    // The chevron rotation is a visual-only cue, so a row the search opened
+    // has to announce itself as open too.
+    expect(
+      screen.getByRole('button', { name: 'Test Database' })
+    ).toHaveAttribute('aria-expanded', 'true')
   })
 
   describe('querying a table from the context menu', () => {
@@ -287,7 +486,9 @@ describe('DatabaseExplorer', () => {
     // without this.
     async function renderExplorer(schema: SchemaInfo = testSchema) {
       const rendered = renderWithProviders(<DatabaseExplorer />, {
-        databaseExplorer: { expandedDatabases: { 'db-123': true } },
+        databaseExplorer: {
+          expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+        },
         databases: [testDatabase],
         schemas: { 'db-123': schema },
         queries: [],
