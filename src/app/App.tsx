@@ -3,6 +3,7 @@ import {
   ReactElement,
   Suspense,
   useCallback,
+  useEffect,
   useMemo,
   useState
 } from 'react'
@@ -27,8 +28,9 @@ import { useCancelQuery } from './hooks/mutations'
 import { useStartQuery } from './hooks/use-start-query'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import type { QueryDto } from '@/glue/api/schemas'
-import { useAppSelector } from './store'
+import { useAppDispatch, useAppSelector } from './store'
 import { selectActiveWorksheetId } from './store/tabs-slice'
+import { uiActions } from './store/ui-slice'
 import { createAstFromSql, type Statement } from './sql-parser'
 import { findActiveStatementIndex } from './sql-parser/active-statement'
 import {
@@ -213,7 +215,6 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     handleCancelQuery,
     handleRunQuery,
     handleUpdateContent,
-    hasDatabases: databases.data.length > 0,
     isCancelPending,
     isQueryRunning: Boolean(query && !query.finishedAt),
     query,
@@ -224,97 +225,58 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
 }
 
 export function App(): ReactElement {
-  const openWorksheetId = useAppSelector(selectActiveWorksheetId)
+  const dispatch = useAppDispatch()
   const editorScreen = useAppSelector((state) => state.ui.editorScreen)
   const gettingStartedDismissed = useAppSelector(
     (state) => state.ui.gettingStartedDismissed
   )
 
-  const [cursorPosition, setCursorPosition] = useState<CursorPosition>()
-
-  const {
-    activeStatement,
-    activeStatementIndex,
-    content,
-    currentDatabase,
-    currentWorksheet,
-    handleCancelQuery,
-    handleRunQuery,
-    handleUpdateContent,
-    hasDatabases,
-    isCancelPending,
-    isQueryRunning,
-    query,
-    saveState,
-    setCursorOffset,
-    statements
-  } = useWorksheetSession(openWorksheetId)
+  // Read here rather than taken from the worksheet session, so the choice of
+  // screen is made before anything the workspace needs is set up. The
+  // collections are already hydrated by AppShell, so this is a cache read.
+  const databases = useDatabases()
 
   // Dismissible so an empty app is not a dead end. Saving a connection hides it
   // for good, and the sidebar's add button reaches the same form afterwards.
-  const showGettingStartedScreen = !hasDatabases && !gettingStartedDismissed
+  const showGettingStartedScreen =
+    databases.data.length === 0 && !gettingStartedDismissed
+
+  // The first-run screen owns the slot, so an editor screen that was already
+  // open when it took over has nowhere to render — deleting the last connection
+  // while its "Add database" form is up gets there. Dropped rather than parked,
+  // because otherwise it pops unasked the moment the screen is left.
+  useEffect(() => {
+    if (showGettingStartedScreen && editorScreen) {
+      dispatch(uiActions.closeEditorScreen())
+    }
+  }, [dispatch, editorScreen, showGettingStartedScreen])
 
   return (
     <main className="w-full h-screen flex flex-col bg-panel2 overflow-hidden text-sm">
-      {showGettingStartedScreen && <GettingStartedScreen />}
-
-      {editorScreen && (
-        <EditorScreen
-          databaseId={editorScreen.databaseId}
-          mode={editorScreen.type === 'create-database' ? 'create' : 'edit'}
-        />
-      )}
-
+      {/* Mounted once, above the slot, and nothing the slot holds can cover it:
+          the window is frameless, so this is the only drag region and the only
+          minimize, maximize and close buttons Windows and Linux get. Not an
+          app-wide promise — the trace dashboard mounts outside App entirely and
+          does overlap the bottom of these buttons. */}
       <TitleBar />
 
-      <div className="flex-1 min-h-0 flex">
-        <AppSidebar />
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        {showGettingStartedScreen ? (
+          <GettingStartedScreen />
+        ) : (
+          <>
+            <Workspace />
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-          <WorksheetTabs />
-
-          <WorksheetToolbar
-            activeStatement={activeStatement}
-            isCancelPending={isCancelPending}
-            isQueryRunning={isQueryRunning}
-            onCancelQuery={handleCancelQuery}
-            onRunQuery={handleRunQuery}
-          />
-
-          <div className="flex-1 min-h-0 bg-panel">
-            {currentWorksheet ? (
-              <Suspense fallback={null}>
-                <WorksheetEditor
-                  activeStatementIndex={activeStatementIndex}
-                  content={content}
-                  databaseType={currentDatabase?.type}
-                  statements={statements}
-                  onChange={handleUpdateContent}
-                  onCursorChange={setCursorPosition}
-                  onCursorPositionChange={setCursorOffset}
-                  onRunQuery={handleRunQuery}
-                />
-              </Suspense>
-            ) : (
-              <NoWorksheetOpen />
+            {editorScreen && (
+              <EditorScreen
+                databaseId={editorScreen.databaseId}
+                mode={
+                  editorScreen.type === 'create-database' ? 'create' : 'edit'
+                }
+              />
             )}
-          </div>
-
-          <ResultsPane
-            databaseName={currentDatabase?.name}
-            isQueryRunning={isQueryRunning}
-            query={query}
-            worksheetId={openWorksheetId}
-          />
-
-          <StatusBar
-            cursorPosition={cursorPosition}
-            databaseId={currentWorksheet?.databaseId ?? undefined}
-            databaseName={currentDatabase?.name}
-            query={query}
-            saveState={saveState}
-          />
-        </div>
+          </>
+        )}
       </div>
     </main>
   )
@@ -328,6 +290,86 @@ function NoWorksheetOpen(): ReactElement {
       <p className="text-[12px] text-text3">
         Create a worksheet or pick one from the sidebar.
       </p>
+    </div>
+  )
+}
+
+/**
+ * The app itself: sidebar, tabs, editor, results and status bar. Kept out of
+ * `App` so it — and every hook and poller it owns — only mounts once the user
+ * is past the first-run screen, rather than running behind it.
+ */
+function Workspace(): ReactElement {
+  const openWorksheetId = useAppSelector(selectActiveWorksheetId)
+
+  const [cursorPosition, setCursorPosition] = useState<CursorPosition>()
+
+  const {
+    activeStatement,
+    activeStatementIndex,
+    content,
+    currentDatabase,
+    currentWorksheet,
+    handleCancelQuery,
+    handleRunQuery,
+    handleUpdateContent,
+    isCancelPending,
+    isQueryRunning,
+    query,
+    saveState,
+    setCursorOffset,
+    statements
+  } = useWorksheetSession(openWorksheetId)
+
+  return (
+    <div className="flex-1 min-h-0 flex">
+      <AppSidebar />
+
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+        <WorksheetTabs />
+
+        <WorksheetToolbar
+          activeStatement={activeStatement}
+          isCancelPending={isCancelPending}
+          isQueryRunning={isQueryRunning}
+          onCancelQuery={handleCancelQuery}
+          onRunQuery={handleRunQuery}
+        />
+
+        <div className="flex-1 min-h-0 bg-panel">
+          {currentWorksheet ? (
+            <Suspense fallback={null}>
+              <WorksheetEditor
+                activeStatementIndex={activeStatementIndex}
+                content={content}
+                databaseType={currentDatabase?.type}
+                statements={statements}
+                onChange={handleUpdateContent}
+                onCursorChange={setCursorPosition}
+                onCursorPositionChange={setCursorOffset}
+                onRunQuery={handleRunQuery}
+              />
+            </Suspense>
+          ) : (
+            <NoWorksheetOpen />
+          )}
+        </div>
+
+        <ResultsPane
+          databaseName={currentDatabase?.name}
+          isQueryRunning={isQueryRunning}
+          query={query}
+          worksheetId={openWorksheetId}
+        />
+
+        <StatusBar
+          cursorPosition={cursorPosition}
+          databaseId={currentWorksheet?.databaseId ?? undefined}
+          databaseName={currentDatabase?.name}
+          query={query}
+          saveState={saveState}
+        />
+      </div>
     </div>
   )
 }

@@ -13,8 +13,18 @@ export function GettingStartedScreen(): ReactElement {
     dispatch(uiActions.dismissGettingStarted())
   }
 
+  // Fills the screen slot below the title bar rather than the viewport: the
+  // window is frameless, so covering the title bar would leave Windows and
+  // Linux users with no drag region and no close button while the app is
+  // deliberately unusable.
+  //
+  // Centered by an auto margin on the child rather than by `items-center`,
+  // because centering something taller than its scroller splits the overflow
+  // across both edges, and `scrollTop` cannot go negative — everything above
+  // the scroll origin is then unreachable. Auto margins collapse to zero once
+  // the free space is gone, so all of the overflow lands below instead.
   return (
-    <div className="fixed inset-0 z-100 bg-panel2 flex justify-center items-center overflow-y-auto py-10">
+    <div className="relative flex-1 min-h-0 bg-panel2 flex justify-center items-start overflow-y-auto py-10">
       {/* Both ways out of a screen that is otherwise a dead end until a
           connection is saved: the X for someone who just wants to look around,
           and the link below the form for anyone reading top to bottom. */}
@@ -28,7 +38,7 @@ export function GettingStartedScreen(): ReactElement {
         <XIcon className="size-4" />
       </Button>
 
-      <div className="w-full max-w-md flex flex-col gap-6 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-500">
+      <div className="w-full max-w-md my-auto flex flex-col gap-6 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-500">
         <div>
           <div className="text-lg font-bold tracking-tight text-accent mb-3">
             Squeal
