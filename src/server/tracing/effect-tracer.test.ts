@@ -8,12 +8,33 @@ import {
   Option,
   Tracer
 } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { spansTable } from '@/database/schema'
 import { SpanRecord } from '@/glue/tracing/spans'
 import { AppDatabase } from '@/server/services/app-database'
 import { makeTestAppDatabase } from '@/test/effect-test-helper'
+
+// Counts the writes without replacing them: how many INSERTs a burst of spans
+// turns into is the thing under test, and the rows still have to land for the
+// flush test below.
+const { writeSpansSpy } = vi.hoisted(() => ({
+  writeSpansSpy: vi.fn<(records: unknown[]) => void>()
+}))
+
+vi.mock('@/main/tracing/span-writer', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/main/tracing/span-writer')>()
+
+  return {
+    ...actual,
+    writeSpans: (...args: Parameters<typeof actual.writeSpans>) => {
+      writeSpansSpy(args[0])
+
+      return actual.writeSpans(...args)
+    }
+  }
+})
 
 import { makeSquealTracer, TracerLive } from './effect-tracer'
 
@@ -258,6 +279,37 @@ describe('makeSquealTracer', () => {
 })
 
 describe('TracerLive', () => {
+  beforeEach(() => {
+    writeSpansSpy.mockClear()
+  })
+
+  // The drain loop used to take a minimum of one span, which returns the instant
+  // a span is available — so the batch of 100 it looks like it writes was really
+  // one INSERT, one transaction and one fsync per span, on the main process's
+  // event loop. Running a single query ends seven spans.
+  it('writes spans that end within the linger window as one batch', async () => {
+    await Effect.runPromise(
+      Effect.forEach([1, 2, 3, 4], (index) =>
+        // Spread out on purpose. Spans that all end in the same tick get batched
+        // either way; the ones a real query produces end tens of milliseconds
+        // apart, which is exactly when a minimum of one span per take turns into
+        // a write per span.
+        Effect.sleep('10 millis').pipe(Effect.withSpan(`burst.${index}`))
+      )
+        .pipe(
+          // Outlasts the linger window, so the write under test is the batched
+          // one from the drain fiber rather than the shutdown flush.
+          Effect.andThen(Effect.sleep('400 millis')),
+          Effect.provide(TracerLive)
+        )
+        .pipe(Effect.provide(makeTestAppDatabase()))
+    )
+
+    expect(
+      writeSpansSpy.mock.calls.map((call) => (call[0] as unknown[]).length)
+    ).toEqual([4])
+  })
+
   // Spans are queued rather than written inline, so the shutdown flush is the
   // only thing that keeps the spans explaining a shutdown from being lost.
   it('flushes queued spans when its scope closes', async () => {
