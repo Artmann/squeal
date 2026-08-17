@@ -1,6 +1,11 @@
 import { autocompletion } from '@codemirror/autocomplete'
 import { sql } from '@codemirror/lang-sql'
-import { Prec, RangeSetBuilder } from '@codemirror/state'
+import {
+  Compartment,
+  type Extension,
+  Prec,
+  RangeSetBuilder
+} from '@codemirror/state'
 import type { ViewUpdate } from '@codemirror/view'
 import {
   EditorView,
@@ -35,6 +40,26 @@ export interface WorksheetEditorProps {
   onRunQuery?: () => void
 }
 
+// Hoisted out of the render on purpose. `@uiw/react-codemirror` lists
+// `basicSetup` — along with `extensions`, `onChange` and `onUpdate` — in the deps
+// of the effect that dispatches `StateEffect.reconfigure`, and every reconfigure
+// re-runs `EditorView.theme`, which allocates a new class name and a new
+// StyleModule that style-mod appends to the document and never removes. A fresh
+// object literal here therefore leaked CSS rules and re-serialized the whole
+// stylesheet on every keystroke, so typing got slower the longer the app stayed
+// open. Every prop this component hands CodeMirror has to keep its identity.
+//
+// `autocompletion` is off because the extension list below registers it
+// explicitly; basicSetup only leaves an option out when it is literally `false`,
+// so without this it would be registered twice.
+const editorBasicSetup = {
+  autocompletion: false,
+  bracketMatching: true,
+  highlightActiveLine: true,
+  history: true,
+  lineNumbers: true
+}
+
 // Formatting itself lives in `worksheet-editor-format` so it can be tested
 // against a real EditorState without mounting the component; this only turns a
 // parse failure into something the user sees.
@@ -64,19 +89,36 @@ export function WorksheetEditor({
   onCursorPositionChange,
   onRunQuery
 }: WorksheetEditorProps): ReactElement {
+  const activeStatement =
+    activeStatementIndex !== null ? statements[activeStatementIndex] : null
+
+  const activeStatementRef = useRef(activeStatement)
   const databaseTypeRef = useRef(databaseType)
   const editorRef = useRef<ReactCodeMirrorRef>(null)
+  const gutterCompartment = useMemo(() => new Compartment(), [])
   const lastCursorPositionRef = useRef<CursorPosition | null>(null)
+  const onChangeRef = useRef(onChange)
+  const onCursorChangeRef = useRef(onCursorChange)
+  const onCursorPositionChangeRef = useRef(onCursorPositionChange)
   const onRunQueryRef = useRef(onRunQuery)
 
-  // The keymap is built once, so it reads the current props through refs
-  // rather than being rebuilt on every change. Syncing them in an effect
-  // rather than during render keeps the render pure; the keymap only fires on
-  // user input, which is always after the effect has run.
+  // The keymap and the callbacks handed to CodeMirror are built once, so they
+  // read the current props through refs rather than being rebuilt on every
+  // change. Syncing them in an effect rather than during render keeps the render
+  // pure; they only fire on user input, which is always after the effect has
+  // run.
   useEffect(() => {
+    activeStatementRef.current = activeStatement
     databaseTypeRef.current = databaseType
+    onChangeRef.current = onChange
+    onCursorChangeRef.current = onCursorChange
+    onCursorPositionChangeRef.current = onCursorPositionChange
     onRunQueryRef.current = onRunQuery
   })
+
+  const handleChange = useCallback((value: string) => {
+    onChangeRef.current?.(value)
+  }, [])
 
   const handleClickOutsideTheEditor = useCallback(() => {
     if (editorRef.current) {
@@ -99,22 +141,19 @@ export function WorksheetEditor({
     view.focus()
   }, [])
 
-  const handleUpdate = useCallback(
-    (update: ViewUpdate) => {
-      const offset = update.state.selection.main.head
-      const position = toCursorPosition(update.state.doc.lineAt(offset), offset)
+  const handleUpdate = useCallback((update: ViewUpdate) => {
+    const offset = update.state.selection.main.head
+    const position = toCursorPosition(update.state.doc.lineAt(offset), offset)
 
-      if (isSameCursorPosition(lastCursorPositionRef.current, position)) {
-        return
-      }
+    if (isSameCursorPosition(lastCursorPositionRef.current, position)) {
+      return
+    }
 
-      lastCursorPositionRef.current = position
+    lastCursorPositionRef.current = position
 
-      onCursorPositionChange?.(position.offset)
-      onCursorChange?.(position)
-    },
-    [onCursorChange, onCursorPositionChange]
-  )
+    onCursorPositionChangeRef.current?.(position.offset)
+    onCursorChangeRef.current?.(position)
+  }, [])
 
   const extensions = useMemo(() => {
     return [
@@ -123,6 +162,11 @@ export function WorksheetEditor({
       sql(),
       EditorView.lineWrapping,
       autocompletion(),
+      // The gutter is the one extension that depends on props, so it lives in a
+      // Compartment and is swapped by the effect below. Rebuilding the array
+      // instead would change the `extensions` identity and reconfigure the whole
+      // editor on every keystroke.
+      gutterCompartment.of(activeStatementGutter(activeStatementRef.current)),
       Prec.highest(
         keymap.of([
           {
@@ -148,31 +192,23 @@ export function WorksheetEditor({
         ])
       )
     ]
-  }, [])
+  }, [gutterCompartment])
 
-  const activeStatement =
-    activeStatementIndex !== null ? statements[activeStatementIndex] : null
+  // Swapping just this compartment leaves the rest of the configuration — and
+  // the `extensions` array's identity — untouched.
+  useEffect(() => {
+    const view = editorRef.current?.view
 
-  const gutterExtension = useMemo(() => {
-    return gutterLineClass.compute(['doc'], (state) => {
-      const builder = new RangeSetBuilder<GutterMarker>()
+    if (!view) {
+      return
+    }
 
-      if (!activeStatement) {
-        return builder.finish()
-      }
-
-      const positions = findGutterMarkerPositions(
-        state.doc.toString(),
-        activeStatement
+    view.dispatch({
+      effects: gutterCompartment.reconfigure(
+        activeStatementGutter(activeStatement)
       )
-
-      for (const position of positions) {
-        builder.add(position, position, activeStatementMarker)
-      }
-
-      return builder.finish()
     })
-  }, [activeStatement])
+  }, [activeStatement, gutterCompartment])
 
   return (
     <div className="relative w-full h-full overflow-hidden text-xs flex flex-col">
@@ -187,19 +223,12 @@ export function WorksheetEditor({
 
       <CodeMirror
         ref={editorRef}
-        basicSetup={{
-          bracketMatching: true,
-          highlightActiveLine: true,
-          history: true,
-          lineNumbers: true
-        }}
-        extensions={[...extensions, gutterExtension]}
+        basicSetup={editorBasicSetup}
+        extensions={extensions}
         height="100%"
         theme="none"
         value={content}
-        onChange={(value) => {
-          onChange?.(value)
-        }}
+        onChange={handleChange}
         onUpdate={handleUpdate}
       />
       <button
@@ -217,3 +246,27 @@ class ActiveStatementMarker extends GutterMarker {
 }
 
 const activeStatementMarker = new ActiveStatementMarker()
+
+// Marks the gutter lines the active statement spans. Recomputed whenever the
+// document changes, and rebuilt from scratch whenever the active statement moves
+// — which is what the compartment in the component swaps.
+function activeStatementGutter(activeStatement: Statement | null): Extension {
+  return gutterLineClass.compute(['doc'], (state) => {
+    const builder = new RangeSetBuilder<GutterMarker>()
+
+    if (!activeStatement) {
+      return builder.finish()
+    }
+
+    const positions = findGutterMarkerPositions(
+      state.doc.toString(),
+      activeStatement
+    )
+
+    for (const position of positions) {
+      builder.add(position, position, activeStatementMarker)
+    }
+
+    return builder.finish()
+  })
+}
