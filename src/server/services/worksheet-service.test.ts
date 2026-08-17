@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { asc, eq, isNull } from 'drizzle-orm'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -78,6 +78,194 @@ describe('WorksheetService', () => {
     )
 
     expect(names).toEqual(['Third', 'First', 'Second'])
+  })
+
+  // Nothing enforces uniqueness on sortOrder, and `list` absorbs duplicates
+  // silently by falling through to `desc(createdAt)` — so a break shows up as an
+  // order the user never asked for, with no error anywhere.
+  describe('sortOrder integrity', () => {
+    // Ordered by id, because SQLite guarantees nothing without an ORDER BY and
+    // two of these assertions compare the arrays positionally.
+    const liveSortOrders = Effect.gen(function* () {
+      const appDatabase = yield* AppDatabase
+
+      const rows = yield* appDatabase.execute((client) =>
+        client
+          .select({
+            id: worksheetsTable.id,
+            sortOrder: worksheetsTable.sortOrder
+          })
+          .from(worksheetsTable)
+          .where(isNull(worksheetsTable.deletedAt))
+          .orderBy(asc(worksheetsTable.id))
+      )
+
+      return rows.map((row) => row.sortOrder)
+    })
+
+    it('refuses a reorder that leaves out a live worksheet', async () => {
+      const { error, sortOrders } = await run(
+        Effect.gen(function* () {
+          const service = yield* WorksheetService
+
+          const first = yield* service.create({ name: 'First' })
+          yield* service.create({ name: 'Second' })
+
+          const before = yield* liveSortOrders
+          const error = yield* service.reorder([first.id]).pipe(Effect.flip)
+          const after = yield* liveSortOrders
+
+          return { error, sortOrders: { after, before } }
+        })
+      )
+
+      expect(error._tag).toEqual('UnknownWorksheetIdsError')
+      expect(sortOrders.after).toEqual(sortOrders.before)
+    })
+
+    // Create A/B/C, reorder a subset, create D, reorder another subset: `create`
+    // only ever reads `min(sortOrder)`, so the renumbered rows and the new one
+    // collide and `list` returns an order nobody asked for.
+    it('never lets two live worksheets share a position', async () => {
+      const { error, sortOrders } = await run(
+        Effect.gen(function* () {
+          const service = yield* WorksheetService
+
+          const first = yield* service.create({ name: 'A' })
+          const second = yield* service.create({ name: 'B' })
+          const third = yield* service.create({ name: 'C' })
+
+          yield* service.reorder([first.id, second.id, third.id])
+
+          const fourth = yield* service.create({ name: 'D' })
+
+          // The partial list is what used to collide: D took min - 1 and the
+          // renumber then gave D and C the positions A and B already held.
+          const error = yield* service
+            .reorder([fourth.id, third.id])
+            .pipe(Effect.flip)
+
+          return { error, sortOrders: yield* liveSortOrders }
+        })
+      )
+
+      // Asserted together so the uniqueness cannot pass merely because the
+      // reorder was refused for some unrelated reason.
+      expect({
+        _tag: error._tag,
+        distinctPositions: new Set(sortOrders).size,
+        total: sortOrders.length
+      }).toEqual({
+        _tag: 'UnknownWorksheetIdsError',
+        distinctPositions: 4,
+        total: 4
+      })
+    })
+
+    it('does not count a soft-deleted worksheet as missing from the order', async () => {
+      const names = await run(
+        Effect.gen(function* () {
+          const service = yield* WorksheetService
+
+          const first = yield* service.create({ name: 'First' })
+          const second = yield* service.create({ name: 'Second' })
+          const doomed = yield* service.create({ name: 'Doomed' })
+
+          yield* service.remove(doomed.id)
+
+          const ordered = yield* service.reorder([second.id, first.id])
+
+          return ordered.map((worksheet) => worksheet.name)
+        })
+      )
+
+      expect(names).toEqual(['Second', 'First'])
+    })
+
+    it('writes no position at all when an id is unknown', async () => {
+      const { after, before } = await run(
+        Effect.gen(function* () {
+          const service = yield* WorksheetService
+
+          const first = yield* service.create({ name: 'First' })
+          const second = yield* service.create({ name: 'Second' })
+
+          const before = yield* liveSortOrders
+
+          yield* service
+            .reorder([second.id, first.id, 'missing'])
+            .pipe(Effect.flip)
+
+          const after = yield* liveSortOrders
+
+          return { after, before }
+        })
+      )
+
+      expect(after).toEqual(before)
+    })
+
+    // A repeated id passes the "every supplied id is live" check but would give
+    // that worksheet its last position and leave a gap, so the count check has
+    // to reject it too. The request schema also forbids it; this covers direct
+    // service callers.
+    it('refuses a reorder that names one worksheet twice', async () => {
+      const { error, sortOrders } = await run(
+        Effect.gen(function* () {
+          const service = yield* WorksheetService
+
+          const first = yield* service.create({ name: 'First' })
+          const second = yield* service.create({ name: 'Second' })
+          yield* service.create({ name: 'Third' })
+
+          const error = yield* service
+            .reorder([first.id, second.id, first.id])
+            .pipe(Effect.flip)
+
+          return { error, sortOrders: yield* liveSortOrders }
+        })
+      )
+
+      expect({
+        _tag: error._tag,
+        distinctPositions: new Set(sortOrders).size
+      }).toEqual({ _tag: 'UnknownWorksheetIdsError', distinctPositions: 3 })
+    })
+
+    // One statement, so there is no partial-write window to roll back from.
+    it('renumbers every worksheet in a single statement', async () => {
+      const sortOrders = await run(
+        Effect.gen(function* () {
+          const service = yield* WorksheetService
+
+          const first = yield* service.create({ name: 'First' })
+          const second = yield* service.create({ name: 'Second' })
+          const third = yield* service.create({ name: 'Third' })
+
+          yield* service.reorder([third.id, first.id, second.id])
+
+          const appDatabase = yield* AppDatabase
+
+          const rows = yield* appDatabase.execute((client) =>
+            client
+              .select({
+                name: worksheetsTable.name,
+                sortOrder: worksheetsTable.sortOrder
+              })
+              .from(worksheetsTable)
+              .orderBy(asc(worksheetsTable.sortOrder))
+          )
+
+          return rows
+        })
+      )
+
+      expect(sortOrders).toEqual([
+        { name: 'Third', sortOrder: 0 },
+        { name: 'First', sortOrder: 1 },
+        { name: 'Second', sortOrder: 2 }
+      ])
+    })
   })
 
   it('updates only the provided fields', async () => {

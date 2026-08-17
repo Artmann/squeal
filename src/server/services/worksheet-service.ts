@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, inArray, isNull, min, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { Effect } from 'effect'
+import invariant from 'tiny-invariant'
 
 import { worksheetsTable } from '@/database/schema'
 import {
@@ -28,19 +29,19 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
         // current minimum gets it there without renumbering every other row,
         // and it also clears the legacy rows that never got a sortOrder, since
         // those sort last.
-        const [lowest] = yield* appDatabase.execute((client) =>
-          client
-            .select({ sortOrder: min(worksheetsTable.sortOrder) })
-            .from(worksheetsTable)
-            .where(isNull(worksheetsTable.deletedAt))
-        )
-
+        //
+        // The minimum is read in the INSERT itself rather than by a separate
+        // SELECT, so two concurrent creates cannot both read the same minimum
+        // and both claim the place below it. One statement is also why this
+        // needs no transaction: `AppDatabase.transaction` issues BEGIN on the
+        // one shared connection, which would make a second concurrent write
+        // either fail its own BEGIN or get rolled back along with this one.
         const [worksheet] = yield* appDatabase.execute((client) =>
           client
             .insert(worksheetsTable)
             .values({
               name: request.name,
-              sortOrder: (lowest?.sortOrder ?? 0) - 1,
+              sortOrder: sql`(select coalesce(min(${worksheetsTable.sortOrder}), 0) - 1 from ${worksheetsTable} where ${worksheetsTable.deletedAt} is null)`,
               ...(request.content === undefined
                 ? {}
                 : { content: request.content }),
@@ -49,6 +50,11 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
                 : { databaseId: request.databaseId })
             })
             .returning()
+        )
+
+        invariant(
+          worksheet,
+          'The app database did not return the created worksheet.'
         )
 
         return toWorksheetDto(worksheet)
@@ -104,35 +110,65 @@ export class WorksheetService extends Effect.Service<WorksheetService>()(
       const reorder = Effect.fn('WorksheetService.reorder')(function* (
         worksheetIds: readonly string[]
       ) {
-        const records = yield* appDatabase.execute((client) =>
-          client
-            .select({ id: worksheetsTable.id })
-            .from(worksheetsTable)
-            .where(
-              and(
-                inArray(worksheetsTable.id, [...worksheetIds]),
-                isNull(worksheetsTable.deletedAt)
-              )
-            )
+        const liveIds = new Set(
+          (yield* appDatabase.execute((client) =>
+            client
+              .select({ id: worksheetsTable.id })
+              .from(worksheetsTable)
+              .where(isNull(worksheetsTable.deletedAt))
+          )).map((record) => record.id)
         )
 
-        if (records.length !== worksheetIds.length) {
-          const knownIds = new Set(records.map((record) => record.id))
+        const unknownIds = worksheetIds.filter((id) => !liveIds.has(id))
 
+        if (unknownIds.length > 0) {
           return yield* new UnknownWorksheetIdsError({
             message: 'One or more worksheet ids are unknown.',
-            unknownIds: worksheetIds.filter((id) => !knownIds.has(id))
+            unknownIds
           })
         }
 
-        for (const [index, id] of worksheetIds.entries()) {
-          yield* appDatabase.execute((client) =>
-            client
-              .update(worksheetsTable)
-              .set({ sortOrder: index })
-              .where(eq(worksheetsTable.id, id))
-          )
+        // A reorder has to name every live worksheet exactly once. Checking only
+        // that the supplied ids exist accepts a partial list, which renumbers
+        // part of the list and leaves the rest colliding with it — and `list`
+        // absorbs the collision silently by falling through to `desc(createdAt)`.
+        //
+        // Both halves are needed: a repeated id can make the count match while
+        // still leaving a worksheet unnamed, and it would take only its last
+        // position, leaving a gap where the skipped one should have been.
+        const suppliedIds = new Set(worksheetIds)
+
+        if (
+          suppliedIds.size !== worksheetIds.length ||
+          suppliedIds.size !== liveIds.size
+        ) {
+          return yield* new UnknownWorksheetIdsError({
+            message:
+              'The worksheet list changed while you were reordering. Try again.',
+            unknownIds: []
+          })
         }
+
+        // Every position in one statement, so there is no window in which some
+        // rows are renumbered and others are not. A transaction would be the
+        // other way to get that, but `AppDatabase.transaction` issues BEGIN on
+        // the single shared connection: a concurrent write would either fail its
+        // own BEGIN and surface as "restart Squeal", or be swept into this
+        // transaction and rolled back with it after its own handler had already
+        // answered.
+        const positions = sql.join(
+          worksheetIds.map((id, index) => sql`when ${id} then ${index}`),
+          sql` `
+        )
+
+        yield* appDatabase.execute((client) =>
+          client
+            .update(worksheetsTable)
+            .set({
+              sortOrder: sql`case ${worksheetsTable.id} ${positions} end`
+            })
+            .where(inArray(worksheetsTable.id, [...worksheetIds]))
+        )
 
         return yield* list()
       })
