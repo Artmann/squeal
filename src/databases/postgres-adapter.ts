@@ -136,42 +136,17 @@ export class PostgresAdapter implements DatabaseAdapter {
     this.activeClient = client
 
     try {
-      // Postgres folds unquoted identifiers to lowercase, so a query written
-      // with the real mixed-case table or column names fails. Retry with those
-      // identifiers quoted, rewriting one at a time — Postgres only reports the
-      // first offending identifier — until the query runs or nothing is left to
-      // fix. The schema is fetched once and reused; the attempted set stops the
-      // loop the moment a rewrite makes no progress.
-      let currentQuery = query
-      let schema: SchemaInfo | undefined
-      const attempted = new Set<string>()
-
-      for (;;) {
-        try {
-          return await this.executeQuery(client, currentQuery)
-        } catch (error) {
-          if (!isMissingIdentifierError(error)) {
-            throw error
-          }
-
-          schema ??= await this.getSchemaWithClient(client)
-
-          const rewritten = rewriteForMissingIdentifier(
-            currentQuery,
-            schema,
-            error
-          )
-
-          if (!rewritten || attempted.has(rewritten)) {
-            throw error
-          }
-
-          log.debug('Retrying with quoted identifiers')
-
-          attempted.add(rewritten)
-          currentQuery = rewritten
-        }
+      return await this.executeWithIdentifierRetry(client, query)
+    } catch (error) {
+      // Wraps the whole attempt rather than the statement alone, so it also
+      // covers the catalog fetch the rewrite retry runs on this same
+      // connection — a slow scan on a multi-schema database is one of the
+      // likelier moments to be canceled.
+      if (this.canceled && isCanceledStatementError(error)) {
+        throw new QueryCanceledError()
       }
+
+      throw error
     } finally {
       this.activeClient = null
 
@@ -275,6 +250,48 @@ export class PostgresAdapter implements DatabaseAdapter {
     return toQueryResult(rows, lastResult)
   }
 
+  // Postgres folds unquoted identifiers to lowercase, so a query written with
+  // the real mixed-case table or column names fails. Retry with those
+  // identifiers quoted, rewriting one at a time — Postgres only reports the
+  // first offending identifier — until the query runs or nothing is left to
+  // fix. The schema is fetched once and reused; the attempted set stops the
+  // loop the moment a rewrite makes no progress.
+  private async executeWithIdentifierRetry(
+    client: Client,
+    query: string
+  ): Promise<QueryResult> {
+    let currentQuery = query
+    let schema: SchemaInfo | undefined
+    const attempted = new Set<string>()
+
+    for (;;) {
+      try {
+        return await this.executeQuery(client, currentQuery)
+      } catch (error) {
+        if (!isMissingIdentifierError(error)) {
+          throw error
+        }
+
+        schema ??= await this.getSchemaWithClient(client)
+
+        const rewritten = rewriteForMissingIdentifier(
+          currentQuery,
+          schema,
+          error
+        )
+
+        if (!rewritten || attempted.has(rewritten)) {
+          throw error
+        }
+
+        log.debug('Retrying with quoted identifiers')
+
+        attempted.add(rewritten)
+        currentQuery = rewritten
+      }
+    }
+  }
+
   private async getSchemaWithClient(client: Client): Promise<SchemaInfo> {
     const [columnsResult, foreignKeysResult] = await Promise.all([
       client.query(postgresColumnsQuery),
@@ -362,6 +379,38 @@ export async function connectWithRetry<Connection>(
       await sleep(options.delays[attempt])
     }
   }
+}
+
+// SQLSTATE 57014 is query_canceled — the only part of a cancel acknowledgement
+// that reads the same on every server. Postgres translates the message prose
+// through lc_messages, so matching the English wording loses the cancel the
+// moment the server speaks something else.
+const canceledSqlState = '57014'
+
+// The code says a statement stopped early. It does not say who stopped it: an
+// expiring statement_timeout raises 57014 too, and that is usually set on the
+// server, where our client config has no say — ALTER ROLE/DATABASE SET,
+// postgresql.conf, and by default on most managed Postgres. A standby recovery
+// conflict is 57014 as well. Only the prose separates them, and the prose is
+// the thing we stopped trusting.
+//
+// So the code is never read alone. runQuery pairs it with this.canceled, which
+// cancel() sets synchronously before it even issues pg_cancel_backend, so the
+// flag is always set by the time the server's answer arrives. Only cancels
+// this app asked for are claimed; a timeout and an administrator's cancel both
+// keep the server's own message, which is the only thing that explains them.
+//
+// The code arrives from the driver, so it is read defensively rather than
+// assumed: pg's DatabaseError carries it as a string, but nothing in the type
+// system promises that.
+function isCanceledStatementError(error: unknown): boolean {
+  if (!(error instanceof Error) || !('code' in error)) {
+    return false
+  }
+
+  const { code } = error
+
+  return typeof code === 'string' && code === canceledSqlState
 }
 
 function isMissingIdentifierError(error: unknown): boolean {

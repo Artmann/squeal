@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 interface CursorFixture {
   error?: Error
   fields: { name: string }[]
+
+  // Runs at the top of every read, before the callback. Lets a test act while
+  // the statement is in flight — cancelling it, for instance — which is the
+  // only way to reach the paths that depend on a cancel already being
+  // requested.
+  onRead?: () => void
+
   rowCount?: number | null
   rows: Record<string, unknown>[]
 }
@@ -11,12 +18,7 @@ const { cursorState, mockConnect, mockEnd, mockQuery } = vi.hoisted(() => ({
   cursorState: {
     closeCount: 0,
     createdWith: [] as string[],
-    fixtures: [] as {
-      error?: Error
-      fields: { name: string }[]
-      rowCount?: number | null
-      rows: Record<string, unknown>[]
-    }[],
+    fixtures: [] as CursorFixture[],
     readRequests: [] as number[]
   },
   mockConnect: vi.fn(),
@@ -65,6 +67,8 @@ vi.mock('pg-cursor', () => {
       ) => void
     ): void {
       cursorState.readRequests.push(count)
+
+      this.fixture.onRead?.()
 
       if (this.fixture.error) {
         callback(this.fixture.error, [])
@@ -127,6 +131,13 @@ const connectionInfo = {
   password: 'secret',
   port: 5432,
   username: 'testuser'
+}
+
+// pg rejects with a DatabaseError: an Error carrying the SQLSTATE on `code`.
+// The cursor fixture only promises an Error, so the code rides along on the
+// instance rather than widening the fixture type for a driver detail.
+function driverError(message: string, code: string): Error {
+  return Object.assign(new Error(message), { code })
 }
 
 describe('PostgresAdapter', () => {
@@ -450,6 +461,81 @@ describe('PostgresAdapter', () => {
       expect(cursorState.closeCount).toEqual(2)
     })
 
+    // A real driver rejection carries a SQLSTATE, and only 57014 means the
+    // statement was canceled. An ordinary 42P01 must still reach the rewrite.
+    it('retries with quoted identifiers when the missing relation carries SQLSTATE 42P01', async () => {
+      cursorState.fixtures.push(
+        {
+          error: driverError('relation "users" does not exist', '42P01'),
+          fields: [],
+          rows: []
+        },
+        { fields: [{ name: 'id' }], rows: [{ id: 1 }] }
+      )
+
+      mockQuery.mockImplementation((input: unknown) => {
+        if (typeof input === 'string') {
+          return Promise.resolve({
+            rows: input.includes('referenced')
+              ? []
+              : [
+                  {
+                    column_default: null,
+                    column_name: 'id',
+                    data_type: 'integer',
+                    is_nullable: 'NO',
+                    is_primary_key: true,
+                    ordinal_position: 1,
+                    table_name: 'Users',
+                    table_schema: 'public'
+                  }
+                ]
+          })
+        }
+
+        return input
+      })
+
+      const adapter = new PostgresAdapter(connectionInfo)
+      const result = await adapter.runQuery('SELECT * FROM users')
+
+      expect(cursorState.createdWith).toEqual([
+        'SELECT * FROM users',
+        'SELECT * FROM "public"."Users"'
+      ])
+      expect(result).toEqual({
+        fields: [{ name: 'id' }],
+        rowCount: 1,
+        rows: [{ id: 1 }],
+        truncated: false
+      })
+    })
+
+    it('propagates a SQLSTATE 42P01 error the schema cannot rewrite', async () => {
+      const missingRelation = driverError(
+        'relation "ghosts" does not exist',
+        '42P01'
+      )
+
+      cursorState.fixtures.push({
+        error: missingRelation,
+        fields: [],
+        rows: []
+      })
+
+      mockQuery.mockImplementation((input: unknown) =>
+        typeof input === 'string' ? Promise.resolve({ rows: [] }) : input
+      )
+
+      const adapter = new PostgresAdapter(connectionInfo)
+
+      // The whole error, SQLSTATE included: the property under test is that
+      // the driver's own error reaches the caller unwrapped.
+      await expect(adapter.runQuery('SELECT * FROM ghosts')).rejects.toEqual(
+        missingRelation
+      )
+    })
+
     it('closes the cursor and connection even when the query fails', async () => {
       cursorState.fixtures.push({
         error: new Error('Query failed'),
@@ -720,6 +806,90 @@ describe('PostgresAdapter cancellation', () => {
     rejectConnect?.(new Error('Connection terminated'))
 
     await expect(runPromise).rejects.toEqual(new QueryCanceledError())
+  })
+
+  // pg_cancel_backend makes the in-flight read reject with the server's own
+  // prose, and Postgres translates that prose through lc_messages. Only the
+  // SQLSTATE reads the same on every server, so only the SQLSTATE can be read.
+  it('reports a canceled statement as canceled on a German server', async () => {
+    const adapter = new PostgresAdapter(connectionInfo)
+
+    let cancelPromise: Promise<void> | undefined
+
+    cursorState.fixtures.push({
+      error: driverError(
+        'Anweisung wegen Benutzeranforderung abgebrochen',
+        '57014'
+      ),
+      fields: [],
+      // The user hits Cancel with the statement running, and the read then
+      // rejects with the server's acknowledgement.
+      onRead: () => {
+        cancelPromise ??= adapter.cancel()
+      },
+      rows: []
+    })
+
+    await expect(adapter.runQuery('SELECT pg_sleep(60)')).rejects.toEqual(
+      new QueryCanceledError()
+    )
+    expect(cursorState.closeCount).toEqual(1)
+    expect(mockEnd).toHaveBeenCalled()
+
+    await cancelPromise
+  })
+
+  // 57014 says a statement stopped early, not who stopped it. A server-side
+  // statement_timeout raises it too — ALTER ROLE ... SET, postgresql.conf, and
+  // the default on most managed Postgres — and so does a standby recovery
+  // conflict. Nobody asked for those, so the server's own message is all the
+  // user has to go on and it has to survive.
+  it('propagates a statement timeout rather than claiming the user canceled', async () => {
+    const timeout = driverError(
+      'canceling statement due to statement timeout',
+      '57014'
+    )
+
+    cursorState.fixtures.push({ error: timeout, fields: [], rows: [] })
+
+    const adapter = new PostgresAdapter(connectionInfo)
+
+    await expect(adapter.runQuery('SELECT id FROM big_table')).rejects.toEqual(
+      timeout
+    )
+  })
+
+  // The mixed-case retry fetches the catalog on the same connection the query
+  // runs on, and on a heavily multi-schema database those two scans are slow —
+  // which makes this exactly the moment a user gives up and hits Cancel.
+  it('reports a cancel that lands while the schema is being fetched', async () => {
+    const adapter = new PostgresAdapter(connectionInfo)
+
+    let cancelPromise: Promise<void> | undefined
+
+    cursorState.fixtures.push({
+      error: new Error('relation "users" does not exist'),
+      fields: [],
+      rows: []
+    })
+
+    mockQuery.mockImplementation((input: unknown) => {
+      if (typeof input !== 'string') {
+        return input
+      }
+
+      cancelPromise ??= adapter.cancel()
+
+      return Promise.reject(
+        driverError('Anweisung wegen Benutzeranforderung abgebrochen', '57014')
+      )
+    })
+
+    await expect(adapter.runQuery('SELECT * FROM users')).rejects.toEqual(
+      new QueryCanceledError()
+    )
+
+    await cancelPromise
   })
 
   it('does nothing when no query is running', async () => {

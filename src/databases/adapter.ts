@@ -2,8 +2,17 @@
 // off at the driver and flagged as truncated.
 export const maxResultRows = 10_000
 
-// Thrown by adapters when a query is canceled before it ever reaches the
-// server — for example while the connection is still being established.
+// Thrown by adapters when a query was canceled rather than failed: either
+// before it ever reached the server — while the connection was still being
+// established, say — or by the server acknowledging a cancel this app asked
+// for. Adapters raise it in place of the driver error so callers can tell a
+// cancellation from a failure by type.
+//
+// Callers still fall back to matching the server's message, and that fallback
+// is not dead yet: an adapter raises this only for a cancel it requested and
+// recognised, so one arriving by a route it does not cover still surfaces as a
+// driver error. The aim is for the fallback to become redundant — it is not
+// redundant today, and deleting it would bring the localized-message bug back.
 export class QueryCanceledError extends Error {
   constructor() {
     super('Query canceled.')
