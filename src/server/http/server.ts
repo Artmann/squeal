@@ -60,6 +60,15 @@ export const CorsLive = Layer.unwrapEffect(
 
     return HttpApiBuilder.middlewareCors({
       allowedHeaders: ['Authorization', 'Content-Type', 'traceparent'],
+      // Every request carries an Authorization header, which makes every one of
+      // them a preflighted cross-origin request — the renderer's origin is the
+      // `null` of a file:// page in a packaged build and the Vite origin in dev,
+      // and neither is the loopback server's. Without this the middleware sends
+      // no Access-Control-Max-Age at all and Chromium falls back to caching a
+      // preflight for ~5 seconds, so the 250ms result poller and the autosave
+      // pay a second round trip over and over. 600 is the ceiling Chromium
+      // honours; anything larger is clamped to it.
+      maxAge: 600,
       // A predicate rather than the array: given exactly one allowed origin the
       // middleware takes a fast path that emits a constant header without ever
       // comparing the request's Origin, so a packaged build (whose only allowed
