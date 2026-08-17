@@ -50,6 +50,14 @@ export function makeSquealTracer(
 // Writes are batched, so one INSERT covers a whole burst rather than one per
 // span end.
 const spanBatchSize = 100
+
+// What makes the batch real. `takeBetween` with a minimum of one returns the
+// instant a single span is available, so without a pause the drain loop wrote
+// every span on its own — its own INSERT, its own transaction, and its own fsync
+// on the main process's event loop, of which running one query produces seven.
+// Waiting a moment after the first span lets its siblings arrive, at the cost of
+// showing a trace in the dashboard up to this much later.
+const spanLingerWindow = '100 millis'
 const spanQueueCapacity = 2048
 const spanFlushTimeout = '2 seconds'
 const droppedSpanLogInterval = 100
@@ -115,12 +123,20 @@ export const TracerLive = Layer.unwrapScoped(
       )
     )
 
-    yield* Effect.forkScoped(
-      Queue.takeBetween(queue, 1, spanBatchSize).pipe(
-        Effect.flatMap((records) => writeBatch(Chunk.toReadonlyArray(records))),
-        Effect.forever
-      )
+    // Blocks on the first span, then lingers before draining the rest, so a
+    // burst becomes one write. The finalizer above is what covers the spans
+    // still queued when the linger is interrupted by teardown.
+    const drainBatch = Queue.take(queue).pipe(
+      Effect.flatMap((first) =>
+        Effect.sleep(spanLingerWindow).pipe(
+          Effect.zipRight(Queue.takeUpTo(queue, spanBatchSize - 1)),
+          Effect.map((rest) => Chunk.prepend(rest, first))
+        )
+      ),
+      Effect.flatMap((records) => writeBatch(Chunk.toReadonlyArray(records)))
     )
+
+    yield* Effect.forkScoped(Effect.forever(drainBatch))
 
     return Layer.setTracer(
       makeSquealTracer({ persist: makeQueuedPersist(queue) })
