@@ -21,12 +21,6 @@ describe('uiSlice', () => {
         type: 'create-database'
       })
     })
-
-    it('should not include databaseId when creating', () => {
-      const state = reducer(initialState, uiActions.openCreateDatabase())
-
-      expect(state.editorScreen?.databaseId).toBeUndefined()
-    })
   })
 
   describe('openEditDatabase', () => {

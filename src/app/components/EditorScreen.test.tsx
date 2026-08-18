@@ -40,7 +40,7 @@ describe('EditorScreen', () => {
       renderWithProviders(
         <EditorScreen
           databaseId="db-123"
-          mode="edit"
+          type="edit-database"
         />,
         { databases: [testDatabase] }
       )
@@ -52,7 +52,7 @@ describe('EditorScreen', () => {
       renderWithProviders(
         <EditorScreen
           databaseId="db-123"
-          mode="edit"
+          type="edit-database"
         />,
         { databases: [testDatabase] }
       )
@@ -76,12 +76,48 @@ describe('EditorScreen', () => {
       renderWithProviders(
         <EditorScreen
           databaseId="nonexistent"
-          mode="edit"
+          type="edit-database"
         />,
         { databases: [] }
       )
 
-      expect(screen.getByText('Database not found.')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          'This database has been deleted. Close this screen and pick another one.'
+        )
+      ).toBeInTheDocument()
+
+      // The message replaces the form rather than joining it. A form left
+      // mounted here is in edit mode against a row that is gone, so Save
+      // would PATCH a deleted id.
+      expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+
+      // The panel keeps its header, which is what carries the close button.
+      expect(screen.getByText('Edit database')).toBeInTheDocument()
+    })
+
+    it('can be closed when the database is not found', async () => {
+      const user = userEvent.setup()
+      const { store } = renderWithProviders(
+        <EditorScreen
+          databaseId="nonexistent"
+          type="edit-database"
+        />,
+        {
+          databases: [],
+          ui: {
+            editorScreen: { databaseId: 'nonexistent', type: 'edit-database' }
+          }
+        }
+      )
+
+      // The screen is a full-screen overlay over everything else, so a panel
+      // with no way out is not a message -- it is a stuck window.
+      await user.click(screen.getByRole('button', { name: 'Close' }))
+
+      await waitFor(() => {
+        expect(store.getState().ui.editorScreen).toBeUndefined()
+      })
     })
 
     it('closes the editor screen when the close button is clicked', async () => {
@@ -89,7 +125,7 @@ describe('EditorScreen', () => {
       const { store } = renderWithProviders(
         <EditorScreen
           databaseId="db-123"
-          mode="edit"
+          type="edit-database"
         />,
         {
           databases: [testDatabase],
@@ -97,7 +133,7 @@ describe('EditorScreen', () => {
         }
       )
 
-      await user.click(screen.getByRole('button', { name: '' }))
+      await user.click(screen.getByRole('button', { name: 'Close' }))
 
       await waitFor(() => {
         expect(store.getState().ui.editorScreen).toBeUndefined()
@@ -109,7 +145,7 @@ describe('EditorScreen', () => {
       const { store } = renderWithProviders(
         <EditorScreen
           databaseId="db-123"
-          mode="edit"
+          type="edit-database"
         />,
         {
           databases: [testDatabase],
@@ -127,13 +163,17 @@ describe('EditorScreen', () => {
 
   describe('create mode', () => {
     it('renders the add database header', () => {
-      renderWithProviders(<EditorScreen mode="create" />, { databases: [] })
+      renderWithProviders(<EditorScreen type="create-database" />, {
+        databases: []
+      })
 
       expect(screen.getByText('Add database')).toBeInTheDocument()
     })
 
     it('starts with an empty form', () => {
-      renderWithProviders(<EditorScreen mode="create" />, { databases: [] })
+      renderWithProviders(<EditorScreen type="create-database" />, {
+        databases: []
+      })
 
       expect(screen.getByLabelText('Name')).toHaveValue('')
       expect(screen.getByLabelText('Host')).toHaveValue('')
