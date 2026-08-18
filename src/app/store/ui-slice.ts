@@ -1,9 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
-export interface EditorScreen {
-  databaseId?: string
-  type: 'edit-database' | 'create-database'
-}
+// A discriminated union rather than an optional id beside a free type: the
+// reducers below only ever produce these two pairings, and saying so is what
+// lets the screen be handed the state as its props with no translation and no
+// branch for a combination that cannot occur.
+export type EditorScreen =
+  | { type: 'create-database' }
+  | { databaseId: string; type: 'edit-database' }
 
 export interface UiState {
   editorScreen?: EditorScreen

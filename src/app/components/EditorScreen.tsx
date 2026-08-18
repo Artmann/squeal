@@ -31,17 +31,19 @@ function toFormConnectionInfo(
   }
 }
 
-export interface EditorScreenProps {
-  databaseId?: string
-  mode: 'create' | 'edit'
-}
+// The two shapes the screen has: an add, which has no database, and an edit,
+// which always names one. Structurally the store's `EditorScreen`, so App can
+// spread the state straight in.
+export type EditorScreenProps =
+  | { type: 'create-database' }
+  | { databaseId: string; type: 'edit-database' }
 
-export function EditorScreen({
-  databaseId,
-  mode
-}: EditorScreenProps): ReactElement {
+export function EditorScreen(props: EditorScreenProps): ReactElement {
   const dispatch = useAppDispatch()
   const databases = useDatabases()
+
+  const databaseId =
+    props.type === 'edit-database' ? props.databaseId : undefined
 
   const database = useMemo(
     () =>
@@ -53,18 +55,10 @@ export function EditorScreen({
     dispatch(uiActions.closeEditorScreen())
   }, [dispatch])
 
-  if (mode === 'edit' && !database) {
-    return (
-      <div className="absolute inset-0 z-100 bg-bg/70 flex justify-center items-center">
-        <div className="rounded-md border border-border bg-panel px-6 py-5 text-text2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
-          Database not found.
-        </div>
-      </div>
-    )
-  }
-
-  const isCreateMode = mode === 'create'
+  const isCreateMode = props.type === 'create-database'
   const title = isCreateMode ? 'Add database' : 'Edit database'
+
+  const isNotFound = props.type === 'edit-database' && database === undefined
 
   const defaultValues = database
     ? {
@@ -94,6 +88,7 @@ export function EditorScreen({
           <h1 className="text-2xl font-semibold">{title}</h1>
 
           <Button
+            aria-label="Close"
             size="icon-sm"
             variant="ghost"
             onClick={handleClose}
@@ -102,12 +97,27 @@ export function EditorScreen({
           </Button>
         </div>
 
-        <DatabaseForm
-          databaseId={databaseId}
-          defaultValues={defaultValues}
-          onCancel={handleClose}
-          onSuccess={handleClose}
-        />
+        {isNotFound ? (
+          // Deletion is the only writer that removes a row, and it is not
+          // optimistic -- `useDeleteDatabase` writes in `onSuccess` -- so
+          // there is no rollback window to miss an id in. `useDatabases`
+          // suspends and App reads it before this can mount, so the list is
+          // loaded and this is not a load race either. Rendered inside the
+          // panel rather than as a bare message, because the screen covers
+          // everything below it and nothing here answers Escape -- a message
+          // with no close button is not an error state, it is a stuck window.
+          <p className="text-text2">
+            This database has been deleted. Close this screen and pick another
+            one.
+          </p>
+        ) : (
+          <DatabaseForm
+            databaseId={databaseId}
+            defaultValues={defaultValues}
+            onCancel={handleClose}
+            onSuccess={handleClose}
+          />
+        )}
       </div>
     </div>
   )

@@ -267,14 +267,7 @@ export function App(): ReactElement {
           <>
             <Workspace />
 
-            {editorScreen && (
-              <EditorScreen
-                databaseId={editorScreen.databaseId}
-                mode={
-                  editorScreen.type === 'create-database' ? 'create' : 'edit'
-                }
-              />
-            )}
+            {editorScreen && <EditorScreen {...editorScreen} />}
           </>
         )}
       </div>
