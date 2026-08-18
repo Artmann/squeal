@@ -2,21 +2,15 @@ import { Effect } from 'effect'
 
 import {
   AppDatabaseError,
-  ConnectionFailedError,
   QueryExecutionError,
   SecretDecryptError
 } from '../errors'
 
-type InternalError =
-  | AppDatabaseError
-  | ConnectionFailedError
-  | QueryExecutionError
-  | SecretDecryptError
+type InternalError = AppDatabaseError | QueryExecutionError | SecretDecryptError
 
 function isInternalError(error: unknown): error is InternalError {
   return (
     error instanceof AppDatabaseError ||
-    error instanceof ConnectionFailedError ||
     error instanceof QueryExecutionError ||
     error instanceof SecretDecryptError
   )

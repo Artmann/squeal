@@ -11,15 +11,6 @@ export class AppDatabaseError extends Schema.TaggedError<AppDatabaseError>()(
   }
 ) {}
 
-export class ConnectionFailedError extends Schema.TaggedError<ConnectionFailedError>()(
-  'ConnectionFailedError',
-  {
-    // Driver messages only — the full error object embeds the connection
-    // config (host, user), which must never be logged or serialized.
-    message: Schema.String
-  }
-) {}
-
 export class QueryExecutionError extends Schema.TaggedError<QueryExecutionError>()(
   'QueryExecutionError',
   {
