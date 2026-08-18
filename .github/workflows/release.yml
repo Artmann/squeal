@@ -26,11 +26,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-latest is arm64; macos-15-intel is x64. Two runners rather than
-        # one cross-arch build: libsql ships per-arch native bindings as optional
-        # dependencies and forge's packageAfterCopy hook copies node_modules
-        # straight from the host, so only the runner's own architecture is right.
-        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
+        # One macOS runner, not two: `yarn make:mac` builds a universal app, and
+        # `--arch=universal` fetches both Electron binaries itself. The reason
+        # there used to be an Intel runner is that libsql ships per-arch native
+        # bindings as optional dependencies and forge's packageAfterCopy hook
+        # copies node_modules straight from the host, so only the runner's own
+        # architecture was ever present — `scripts/fetch-macos-bindings.ts` is
+        # what supplies the other one now.
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -136,13 +139,23 @@ jobs:
 
           exit 1
 
-      - name: Build artifacts
-        run: yarn make
+      # macOS is the one platform that does not build for the host
+      # architecture: `make:mac` fetches the other architecture's libsql
+      # binding and then asks forge for a universal app, so one DMG and one ZIP
+      # cover every Mac. It is a separate step because it is also the only one
+      # that needs the Apple credentials.
+      - name: Build artifacts (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: yarn make:mac
         env:
           APPLE_APP_SPECIFIC_PASSWORD:
             ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Build artifacts
+        if: ${{ !startsWith(matrix.os, 'macos') }}
+        run: yarn make
 
       - name: Upload to release
         shell: bash

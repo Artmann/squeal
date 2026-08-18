@@ -8,6 +8,7 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import { VitePlugin } from '@electron-forge/plugin-vite'
 import { FusesPlugin } from '@electron-forge/plugin-fuses'
 import { FuseV1Options, FuseVersion } from '@electron/fuses'
+import { execFileSync } from 'child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join, resolve } from 'path'
 
@@ -127,6 +128,52 @@ function copyPackage(
   cpSync(sourcePath, destPath, { recursive: true })
 }
 
+// Signing only happens when CI has handed over the Apple secrets, so `yarn make`
+// still works on a machine that has none.
+const signsWithAppleIdentity = Boolean(process.env.APPLE_TEAM_ID)
+
+// Gives an unsigned macOS build the ad-hoc signature the fuses plugin would
+// normally apply, except on the merged universal app rather than on one of its
+// two slices — see the FusesPlugin comment below for why that has to wait until
+// here. Without it, an arm64 machine kills the app on launch: flipping fuses
+// voided the signature Electron shipped with, and macOS runs no arm64 code that
+// carries a broken one.
+//
+// Skipped entirely once osxSign is configured. This hook runs after packager
+// has signed and notarized, so re-signing here would throw the real signature
+// away.
+function adHocSignIfUnsigned(platform: string, outputPaths: string[]): void {
+  if (signsWithAppleIdentity || platform !== 'darwin') {
+    return
+  }
+
+  for (const outputPath of outputPaths) {
+    const appPath = join(outputPath, 'Squeal.app')
+
+    if (!existsSync(appPath)) {
+      continue
+    }
+
+    try {
+      // The same arguments @electron/fuses uses for its own reset.
+      execFileSync('codesign', [
+        '--sign',
+        '-',
+        '--force',
+        '--preserve-metadata=entitlements,requirements,flags,runtime',
+        '--deep',
+        appPath
+      ])
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+
+      throw new Error(
+        `Could not ad-hoc sign ${appPath}, so the build would not launch: ${reason}. Check that the Xcode command line tools are installed (\`xcode-select --install\`) and that \`codesign\` runs by hand.`
+      )
+    }
+  }
+}
+
 const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
@@ -136,15 +183,19 @@ const config: ForgeConfig = {
       name: 'squeal'
     }),
     // Deliberately no `name`: without one the maker names its output
-    // `Squeal-<version>-<arch>.dmg`, so the arm64 and x64 jobs don't overwrite
-    // each other when the release upload runs with --clobber.
+    // `Squeal-<version>-<arch>.dmg`, which for the universal build macOS ships
+    // is `Squeal-<version>-universal.dmg`. Naming it says out loud that one
+    // download covers both architectures.
     new MakerDMG({ icon: './assets/icons/icon.icns' }, ['darwin']),
     // The DMG is for the first install; this zip is what Squirrel.Mac
     // installs. Do not remove it — Squirrel.Mac cannot read a DMG, so dropping
     // this maker silently ends macOS auto-updates while every build still
     // passes. The name it derives from the packaged directory
-    // (`Squeal-darwin-arm64-<version>.zip`) is also what update.electronjs.org
-    // matches on to pick the right architecture.
+    // (`Squeal-darwin-universal-<version>.zip`) is also what
+    // update.electronjs.org matches on: the `-universal` in it is what makes
+    // the feed serve this one asset to `darwin-x64` and `darwin-arm64` clients
+    // alike, which is how an install running under Rosetta gets migrated to a
+    // native binary.
     new MakerZIP({}, ['darwin']),
     // `bin` is the executable inside the packaged app, so it has to match
     // packager's executable name — `Squeal`, see packagerConfig below. The
@@ -165,6 +216,18 @@ const config: ForgeConfig = {
       // they must stay outside the archive. libsql carries the native binding.
       unpack: '**/node_modules/{@libsql,libsql,mysql2,pg,pg-cursor}/**/*'
     },
+    // macOS ships one universal build, stitched from an x64 slice and an arm64
+    // slice that are both packaged from this machine's node_modules — so both
+    // of them carry both of libsql's macOS bindings (see
+    // `scripts/fetch-macos-bindings.ts`, which `yarn make:mac` runs first).
+    // That leaves @electron/universal looking at two single-arch Mach-O files
+    // that are identical across the slices, which it refuses to merge unless
+    // they are named here. Keeping one copy of each is right: libsql resolves
+    // its binding with `require(`@libsql/${currentTarget()}`)`, so the merged
+    // app picks the one for whichever architecture it runs as.
+    osxUniversal: {
+      x64ArchFiles: '**/@libsql/*/index.node'
+    },
     // No `executableName` on purpose, so it defaults to the product name and
     // the executable is `Squeal`. Packager writes CFBundleDisplayName from the
     // executable name rather than from the product name, so `executableName:
@@ -173,11 +236,11 @@ const config: ForgeConfig = {
     // command from the package name; see the `bin` options above.
     icon: './assets/icons/icon',
     // Only sign when the CI secrets are present, so `yarn make` still works
-    // locally. Unsigned builds launch from disk but are not distributable: the
-    // fuses plugin re-applies an ad-hoc signature before packager rewrites
-    // Info.plist, so the signature does not verify and macOS rejects the app
-    // once it carries a download's quarantine flag.
-    ...(process.env.APPLE_TEAM_ID && {
+    // locally. Unsigned builds launch from disk but are not distributable: all
+    // they get is the ad-hoc signature from `adHocSignIfUnsigned`, which no
+    // Developer ID backs and nothing notarizes, so macOS rejects the app once
+    // it carries a download's quarantine flag.
+    ...(signsWithAppleIdentity && {
       osxNotarize: {
         appleId: process.env.APPLE_ID ?? '',
         appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD ?? '',
@@ -231,12 +294,19 @@ const config: ForgeConfig = {
     //
     // Flipping them rewrites bytes in the Electron binary, which voids the
     // ad-hoc signature it ships with — a quarantined app whose signature does
-    // not verify is what macOS reports as "damaged". Don't set
-    // resetAdHocDarwinSignature here: the plugin already enables it when
-    // packagerConfig has no osxSign, and setting it explicitly would override
-    // that logic. Signed builds get a valid signature from osxSign, which runs
-    // after the fuses are flipped.
+    // not verify is what macOS reports as "damaged". Signed builds get a valid
+    // signature from osxSign, which runs after the fuses are flipped.
+    //
+    // resetAdHocDarwinSignature is off because macOS builds are universal. Left
+    // to itself the plugin turns it on for the arm64 slice only, and only when
+    // there is no osxSign — which re-signs that slice and leaves it carrying
+    // `_CodeSignature/CodeResources` files the x64 slice does not have.
+    // @electron/universal then refuses to merge them: "the number of mach-o
+    // files is not the same between the arm64 and x64 builds". The two slices
+    // have to stay symmetric, so an unsigned build gets its ad-hoc signature
+    // from the postPackage hook below, applied to the merged app instead.
     new FusesPlugin({
+      resetAdHocDarwinSignature: false,
       version: FuseVersion.V1,
       [FuseV1Options.RunAsNode]: false,
       [FuseV1Options.EnableCookieEncryption]: true,
@@ -256,6 +326,9 @@ const config: ForgeConfig = {
       )) {
         copyPackage(sourceNodeModules, destNodeModules, packageName, optional)
       }
+    },
+    postPackage: async (_forgeConfig, packageResult) => {
+      adHocSignIfUnsigned(packageResult.platform, packageResult.outputPaths)
     }
   },
   rebuildConfig: {}
