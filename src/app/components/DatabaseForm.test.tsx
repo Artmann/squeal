@@ -699,6 +699,50 @@ describe('DatabaseForm', () => {
     })
   })
 
+  // The API client flattens issue paths into dotted keys ('connectionInfo.host'),
+  // so this asserts the dotted key reaches the nested field itself rather than
+  // merely rendering the message somewhere on the form.
+  it('attaches a dotted field error to the nested input it names', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(
+        {
+          _tag: 'HttpApiDecodeError',
+          issues: [
+            {
+              _tag: 'Type',
+              message: 'Name is already taken',
+              path: ['name']
+            },
+            {
+              _tag: 'Type',
+              message: 'Invalid host format',
+              path: ['connectionInfo', 'host']
+            }
+          ],
+          message: 'The request payload is invalid'
+        },
+        { status: 400 }
+      )
+    )
+
+    renderDatabaseForm()
+
+    await fillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Host')).toHaveAccessibleDescription(
+        'Invalid host format'
+      )
+    })
+
+    expect(screen.getByLabelText('Name')).toHaveAccessibleDescription(
+      'Name is already taken'
+    )
+  })
+
   // Testing a connection skips the form's own validation, so the contract
   // rejects the payload client-side. That has to surface as an inline field
   // error rather than the schema tree ParseError.message renders.
