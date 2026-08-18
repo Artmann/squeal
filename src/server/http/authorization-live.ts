@@ -4,7 +4,7 @@ import { Config, Effect, Layer, Redacted } from 'effect'
 import { UnauthorizedError } from '@/glue/api/errors'
 import { Authorization, TraceReadAuthorization } from '@/glue/api/security'
 import { ApiToken } from './api-token'
-import { bearerCredential, isAuthorized } from './authorization'
+import { presentsToken } from './authorization'
 
 const unauthorized = new UnauthorizedError({ message: 'Unauthorized' })
 
@@ -14,10 +14,21 @@ export const AuthorizationLive = Layer.effect(
     const token = yield* ApiToken
 
     return {
-      bearer: (credential) =>
-        isAuthorized(Redacted.value(credential), Redacted.value(token))
-          ? Effect.void
-          : Effect.fail(unauthorized)
+      // The decoded credential the platform passes in is ignored: it is a
+      // blind seven-character slice of the header, so it accepts any scheme
+      // and mangles any extra space. Read the header and ask the same question
+      // the trace-read middleware asks. Reading HttpServerRequest here is
+      // legal because this handler's R is HttpRouter.Provided.
+      bearer: () =>
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest
+
+          if (
+            !presentsToken(request.headers.authorization, Redacted.value(token))
+          ) {
+            return yield* Effect.fail(unauthorized)
+          }
+        })
     }
   })
 )
@@ -49,10 +60,7 @@ export const TraceReadAuthorizationLive = Layer.effect(
       }
 
       if (
-        !isAuthorized(
-          bearerCredential(request.headers.authorization),
-          Redacted.value(token)
-        )
+        !presentsToken(request.headers.authorization, Redacted.value(token))
       ) {
         return yield* Effect.fail(unauthorized)
       }
