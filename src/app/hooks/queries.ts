@@ -82,7 +82,11 @@ export function useSecretStorage(): SecretStorageResponse {
   return useSuspenseQuery(secretStorageQueryOptions).data
 }
 
-export function useDatabaseSchema(databaseId: string | undefined) {
+// One database's schema. Not exported: the only reader outside this module was
+// the explorer's table list, which now takes its tables from the parent's
+// prefetch, and nothing else should reach past `useDatabaseSchemas` for a
+// single row. `useServerVersion` below is the one caller left.
+function useDatabaseSchema(databaseId: string | undefined) {
   return useQuery<SchemaInfoDto>({
     queryKey: databaseId ? queryKeys.schema(databaseId) : ['schema', 'noop'],
     queryFn: () => {
@@ -98,9 +102,10 @@ export function useDatabaseSchema(databaseId: string | undefined) {
 }
 
 // Warms every database's schema in the background so search and expansion are
-// instant. Reuses the same query keys as useDatabaseSchema, so a later
-// per-database read is a cache hit rather than a second request. Results line
-// up by index with databaseIds.
+// instant, and is the source the explorer reads each row's tables from. Uses
+// the same query keys as useDatabaseSchema, so the version read there is a
+// cache hit rather than a second request. Results line up by index with
+// databaseIds.
 export function useDatabaseSchemas(databaseIds: string[]) {
   return useQueries({
     queries: databaseIds.map((databaseId) => ({

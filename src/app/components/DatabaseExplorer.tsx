@@ -17,11 +17,7 @@ import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
-import {
-  useDatabases,
-  useDatabaseSchema,
-  useDatabaseSchemas
-} from '../hooks/queries'
+import { useDatabases, useDatabaseSchemas } from '../hooks/queries'
 import {
   useCreateWorksheet,
   useDeleteDatabase,
@@ -64,6 +60,7 @@ interface RenderedDatabaseRow {
   database: DatabaseDto
   hasMultipleSchemas: boolean
   searchMatch?: DatabaseMatch
+  tables: TableInfo[]
 }
 
 // Builds the rows to render: while searching, only databases with a match
@@ -71,6 +68,14 @@ interface RenderedDatabaseRow {
 // Each row notes whether its database spans multiple schemas, so duplicate
 // table names (common across schemas) stay distinguishable without adding
 // noise to single-schema databases.
+//
+// This is the only place holding both the schema and the match, so it is the
+// only place that decides what a row shows. That matters because
+// `DatabaseMatch.tables` means two things — the matching subset when the
+// search forces the row open, the whole list when only the name matched — and
+// resolving it here is what lets the list component take a plain array of
+// tables. `DatabaseRow` is still handed the match, but only to decide whether
+// the row is open.
 function computeRenderedRows(
   databases: DatabaseDto[],
   schemas: (SchemaInfo | undefined)[],
@@ -78,14 +83,24 @@ function computeRenderedRows(
 ): RenderedDatabaseRow[] {
   const isSearching = searchQuery.trim().length > 0
 
-  const rows = databases.map((database, index) => ({
-    database,
-    hasMultipleSchemas: spansMultipleSchemas(schemas[index]),
-    searchMatch: isSearching
+  const rows = databases.map((database, index) => {
+    const searchMatch = isSearching
       ? (computeDatabaseMatch(database, schemas[index], searchQuery) ??
         undefined)
       : undefined
-  }))
+
+    return {
+      database,
+      hasMultipleSchemas: spansMultipleSchemas(schemas[index]),
+      searchMatch,
+      // Reading the schema here rather than in the expanded row gives up no
+      // laziness: the caller fetches every schema unconditionally. If a
+      // conditional prefetch is ever reintroduced, the tables have to be
+      // threaded from wherever that fetch lands instead of being read again
+      // further down.
+      tables: searchMatch?.tables ?? schemas[index]?.tables ?? []
+    }
+  })
 
   if (!isSearching) {
     return rows
@@ -276,7 +291,8 @@ export function DatabaseExplorer(): ReactElement {
   const isSearching = normalizedSearchQuery.length > 0
 
   // Prefetch every schema in the background so search and expansion are instant,
-  // and reuse those results as the source for matching tables and columns.
+  // and reuse those results as the source for what each row shows, matched or
+  // not.
   const schemaResults = useDatabaseSchemas(
     databases.data.map((database) => database.id)
   )
@@ -369,6 +385,7 @@ export function DatabaseExplorer(): ReactElement {
                 isSortingDisabled={isSortingDisabled}
                 searchMatch={row.searchMatch}
                 searchQuery={normalizedSearchQuery}
+                tables={row.tables}
                 onDelete={handleDeleteDatabase}
                 onEdit={handleEditDatabase}
                 onRefresh={refresh}
@@ -462,9 +479,11 @@ interface DatabaseRowProps {
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
   onRefresh: (database: DatabaseDto) => void
+  /** Only for deciding whether the row is open — what it shows is `tables`. */
   searchMatch?: DatabaseMatch
   /** Normalized, so trailing whitespace does not count as a new question. */
   searchQuery: string
+  tables: TableInfo[]
 }
 
 // A decision only speaks for the context it was made in:
@@ -519,7 +538,8 @@ function DatabaseRow({
   onEdit,
   onRefresh,
   searchMatch,
-  searchQuery
+  searchQuery,
+  tables
 }: DatabaseRowProps): ReactElement {
   const dispatch = useAppDispatch()
 
@@ -579,7 +599,7 @@ function DatabaseRow({
         <DatabaseTableList
           database={database}
           hasMultipleSchemas={hasMultipleSchemas}
-          searchMatch={searchMatch}
+          tables={tables}
         />
       )}
     </div>
@@ -662,27 +682,20 @@ function DatabaseRowHeader({
 interface DatabaseTableListProps {
   database: DatabaseDto
   hasMultipleSchemas: boolean
-  searchMatch?: DatabaseMatch
+  tables: TableInfo[]
 }
 
 function DatabaseTableList({
   database,
   hasMultipleSchemas,
-  searchMatch
+  tables
 }: DatabaseTableListProps): ReactElement {
   const dispatch = useAppDispatch()
   const expandedTables = useAppSelector(
     (state) => state.databaseExplorer.expandedTables
   )
 
-  // While searching, the tables come from the precomputed match, so the lazy
-  // fetch is skipped; otherwise the list only mounts once the row is
-  // expanded, which is exactly when the schema is needed.
-  const schema = useDatabaseSchema(searchMatch ? undefined : database.id)
-
   const handleQueryTable = useQueryTableWorksheet(database, hasMultipleSchemas)
-
-  const tables = searchMatch?.tables ?? schema.data?.tables ?? []
 
   return (
     <div className="pt-[1px] pb-[3px]">

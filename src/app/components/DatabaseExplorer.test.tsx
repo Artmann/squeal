@@ -264,6 +264,48 @@ describe('DatabaseExplorer', () => {
     expect(screen.queryByText('users')).not.toBeInTheDocument()
   })
 
+  it('reveals only the tables a search matched', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      schemas: { 'db-123': testSchema }
+    })
+
+    await user.type(screen.getByPlaceholderText('Filter tables'), 'user')
+
+    // The match is what forces the row open, so what it opens onto is the
+    // matching tables — not the whole list with the answer somewhere in it.
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.queryByText('posts')).not.toBeInTheDocument()
+  })
+
+  it('shows each database its own tables', async () => {
+    const user = userEvent.setup()
+    const otherSchema: SchemaInfo = {
+      databaseName: 'otherdb',
+      tables: [{ ...testSchema.tables[0], tableName: 'invoices' }]
+    }
+
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [
+        testDatabase,
+        { ...testDatabase, id: 'db-999', name: 'Other Database' }
+      ],
+      schemas: { 'db-123': testSchema, 'db-999': otherSchema }
+    })
+
+    await user.click(screen.getByText('Other Database'))
+
+    // The rows read their schemas by position in an array built from a second
+    // pass over the same databases. That is correct only while the two passes
+    // stay in step, and nothing about it is checked by types: a filter or sort
+    // added to one of them would quietly file one database's tables under
+    // another's name.
+    expect(screen.getByText('invoices')).toBeInTheDocument()
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+  })
+
   it('collapses a database the search forced open', async () => {
     const user = userEvent.setup()
 
