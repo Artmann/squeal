@@ -132,6 +132,26 @@ function copyPackage(
 // still works on a machine that has none.
 const signsWithAppleIdentity = Boolean(process.env.APPLE_TEAM_ID)
 
+function adHocSign(appPath: string): void {
+  try {
+    // The same arguments @electron/fuses uses for its own reset.
+    execFileSync('codesign', [
+      '--sign',
+      '-',
+      '--force',
+      '--preserve-metadata=entitlements,requirements,flags,runtime',
+      '--deep',
+      appPath
+    ])
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+
+    throw new Error(
+      `Could not ad-hoc sign ${appPath}, so the build would not launch: ${reason}. Check that the Xcode command line tools are installed (\`xcode-select --install\`) and that \`codesign\` runs by hand.`
+    )
+  }
+}
+
 // Gives an unsigned macOS build the ad-hoc signature the fuses plugin would
 // normally apply, except on the merged universal app rather than on one of its
 // two slices — see the FusesPlugin comment below for why that has to wait until
@@ -139,37 +159,18 @@ const signsWithAppleIdentity = Boolean(process.env.APPLE_TEAM_ID)
 // voided the signature Electron shipped with, and macOS runs no arm64 code that
 // carries a broken one.
 //
-// Skipped entirely once osxSign is configured. This hook runs after packager
-// has signed and notarized, so re-signing here would throw the real signature
-// away.
-function adHocSignIfUnsigned(platform: string, outputPaths: string[]): void {
-  if (signsWithAppleIdentity || platform !== 'darwin') {
+// Does nothing once osxSign is configured. This runs after packager has signed
+// and notarized, so re-signing here would throw the real signature away.
+function adHocSignIfUnsigned(outputPaths: string[]): void {
+  if (signsWithAppleIdentity) {
     return
   }
 
   for (const outputPath of outputPaths) {
     const appPath = join(outputPath, 'Squeal.app')
 
-    if (!existsSync(appPath)) {
-      continue
-    }
-
-    try {
-      // The same arguments @electron/fuses uses for its own reset.
-      execFileSync('codesign', [
-        '--sign',
-        '-',
-        '--force',
-        '--preserve-metadata=entitlements,requirements,flags,runtime',
-        '--deep',
-        appPath
-      ])
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-
-      throw new Error(
-        `Could not ad-hoc sign ${appPath}, so the build would not launch: ${reason}. Check that the Xcode command line tools are installed (\`xcode-select --install\`) and that \`codesign\` runs by hand.`
-      )
+    if (existsSync(appPath)) {
+      adHocSign(appPath)
     }
   }
 }
@@ -328,7 +329,9 @@ const config: ForgeConfig = {
       }
     },
     postPackage: async (_forgeConfig, packageResult) => {
-      adHocSignIfUnsigned(packageResult.platform, packageResult.outputPaths)
+      if (packageResult.platform === 'darwin') {
+        adHocSignIfUnsigned(packageResult.outputPaths)
+      }
     }
   },
   rebuildConfig: {}

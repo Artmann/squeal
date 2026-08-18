@@ -46,9 +46,7 @@ function readVersion(packageName: string): string | null {
   return typeof version === 'string' ? version : null
 }
 
-// The versions libsql itself pins, so the binding for the other architecture can
-// never drift from the one this machine already has.
-function readPinnedVersions(): Record<string, string> {
+function readLibsqlOptionalDependencies(): Record<string, string> {
   const packageJsonPath = join(nodeModules, 'libsql', 'package.json')
 
   if (!existsSync(packageJsonPath)) {
@@ -60,10 +58,17 @@ function readPinnedVersions(): Record<string, string> {
   const packageJson: unknown = JSON.parse(
     readFileSync(packageJsonPath, 'utf-8')
   )
-  const optional =
+
+  return (
     (packageJson as { optionalDependencies?: Record<string, string> })
       .optionalDependencies ?? {}
+  )
+}
 
+// The versions libsql itself pins, so the binding for the other architecture can
+// never drift from the one this machine already has.
+function readPinnedVersions(): Record<string, string> {
+  const optional = readLibsqlOptionalDependencies()
   const pinned: Record<string, string> = {}
 
   for (const binding of bindings) {
@@ -81,39 +86,55 @@ function readPinnedVersions(): Record<string, string> {
   return pinned
 }
 
+function lastLine(output: string): string {
+  return (output.trim().split('\n').at(-1) ?? '').trim()
+}
+
+// npm prints the tarball's name on stdout — its notices go to stderr — so the
+// name never has to be guessed from the package and the version.
+function pack(
+  packageName: string,
+  version: string,
+  downloadDirectory: string
+): string {
+  let output = ''
+
+  try {
+    output = execFileSync(
+      'npm',
+      [
+        'pack',
+        `${packageName}@${version}`,
+        '--pack-destination',
+        downloadDirectory
+      ],
+      { encoding: 'utf-8' }
+    )
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+
+    throw new Error(
+      `Cannot prepare a universal macOS build: fetching ${packageName}@${version} failed. ${reason} Check network access to the npm registry and retry.`
+    )
+  }
+
+  const tarball = lastLine(output)
+
+  if (tarball === '') {
+    throw new Error(
+      `Cannot prepare a universal macOS build: \`npm pack ${packageName}@${version}\` did not report a tarball name. Run it by hand to see what npm printed.`
+    )
+  }
+
+  return join(downloadDirectory, tarball)
+}
+
 function download(packageName: string, version: string): void {
   const destination = packagePath(packageName)
   const downloadDirectory = mkdtempSync(join(tmpdir(), 'squeal-bindings-'))
 
   try {
-    let output = ''
-
-    try {
-      output = execFileSync(
-        'npm',
-        [
-          'pack',
-          `${packageName}@${version}`,
-          '--pack-destination',
-          downloadDirectory
-        ],
-        { encoding: 'utf-8' }
-      )
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-
-      throw new Error(
-        `Cannot prepare a universal macOS build: fetching ${packageName}@${version} failed. ${reason} Check network access to the npm registry and retry.`
-      )
-    }
-
-    const tarball = output.trim().split('\n').at(-1)?.trim()
-
-    if (tarball === undefined || tarball === '') {
-      throw new Error(
-        `Cannot prepare a universal macOS build: \`npm pack ${packageName}@${version}\` did not report a tarball name. Run it by hand to see what npm printed.`
-      )
-    }
+    const tarball = pack(packageName, version, downloadDirectory)
 
     // The tarball wraps everything in a `package/` directory, which is what
     // --strip-components drops.
@@ -121,7 +142,7 @@ function download(packageName: string, version: string): void {
 
     execFileSync('tar', [
       '-xzf',
-      join(downloadDirectory, tarball),
+      tarball,
       '-C',
       destination,
       '--strip-components=1'
