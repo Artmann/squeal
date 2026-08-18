@@ -58,6 +58,12 @@ export class TraceStore extends Effect.Service<TraceStore>()('TraceStore', {
     const listTraces = Effect.fn(function* (params: ListTracesUrlParams) {
       const { before, errorOnly, limit, search } = params
 
+      // Every filter names a column the aggregate below publishes as an
+      // alias, and is applied outside it -- so `search` matches the name the
+      // trace is listed under rather than any span's name, and `before`
+      // compares against the trace's own start rather than any span's.
+      // Only the aliases are in scope out here; a raw span column would be
+      // rejected by SQLite rather than quietly filter something else.
       const filters = [sql`1 = 1`]
 
       if (errorOnly) {
@@ -75,51 +81,61 @@ export class TraceStore extends Effect.Service<TraceStore>()('TraceStore', {
       // Traces are aggregated rather than read off root spans: the renderer
       // exports its root span last, so grouping keeps in-flight and
       // interrupted traces visible.
+      //
+      // Which span speaks for a trace is stated once, as `representativeId`.
+      // `parentSpanId IS NOT NULL` sorts parentless spans ahead of the rest,
+      // so the ordering reads as "the earliest parentless span, or the
+      // earliest span when none is parentless yet" -- the fallback the
+      // paragraph above needs. The name and the service then come off that
+      // one row by construction. Resolved as two independent lookups apiece,
+      // which is what this replaced, a later edit to one predicate --
+      // preferring `kind = 'server'` roots, say -- would pair one span's name
+      // with another span's service, and nothing in `TraceSummaryDto` would
+      // say so.
+      //
+      // The row is fetched by joining on `spans.id` rather than by ranking
+      // every span with a window function: `ROW_NUMBER() OVER (PARTITION BY
+      // traceId ...)` cannot use `spans_trace_id_index`, and measured against
+      // a full retention budget it made this query about twice as slow as the
+      // two-lookup shape below. This is polled every 2000ms.
       const rows = yield* appDatabase.execute((client) =>
         client.all<TraceSummaryRow>(sql`
           SELECT *
           FROM (
             SELECT
-              traceId,
-              COUNT(*) AS spanCount,
-              MIN(startedAt) AS startedAt,
-              MAX(startedAt + durationMs) - MIN(startedAt) AS durationMs,
-              MAX(status = 'error') AS hasError,
-              (
-                SELECT failed.statusMessage FROM spans AS failed
-                WHERE failed.traceId = spans.traceId
-                  AND failed.status = 'error'
-                  AND failed.statusMessage IS NOT NULL
-                ORDER BY failed.startedAt LIMIT 1
-              ) AS errorMessage,
-              COALESCE(
+              summary.traceId AS traceId,
+              summary.spanCount AS spanCount,
+              summary.startedAt AS startedAt,
+              summary.durationMs AS durationMs,
+              summary.hasError AS hasError,
+              summary.errorMessage AS errorMessage,
+              representative.name AS name,
+              representative.serviceName AS serviceName
+            FROM (
+              SELECT
+                traceId,
+                COUNT(*) AS spanCount,
+                MIN(startedAt) AS startedAt,
+                MAX(startedAt + durationMs) - MIN(startedAt) AS durationMs,
+                MAX(status = 'error') AS hasError,
                 (
-                  SELECT root.name FROM spans AS root
-                  WHERE root.traceId = spans.traceId
-                    AND root.parentSpanId IS NULL
-                  ORDER BY root.startedAt LIMIT 1
-                ),
+                  SELECT failed.statusMessage FROM spans AS failed
+                  WHERE failed.traceId = spans.traceId
+                    AND failed.status = 'error'
+                    AND failed.statusMessage IS NOT NULL
+                  ORDER BY failed.startedAt LIMIT 1
+                ) AS errorMessage,
                 (
-                  SELECT earliest.name FROM spans AS earliest
-                  WHERE earliest.traceId = spans.traceId
-                  ORDER BY earliest.startedAt LIMIT 1
-                )
-              ) AS name,
-              COALESCE(
-                (
-                  SELECT root.serviceName FROM spans AS root
-                  WHERE root.traceId = spans.traceId
-                    AND root.parentSpanId IS NULL
-                  ORDER BY root.startedAt LIMIT 1
-                ),
-                (
-                  SELECT earliest.serviceName FROM spans AS earliest
-                  WHERE earliest.traceId = spans.traceId
-                  ORDER BY earliest.startedAt LIMIT 1
-                )
-              ) AS serviceName
-            FROM spans
-            GROUP BY traceId
+                  SELECT chosen.id FROM spans AS chosen
+                  WHERE chosen.traceId = spans.traceId
+                  ORDER BY chosen.parentSpanId IS NOT NULL, chosen.startedAt
+                  LIMIT 1
+                ) AS representativeId
+              FROM spans
+              GROUP BY traceId
+            ) AS summary
+            JOIN spans AS representative
+              ON representative.id = summary.representativeId
           )
           WHERE ${sql.join(filters, sql` AND `)}
           ORDER BY startedAt DESC
