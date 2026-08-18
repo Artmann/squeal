@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import invariant from 'tiny-invariant'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
 import { stubElementSize } from '../test-element-size'
@@ -122,6 +123,65 @@ describe('QueryResultTable', () => {
     expect(screen.getByText('null')).toBeInTheDocument()
   })
 
+  it('reserves scroll space in the same rows it paints', () => {
+    const rowCount = 10000
+    const largeResult = {
+      fields: [{ name: 'id' }],
+      rows: Array.from({ length: rowCount }, (_, index) => ({ id: index })),
+      rowCount,
+      truncated: true
+    }
+
+    const { container } = render(<QueryResultTable result={largeResult} />)
+
+    // Found by the property rather than by position: which element publishes
+    // it is an implementation detail, since custom properties inherit.
+    const publisher = container.querySelector('[style*="--row-h"]')
+
+    invariant(
+      publisher instanceof HTMLElement,
+      'The row height is published as a custom property.'
+    )
+
+    // Rows are painted at `--row-h` but positioned by arithmetic the
+    // virtualizer does on a number of its own, and nothing checks the two
+    // against each other: a density edit to one leaves every row overlapping
+    // or gapped and the scroll height wrong by rows x delta, with no type
+    // error and no failing test. So take the published height and check the
+    // space reserved for the unrendered rows is exactly that many of them.
+    const paintedRowHeight = Number.parseFloat(
+      publisher.style.getPropertyValue('--row-h')
+    )
+
+    expect(paintedRowHeight).toBeGreaterThan(0)
+
+    // jsdom computes no heights, so the class is the only available evidence
+    // that a row reads the published value at all. Without this the whole
+    // check is arithmetic between two numbers neither of which a row uses:
+    // rewriting the cells to `h-[30px]` passes everything else.
+    const [, firstDataRow] = screen.getAllByRole('row')
+
+    for (const cell of within(firstDataRow).getAllByRole('cell')) {
+      expect(cell).toHaveClass('h-[var(--row-h)]')
+    }
+
+    const spacers = container.querySelectorAll<HTMLElement>(
+      'tr[aria-hidden="true"] td'
+    )
+    const reservedHeight = Array.from(spacers).reduce(
+      (total, spacer) => total + Number.parseFloat(spacer.style.height),
+      0
+    )
+
+    // The spacer rows are aria-hidden, so the rows in the accessibility tree
+    // are the header plus the ones actually rendered.
+    const renderedRowCount = screen.getAllByRole('row').length - 1
+
+    expect(reservedHeight + renderedRowCount * paintedRowHeight).toEqual(
+      rowCount * paintedRowHeight
+    )
+  })
+
   it('windows a large result instead of rendering every row', () => {
     const largeResult = {
       fields: [{ name: 'id' }],
@@ -132,7 +192,8 @@ describe('QueryResultTable', () => {
 
     render(<QueryResultTable result={largeResult} />)
 
-    // A 600px viewport of 34px rows plus overscan is nowhere near 10,000 —
+    // A 600px viewport of one-row-height rows plus overscan is nowhere near
+    // 10,000 —
     // that is the whole point of virtualizing the 10,000-row cap.
     const renderedRows = screen.getAllByRole('row')
 

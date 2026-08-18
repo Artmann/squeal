@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { memo, ReactElement, useMemo, useRef } from 'react'
+import { CSSProperties, memo, ReactElement, useMemo, useRef } from 'react'
 
 import type { QueryResultDto } from '@/glue/api/schemas'
 
@@ -21,12 +21,20 @@ import {
   formatRowAsJson
 } from './query-result-format'
 
-// Mirrors `--row-h`. The virtualizer needs a number, and every row is the same
-// height, so this is an exact size rather than an estimate.
+// The density knob for this grid, and the only definition of `--row-h`:
+// nothing else may declare that property. It is published on the scroll
+// container below and the rows are painted from it; the virtualizer positions
+// them by arithmetic on this number. A second definition makes a density edit
+// a choice of which copy to change, and getting it wrong leaves every row
+// overlapping or gapped and the scroll height wrong by rows x delta, with no
+// type error and nothing at runtime to say so.
+//
+// Every row is the same height, so this is an exact size rather than an
+// estimate and no `measureElement` is wired.
 const rowHeight = 34
 
-// Rows rendered above and below the window, so a fast scroll does not show a
-// gap before the next measure.
+// Rows rendered above and below the window, so a fast scroll reaches painted
+// rows rather than blank space.
 const overscan = 12
 
 export const QueryResultTable = memo(function QueryResultTable({
@@ -79,6 +87,8 @@ export const QueryResultTable = memo(function QueryResultTable({
     <div
       className="h-full overflow-auto"
       ref={scrollRef}
+      // Cast because React's CSSProperties does not admit custom properties.
+      style={{ '--row-h': `${rowHeight}px` } as CSSProperties}
     >
       <table className="min-w-full border-separate border-spacing-0">
         <colgroup>

@@ -2,7 +2,8 @@
  *
  * Only the tokens that differ from light live here. The accent and the density
  * metrics are shared and are defined by the `[data-theme='squeal']` rule in
- * `squeal-light.css`.
+ * `squeal-light.css` -- except the results grid row height, which
+ * `QueryResultTable.tsx` owns; see the header there.
  */
 
 [data-theme='squeal'][data-mode='dark'] {
