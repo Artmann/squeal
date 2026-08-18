@@ -1,7 +1,7 @@
 import { BanIcon } from 'lucide-react'
 import { ReactElement, useEffect, useState } from 'react'
 
-import { canceledQueryMessage } from '@/glue/queries'
+import { canceledQueryMessage, isQueryInFlight } from '@/glue/queries'
 import type { QueryDto } from '@/glue/api/schemas'
 
 import { QueryResultEmpty } from './QueryResultEmpty'
@@ -10,20 +10,18 @@ import { toQueryErrorParts } from './query-error-parts'
 
 interface QueryResultContentProps {
   databaseName: string | undefined
-  isQueryRunning: boolean
   query: QueryDto | undefined
 }
 
 export function QueryResultContent({
   databaseName,
-  isQueryRunning,
   query
 }: QueryResultContentProps): ReactElement {
-  if (isQueryRunning) {
+  if (isQueryInFlight(query)) {
     return (
       <RunningQuery
         databaseName={databaseName}
-        since={query?.queriedAt}
+        since={query.queriedAt}
       />
     )
   }
@@ -90,7 +88,7 @@ function RunningQuery({
   since
 }: {
   databaseName: string | undefined
-  since: number | undefined
+  since: number
 }): ReactElement {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3">
@@ -102,11 +100,9 @@ function RunningQuery({
 
       {/* The design shows static text, but a long query with no sign of
           progress reads as a hang. */}
-      {since !== undefined && (
-        <p className="text-[11.5px] text-text3">
-          <ElapsedTime since={since} />
-        </p>
-      )}
+      <p className="text-[11.5px] text-text3">
+        <ElapsedTime since={since} />
+      </p>
     </div>
   )
 }

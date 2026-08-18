@@ -1,6 +1,7 @@
 import { ActivityIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
+import { isQueryFinished } from '@/glue/queries'
 import type { QueryDto } from '@/glue/api/schemas'
 import type { DatabaseDto } from '@/glue/databases'
 
@@ -37,7 +38,7 @@ const healthTitles: Record<ConnectionHealth, string> = {
 }
 
 function getConnectionHealth(query: QueryDto | undefined): ConnectionHealth {
-  if (!query || query.finishedAt === null) {
+  if (!isQueryFinished(query)) {
     return 'unknown'
   }
 
@@ -45,7 +46,7 @@ function getConnectionHealth(query: QueryDto | undefined): ConnectionHealth {
 }
 
 function formatRunSummary(query: QueryDto | undefined): string | undefined {
-  if (!query || query.finishedAt === null) {
+  if (!isQueryFinished(query)) {
     return undefined
   }
 
