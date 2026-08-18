@@ -6,14 +6,7 @@ import {
   Loader2Icon,
   XCircleIcon
 } from 'lucide-react'
-import {
-  ReactElement,
-  ReactNode,
-  useCallback,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
+import { ReactElement, ReactNode, useCallback, useMemo, useState } from 'react'
 import { useForm, type Resolver, type UseFormReturn } from 'react-hook-form'
 import { toast } from 'sonner'
 import invariant from 'tiny-invariant'
@@ -466,10 +459,18 @@ function useConnectionTest({
   // produced from, so this is what a stored fingerprint is compared against.
   const currentConnection = connectionFingerprint(connectionInfo, databaseType)
 
-  // Read by the response handlers, which need the values as they are when the
-  // response lands rather than the ones captured when the request went out.
-  const currentConnectionRef = useRef(currentConnection)
-  currentConnectionRef.current = currentConnection
+  // The response handlers need the values as they are when the response lands,
+  // not the ones captured when the request went out. Read imperatively from the
+  // form rather than through a ref: render has to stay pure, and `form` already
+  // holds the live values.
+  const readCurrentConnection = useCallback(
+    () =>
+      connectionFingerprint(
+        form.getValues('connectionInfo'),
+        form.getValues('type')
+      ),
+    [form]
+  )
 
   const handleTestConnection = useCallback(
     (event: React.FormEvent) => {
@@ -514,7 +515,7 @@ function useConnectionTest({
           // flight. The toast has to be inside this check too: it names the host
           // that was tested, so firing it for a connection the user has already
           // replaced asserts something about values that are no longer there.
-          if (testedConnection !== currentConnectionRef.current) {
+          if (testedConnection !== readCurrentConnection()) {
             return
           }
 
@@ -532,7 +533,7 @@ function useConnectionTest({
           })
         })
         .catch((error: unknown) => {
-          if (testedConnection !== currentConnectionRef.current) {
+          if (testedConnection !== readCurrentConnection()) {
             return
           }
 
@@ -555,7 +556,7 @@ function useConnectionTest({
           )
         })
     },
-    [connectionInfo, databaseId, databaseType, form]
+    [connectionInfo, databaseId, databaseType, form, readCurrentConnection]
   )
 
   const connectionTestIcon = useMemo(() => {
