@@ -31,9 +31,8 @@
         ],
         "rules": ["react-doctor/prefer-dynamic-import"]
       },
-      // The schema statements are deliberately sequential: messages carries a
-      // foreign key to chats, every index needs its table to exist first, and
-      // they all run on one SQLite connection. The rule's suggested fix
+      // The schema statements are deliberately sequential: every index needs
+      // its table to exist first, and they all run on one SQLite connection. The rule's suggested fix
       // (Promise.all) applies to independent calls, which these are not.
       {
         "files": ["src/database/tables.ts"],

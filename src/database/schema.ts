@@ -6,18 +6,6 @@ import {
   text
 } from 'drizzle-orm/sqlite-core'
 
-export const chatsTable = sqliteTable('chats', {
-  id: text()
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  createdAt: integer()
-    .notNull()
-    .$defaultFn(() => Date.now()),
-  updatedAt: integer()
-    .notNull()
-    .$defaultFn(() => Date.now())
-})
-
 export const databasesTable = sqliteTable('databases', {
   id: text()
     .primaryKey()
@@ -31,18 +19,6 @@ export const databasesTable = sqliteTable('databases', {
   name: text().notNull(),
   sortOrder: integer(),
   type: text().notNull()
-})
-
-export const messagesTable = sqliteTable('messages', {
-  id: text()
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  chatId: text()
-    .notNull()
-    .references(() => chatsTable.id),
-  content: text().notNull(),
-  role: text().notNull(),
-  toolInvocations: text()
 })
 
 export const queriesTable = sqliteTable(
