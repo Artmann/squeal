@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.1](https://github.com/Artmann/squeal/compare/v1.4.0...v1.4.1) (2026-08-18)
+
+
+### Bug Fixes
+
+* **databases:** read the live connection without mutating a ref in render ([f29e762](https://github.com/Artmann/squeal/commit/f29e76247e71d0d30d80f922dd34fe696acb75e7))
+* **databases:** retire a connection test result when its values change ([ab84d30](https://github.com/Artmann/squeal/commit/ab84d30baef67dd84701fb4fd7a1f5b06431cd8d)), closes [#66](https://github.com/Artmann/squeal/issues/66)
+* **queries:** make cancel answerable for a query's whole life ([7e18d9d](https://github.com/Artmann/squeal/commit/7e18d9d1ef81498ab48f66d8b0ad74cc47b23ad1)), closes [#50](https://github.com/Artmann/squeal/issues/50)
+* **results:** give each result column its own alignment and identity ([3862a45](https://github.com/Artmann/squeal/commit/3862a4510cd817ee4871e5c103e9166cfc9904c0))
+* **sql-parser:** clamp token end to the end of the input ([1eeca40](https://github.com/Artmann/squeal/commit/1eeca40bdc704c6d9f983a2753f8a6b712f0341c)), closes [#64](https://github.com/Artmann/squeal/issues/64)
+* **worksheets:** make WorksheetService the sole owner of sortOrder ([f923224](https://github.com/Artmann/squeal/commit/f923224dd0051ac6e8d262612a5e06e5ad52f024)), closes [#53](https://github.com/Artmann/squeal/issues/53)
+
 ## [1.4.0](https://github.com/Artmann/squeal/compare/v1.3.1...v1.4.0) (2026-08-17)
 
 
