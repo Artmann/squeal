@@ -1,8 +1,15 @@
 /* Squeal - light mode theme.
  *
  * The mode-independent tokens (the accent and the density metrics) live in the
- * `[data-theme='squeal']` rule below so a density change stays a one-block
- * edit; `squeal-dark.css` only overrides what actually differs per mode.
+ * `[data-theme='squeal']` rule below, so a density change is mostly a
+ * one-block edit; `squeal-dark.css` only overrides what actually differs per
+ * mode.
+ *
+ * One density metric is deliberately not here: the results grid row height.
+ * `QueryResultTable.tsx` owns it as a number, because the virtualizer
+ * positions rows by arithmetic on it, and publishes it to CSS as `--row-h` on
+ * its own scroll container. A compact mode has to set that constant too --
+ * an inline custom property wins over any rule for that subtree.
  */
 
 [data-theme='squeal'] {
@@ -14,7 +21,6 @@
   --code-size: 12.5px;
   --item-h: 30px;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-  --row-h: 34px;
 }
 
 [data-theme='squeal'][data-mode='light'] {
