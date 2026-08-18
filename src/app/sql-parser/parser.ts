@@ -18,11 +18,20 @@ export interface Script {
   statements: Statement[]
 }
 
-const statementKeywords = new Set(['DELETE', 'INSERT', 'SELECT', 'UPDATE'])
+// One table drives both decisions below: whether a keyword starts a new
+// statement, and what type that statement is. Keeping them in one place is
+// what stops them drifting apart -- a keyword that splits but has no type
+// would parse into a statement classified 'unknown'.
+export const statementTypes = new Map<string, StatementType>([
+  ['DELETE', 'delete'],
+  ['INSERT', 'insert'],
+  ['SELECT', 'select'],
+  ['UPDATE', 'update']
+])
 
 function isStatementKeyword(token: Token): boolean {
   return (
-    token.type === 'keyword' && statementKeywords.has(token.value.toUpperCase())
+    token.type === 'keyword' && statementTypes.has(token.value.toUpperCase())
   )
 }
 
@@ -31,20 +40,14 @@ function getStatementType(tokens: Token[]): StatementType {
     (t) => t.type !== 'whitespace' && t.type !== 'comment'
   )
 
-  if (!firstSignificant) {
+  // Only a bare word is ever tokenized as a keyword -- a quoted SELECT keeps
+  // its quotes in token.value and so misses the table anyway -- which makes
+  // this guard defence-in-depth against a future tokenizer change.
+  if (!firstSignificant || firstSignificant.type !== 'keyword') {
     return 'unknown'
   }
 
-  if (firstSignificant.type === 'keyword') {
-    const keyword = firstSignificant.value.toUpperCase()
-
-    if (keyword === 'SELECT') return 'select'
-    if (keyword === 'INSERT') return 'insert'
-    if (keyword === 'UPDATE') return 'update'
-    if (keyword === 'DELETE') return 'delete'
-  }
-
-  return 'unknown'
+  return statementTypes.get(firstSignificant.value.toUpperCase()) ?? 'unknown'
 }
 
 function trimTokens(tokens: Token[]): Token[] {
@@ -109,8 +112,8 @@ function finishStatement(state: ParserState, sql: string): void {
   state.currentTokens = []
 }
 
-// Statements are split on semicolons and on top-level statement keywords
-// (SELECT/INSERT/UPDATE/DELETE outside parentheses).
+// Statements are split on semicolons and on the top-level keywords in
+// statementTypes (outside parentheses).
 function consumeToken(state: ParserState, token: Token, sql: string): void {
   if (isPunctuation(token, '(')) {
     state.parenDepth++

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { createAstFromSql } from './parser'
+import { createAstFromSql, statementTypes } from './parser'
+import { tokenize } from './tokenizer'
 
 describe('createAstFromSql', () => {
   describe('single statements', () => {
@@ -314,5 +315,52 @@ SELECT * FROM users`
         sql.slice(result.statements[1].start, result.statements[1].end)
       ).toEqual('SELECT 2')
     })
+  })
+
+  // statementTypes drives both splitting and typing, so each entry is asserted
+  // to do both -- that pairing is what a drifted table breaks.
+  describe('statement keywords', () => {
+    // The table only decides anything for words the tokenizer calls keywords,
+    // so an entry the tokenizer does not know is silently inert.
+    it.each([...statementTypes.keys()])(
+      'tokenizes %s as a single keyword token',
+      (keyword) => {
+        expect(tokenize(keyword)).toEqual([
+          expect.objectContaining({ type: 'keyword', value: keyword })
+        ])
+      }
+    )
+
+    it.each([
+      { keyword: 'DELETE', statement: 'DELETE FROM users', type: 'delete' },
+      {
+        keyword: 'INSERT',
+        statement: 'INSERT INTO users VALUES (1)',
+        type: 'insert'
+      },
+      { keyword: 'SELECT', statement: 'SELECT 2', type: 'select' },
+      {
+        keyword: 'UPDATE',
+        statement: 'UPDATE users SET name = 1',
+        type: 'update'
+      }
+    ])(
+      'starts a statement on $keyword and types it $type',
+      ({ statement, type }) => {
+        const sql = ['SELECT 1', statement].join('\n')
+
+        const result = createAstFromSql(sql)
+
+        expect(result.statements).toEqual([
+          { end: 8, start: 0, text: 'SELECT 1', type: 'select' },
+          {
+            end: sql.length,
+            start: 9,
+            text: statement,
+            type
+          }
+        ])
+      }
+    )
   })
 })
