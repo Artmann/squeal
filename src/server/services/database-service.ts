@@ -296,17 +296,27 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
 
         const purged = yield* secrets.encrypt('{}')
 
-        // The secret purge and the soft delete are one write, so a deleted
-        // row never retains a password.
-        yield* appDatabase.execute((client) =>
-          client
+        // The purge and the soft delete are already one statement; the
+        // transaction is here for the unlink, which has to land with them. Run
+        // separately, a failure between the two left live worksheets holding
+        // the id of a soft-deleted row. Neither surface draws that as
+        // connected — both resolve the name through list(), which excludes
+        // deleted rows — they draw it as unconnected while the row still points
+        // at the dead id, so create's auto-link never adopts it (that matches
+        // only databaseId IS NULL) and a query run from it answers "database
+        // not found".
+        //
+        // Unlinking first would leave a more benign torn state and need no
+        // transaction. All-or-nothing is stronger, and create already takes the
+        // same BEGIN on the shared connection, so remove joins a hazard rather
+        // than inventing one.
+        yield* appDatabase.transaction(async (client) => {
+          await client
             .update(databasesTable)
             .set({ connectionInfo: purged, deletedAt: Date.now() })
             .where(eq(databasesTable.id, id))
-        )
 
-        yield* appDatabase.execute((client) =>
-          client
+          await client
             .update(worksheetsTable)
             .set({ databaseId: null })
             .where(
@@ -315,7 +325,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
                 isNull(worksheetsTable.deletedAt)
               )
             )
-        )
+        })
       })
 
       // Only writes sortOrder — reordering must never touch connectionInfo,
@@ -344,14 +354,34 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
           })
         }
 
-        for (const [index, id] of databaseIds.entries()) {
-          yield* appDatabase.execute((client) =>
-            client
-              .update(databasesTable)
-              .set({ sortOrder: index })
-              .where(eq(databasesTable.id, id))
-          )
-        }
+        // An ordering is one fact, not N per-row facts. Written as N
+        // statements, a failure at row k persisted a torn order while the caller
+        // got AppDatabaseError and the renderer reverted — and list()'s
+        // ordering below then interleaved renumbered and stale rows.
+        //
+        // One statement rather than a transaction, matching
+        // WorksheetService.reorder and for the reason written there:
+        // AppDatabase.transaction issues BEGIN on the single shared connection,
+        // so a concurrent write would either fail its own BEGIN and surface as
+        // "restart Squeal", or be swept into this transaction and rolled back
+        // with it after its own handler had already answered. A single UPDATE
+        // needs none of that to be atomic.
+        //
+        // Non-empty by contract: ReorderDatabasesRequest requires minItems(1),
+        // and sql.join([]) would emit `case "id" end`, a syntax error.
+        const positions = sql.join(
+          databaseIds.map((id, index) => sql`when ${id} then ${index}`),
+          sql` `
+        )
+
+        yield* appDatabase.execute((client) =>
+          client
+            .update(databasesTable)
+            .set({
+              sortOrder: sql`case ${databasesTable.id} ${positions} end`
+            })
+            .where(inArray(databasesTable.id, [...databaseIds]))
+        )
 
         return yield* list()
       })
