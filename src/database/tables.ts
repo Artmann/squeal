@@ -1,28 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
 
-// Order matters: a table carrying a foreign key has to come after the table it
-// references.
+// Order matters: an index has to come after the table it is defined on.
 const statements: SQL[] = [
-  sql`
-    CREATE TABLE IF NOT EXISTS chats (
-      id TEXT PRIMARY KEY NOT NULL,
-      createdAt INTEGER NOT NULL,
-      updatedAt INTEGER NOT NULL
-    )
-  `,
-
-  sql`
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY NOT NULL,
-      chatId TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      toolInvocations TEXT,
-      FOREIGN KEY (chatId) REFERENCES chats(id) ON DELETE CASCADE
-    )
-  `,
-
   sql`
     CREATE TABLE IF NOT EXISTS databases (
       id TEXT PRIMARY KEY NOT NULL,

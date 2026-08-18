@@ -166,7 +166,32 @@ describe('reconcileColumns', () => {
 // they disagree, every query on the affected table fails at runtime while every
 // test still passes, because the test helpers build their databases from
 // tables.ts and so never see the drift.
+//
+// The column checks below are driven by `appTables`, which is derived from
+// schema.ts — so a whole table left behind in tables.ts is one they can never
+// look at. That is what the first test covers.
 describe('tables.ts matches schema.ts', () => {
+  it('creates exactly the tables schema.ts declares', async () => {
+    const database = drizzle(':memory:')
+
+    await createTables(database)
+
+    const rows = await database.all<{ name: string }>(
+      // SQLite's own bookkeeping tables — sqlite_sequence, sqlite_stat1 —
+      // appear here the moment anything uses AUTOINCREMENT or ANALYZE, and
+      // they are not drift.
+      sql`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+      `
+    )
+
+    expect(rows.map((row) => row.name)).toEqual(
+      appTables.map(getTableName).sort()
+    )
+  })
+
   it.each(appTables.map((table) => [getTableName(table), table] as const))(
     'declares every %s column',
     async (tableName, table) => {
