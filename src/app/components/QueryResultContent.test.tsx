@@ -30,7 +30,6 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        isQueryRunning={false}
         query={undefined}
       />
     )
@@ -42,7 +41,6 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        isQueryRunning
         query={{ ...baseQuery, finishedAt: null }}
       />
     )
@@ -54,7 +52,6 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName={undefined}
-        isQueryRunning
         query={{ ...baseQuery, finishedAt: null }}
       />
     )
@@ -66,7 +63,6 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        isQueryRunning={false}
         query={{
           ...baseQuery,
           result: {
@@ -89,7 +85,6 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        isQueryRunning={false}
         query={{
           ...baseQuery,
           error:
@@ -111,7 +106,6 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        isQueryRunning={false}
         query={{ ...baseQuery, error: 'syntax error at or near "FORM"' }}
       />
     )
@@ -125,7 +119,6 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        isQueryRunning={false}
         query={{ ...baseQuery, error: canceledQueryMessage }}
       />
     )

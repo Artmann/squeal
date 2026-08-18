@@ -50,7 +50,6 @@ function SwitchablePane(): ReactElement {
 
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={undefined}
         worksheetId={worksheetId}
       />
@@ -85,7 +84,6 @@ describe('ResultsPane', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={undefined}
         worksheetId="ws-1"
       />,
@@ -100,7 +98,6 @@ describe('ResultsPane', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={undefined}
         worksheetId="ws-1"
       />,
@@ -110,11 +107,30 @@ describe('ResultsPane', () => {
     expect(screen.queryByText(/rows ·/)).not.toBeInTheDocument()
   })
 
+  // The meta line and the body have to answer "is this still running" from the
+  // same place. While that answer arrived as a prop, a caller could make them
+  // disagree -- a spinner under a header reading "100 rows", or the reverse.
+  it('shows the running body and no meta line for a query still in flight', () => {
+    const runningQuery = query({ ...successfulQuery, finishedAt: null })
+
+    renderWithProviders(
+      <ResultsPane
+        databaseName="Pagila"
+        query={runningQuery}
+        worksheetId="ws-1"
+      />,
+      { openWorksheetId: 'ws-1', queries: [runningQuery] }
+    )
+
+    expect(screen.getByText('Running on Pagila…')).toBeInTheDocument()
+    expect(screen.queryByText(/rows ·/)).not.toBeInTheDocument()
+    expect(screen.queryByText('No results yet')).not.toBeInTheDocument()
+  })
+
   it('summarises a successful run', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={successfulQuery}
         worksheetId="ws-1"
       />,
@@ -131,7 +147,6 @@ describe('ResultsPane', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={failed}
         worksheetId="ws-1"
       />,
@@ -147,7 +162,6 @@ describe('ResultsPane', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={successfulQuery}
         worksheetId="ws-1"
       />,
@@ -166,7 +180,6 @@ describe('ResultsPane', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={undefined}
         worksheetId="ws-1"
       />,
@@ -184,7 +197,6 @@ describe('ResultsPane', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={undefined}
         worksheetId="ws-1"
       />,
@@ -244,7 +256,6 @@ describe('ResultsPane', () => {
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        isQueryRunning={false}
         query={undefined}
         worksheetId="ws-1"
       />,

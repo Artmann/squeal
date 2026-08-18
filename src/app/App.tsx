@@ -29,6 +29,7 @@ import { useCancelQuery } from './hooks/mutations'
 import { useStartQuery } from './hooks/use-start-query'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
+import { isQueryInFlight } from '@/glue/queries'
 import { secretStorageMessages } from '@/glue/secret-storage'
 import { useAppDispatch, useAppSelector } from './store'
 import { selectActiveWorksheetId } from './store/tabs-slice'
@@ -230,7 +231,7 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     handleRunQuery,
     handleUpdateContent,
     isCanceling,
-    isQueryRunning: Boolean(query && !query.finishedAt),
+    isQueryRunning: isQueryInFlight(query),
     query,
     saveState,
     setCursorOffset,
@@ -364,7 +365,6 @@ function Workspace(): ReactElement {
 
         <ResultsPane
           databaseName={currentDatabase?.name}
-          isQueryRunning={isQueryRunning}
           query={query}
           worksheetId={openWorksheetId}
         />

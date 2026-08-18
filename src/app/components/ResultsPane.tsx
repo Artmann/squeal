@@ -1,6 +1,7 @@
 import { ReactElement, useEffect, useState } from 'react'
 
 import type { QueryDto } from '@/glue/api/schemas'
+import { isQueryFinished } from '@/glue/queries'
 
 import { usePersistedSizes } from '../hooks/use-persisted-sizes'
 import { useWorksheetMessages } from '../hooks/use-worksheet-messages'
@@ -24,7 +25,6 @@ const maximumRememberedHeights = 50
 
 interface ResultsPaneProps {
   databaseName: string | undefined
-  isQueryRunning: boolean
   query: QueryDto | undefined
   worksheetId: string | undefined
 }
@@ -42,7 +42,6 @@ function formatRowCount(result: {
 
 export function ResultsPane({
   databaseName,
-  isQueryRunning,
   query,
   worksheetId
 }: ResultsPaneProps): ReactElement {
@@ -144,7 +143,6 @@ export function ResultsPane({
           ) : (
             <QueryResultContent
               databaseName={databaseName}
-              isQueryRunning={isQueryRunning}
               query={query}
             />
           )}
@@ -155,7 +153,7 @@ export function ResultsPane({
 }
 
 function ResultsMeta({ query }: { query: QueryDto | undefined }): ReactElement {
-  if (!query || query.finishedAt === null) {
+  if (!isQueryFinished(query)) {
     return <></>
   }
 

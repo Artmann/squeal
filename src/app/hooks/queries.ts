@@ -15,7 +15,11 @@ import type {
   UpdateStatusResponse
 } from '@/glue/api/schemas'
 import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
-import { canceledQueryMessage } from '@/glue/queries'
+import {
+  canceledQueryMessage,
+  isQueryFinished,
+  isQueryInFlight
+} from '@/glue/queries'
 
 const queryPollInterval = 250
 
@@ -183,7 +187,7 @@ export function useQueryResultSync(query: QueryDto | undefined): void {
   const { queries } = useCollections()
 
   const queryId = query?.id
-  const isRunning = Boolean(query && !query.finishedAt)
+  const isRunning = isQueryInFlight(query)
 
   const polled = useQuery<QueryDto>({
     queryKey: queryId ? queryKeys.query(queryId) : ['query', 'noop'],
@@ -202,11 +206,11 @@ export function useQueryResultSync(query: QueryDto | undefined): void {
         return queryPollInterval
       }
 
-      return data.finishedAt ? false : queryPollInterval
+      return isQueryFinished(data) ? false : queryPollInterval
     }
   })
 
-  const finished = polled.data?.finishedAt ? polled.data : undefined
+  const finished = isQueryFinished(polled.data) ? polled.data : undefined
 
   useEffect(() => {
     // Also re-runs when the collection row regresses to running (for example

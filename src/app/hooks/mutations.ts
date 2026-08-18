@@ -11,6 +11,7 @@ import {
   type QueryDto,
   UpdateDatabaseRequest
 } from '@/glue/api/schemas'
+import { isQueryFinished, isQueryInFlight } from '@/glue/queries'
 
 export interface CancelQuery {
   cancel: () => void
@@ -46,7 +47,7 @@ export function useCancelQuery(query: QueryDto | undefined): CancelQuery {
     setCancelingQueryId(queryId)
   }, [])
 
-  const runningQueryId = query?.finishedAt === null ? query.id : undefined
+  const runningQueryId = isQueryInFlight(query) ? query.id : undefined
   const isCanceling =
     runningQueryId !== undefined && cancelingQueryId === runningQueryId
 
@@ -60,7 +61,7 @@ export function useCancelQuery(query: QueryDto | undefined): CancelQuery {
     if (
       cancelingQueryId !== undefined &&
       query?.id === cancelingQueryId &&
-      query.finishedAt !== null
+      isQueryFinished(query)
     ) {
       setCanceling(undefined)
     }
