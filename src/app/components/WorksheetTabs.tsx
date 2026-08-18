@@ -133,8 +133,12 @@ function useNewWorksheet(
 
 interface TabHotkeysOptions {
   activeWorksheetId: string | undefined
-  /** Set while a tab is being renamed, which owns the keyboard. */
-  editingWorksheetId: string | null
+  /**
+   * True while a worksheet is being renamed anywhere, which owns the keyboard.
+   * Anywhere and not just here: the sidebar list renames the same worksheets
+   * from the same session, and both hotkeys below run on form tags.
+   */
+  isRenaming: boolean
   openTabs: WorksheetDto[]
   onActivate: (worksheetId: string) => void
   onClose: (worksheetId: string) => void
@@ -147,19 +151,24 @@ interface TabHotkeysOptions {
  * dead exactly where they are most useful.
  */
 function useTabHotkeys(options: TabHotkeysOptions): void {
-  const {
-    activeWorksheetId,
-    editingWorksheetId,
-    openTabs,
-    onActivate,
-    onClose
-  } = options
+  const { activeWorksheetId, isRenaming, openTabs, onActivate, onClose } =
+    options
 
   useHotkeys(
     'mod+w',
     (event) => {
-      // Closing the tab out from under a rename would throw the edit away.
-      if (!activeWorksheetId || editingWorksheetId) {
+      // Closing a tab is not what this key means while a name is being
+      // edited — for a rename in this strip it takes the input with it, and
+      // from the sidebar it acts on a surface the user is not looking at. The
+      // key still has to be swallowed, though: Electron's default menu binds
+      // mod+w to `close`, so letting it through takes the whole window.
+      if (isRenaming) {
+        event.preventDefault()
+
+        return
+      }
+
+      if (!activeWorksheetId) {
         return
       }
 
@@ -168,13 +177,13 @@ function useTabHotkeys(options: TabHotkeysOptions): void {
       onClose(activeWorksheetId)
     },
     { enableOnContentEditable: true, enableOnFormTags: true },
-    [activeWorksheetId, editingWorksheetId, onClose]
+    [activeWorksheetId, isRenaming, onClose]
   )
 
   useHotkeys(
     tabHotkeys,
     (event, hotkey) => {
-      const worksheet = editingWorksheetId
+      const worksheet = isRenaming
         ? undefined
         : tabAtHotkeyPosition(openTabs, Number(hotkey.keys?.[0]))
 
@@ -186,7 +195,7 @@ function useTabHotkeys(options: TabHotkeysOptions): void {
       onActivate(worksheet.id)
     },
     { enableOnContentEditable: true, enableOnFormTags: true },
-    [editingWorksheetId, onActivate, openTabs]
+    [isRenaming, onActivate, openTabs]
   )
 }
 
@@ -216,7 +225,7 @@ export function WorksheetTabs(): ReactElement {
   const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
   const openWorksheetIds = useAppSelector(selectOpenWorksheetIds)
 
-  const rename = useWorksheetRename(worksheets.data)
+  const rename = useWorksheetRename(worksheets.data, 'tabs')
 
   const openTabs = useOpenTabs(openWorksheetIds, worksheets.data)
   const openTabIds = openTabs.map((worksheet) => worksheet.id)
@@ -257,7 +266,7 @@ export function WorksheetTabs(): ReactElement {
 
   useTabHotkeys({
     activeWorksheetId,
-    editingWorksheetId: rename.editingWorksheetId,
+    isRenaming: rename.isRenaming,
     onActivate: handleActivate,
     onClose: handleClose,
     openTabs

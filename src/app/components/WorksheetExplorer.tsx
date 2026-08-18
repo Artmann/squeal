@@ -159,7 +159,7 @@ export function WorksheetExplorer(): ReactElement {
     inputRef,
     setEditingName,
     startEditing
-  } = useWorksheetRename(worksheets.data)
+  } = useWorksheetRename(worksheets.data, 'explorer')
 
   const { handleNewWorksheet, handleSelectWorksheet } = useWorksheetActions(
     worksheets.data,
