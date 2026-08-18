@@ -7,7 +7,12 @@ import {
   XCircleIcon
 } from 'lucide-react'
 import { ReactElement, ReactNode, useCallback, useMemo, useState } from 'react'
-import { useForm, type Resolver, type UseFormReturn } from 'react-hook-form'
+import {
+  useForm,
+  type FieldPath,
+  type Resolver,
+  type UseFormReturn
+} from 'react-hook-form'
 import { toast } from 'sonner'
 import invariant from 'tiny-invariant'
 import { z } from 'zod'
@@ -1136,36 +1141,14 @@ function applyServerFieldErrors(form: DatabaseFormApi, error: unknown): void {
     return
   }
 
-  const fieldErrors = errorDetailsToFormFieldErrors(error.details)
-
-  for (const [field, { message }] of Object.entries(fieldErrors)) {
-    form.setError(field as keyof FormInput, {
+  // details arrives flat and string-valued: toFieldDetails in api-client.ts is
+  // its only producer, and it already joins each issue path into a dotted key
+  // like 'connectionInfo.host'. Nested keys are dotted FieldPaths rather than
+  // keys of FormInput, which is the shape setError takes.
+  for (const [field, message] of Object.entries(error.details)) {
+    form.setError(field as FieldPath<FormInput>, {
       message,
       type: 'server'
     })
   }
-}
-
-type FieldErrors = Record<string, { message: string }>
-
-function errorDetailsToFormFieldErrors(
-  details: Record<string, unknown>,
-  prefix = ''
-): FieldErrors {
-  const errors: FieldErrors = {}
-
-  for (const [key, value] of Object.entries(details)) {
-    const path = prefix ? `${prefix}.${key}` : key
-
-    if (typeof value === 'string') {
-      errors[path] = { message: value }
-    } else if (value && typeof value === 'object') {
-      Object.assign(
-        errors,
-        errorDetailsToFormFieldErrors(value as Record<string, unknown>, path)
-      )
-    }
-  }
-
-  return errors
 }
