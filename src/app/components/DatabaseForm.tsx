@@ -405,16 +405,17 @@ const resultIconClasses =
   'motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:[animation-duration:300ms]'
 
 /**
- * Fingerprints the values a connection test is about, as a short hash.
+ * Fingerprints the values a connection test is about.
  *
  * Both ends of the comparison go through here: `form.watch('connectionInfo')`
  * returns a fresh object every render, so identity is useless, and two
  * hand-rolled `JSON.stringify` calls would differ on key order.
  *
- * It is hashed rather than kept verbatim because `connectionInfo` includes the
- * password, and this value lives in component state for the life of the form —
- * somewhere the cleartext should not sit, and did not before. Equality of the
- * hash is all the comparison needs.
+ * The password is part of it, so that typing one over the blank field that
+ * borrows a stored password retires an earlier pass. That keeps it in component
+ * state — but the form already holds the password there, and in the DOM input,
+ * for as long as it is open, so digesting it here would obscure the value
+ * without reducing what is in memory.
  */
 function connectionFingerprint(
   connectionInfo: FormInput['connectionInfo'],
@@ -427,24 +428,7 @@ function connectionFingerprint(
     // and this runs on every keystroke in the form.
     .sort(([left], [right]) => (left < right ? -1 : 1))
 
-  return hashString(JSON.stringify([databaseType, entries]))
-}
-
-// Two independent 32-bit rolling hashes, so the pair is wide enough that a
-// collision — which would show a verdict for values it does not describe, the
-// bug this all exists to prevent — is not a practical concern.
-function hashString(value: string): string {
-  let djb2 = 5381
-  let fnv = 0x811c9dc5
-
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index)
-
-    djb2 = (djb2 * 33) ^ code
-    fnv = Math.imul(fnv ^ code, 0x01000193)
-  }
-
-  return `${(djb2 >>> 0).toString(36)}:${(fnv >>> 0).toString(36)}`
+  return JSON.stringify([databaseType, entries])
 }
 
 function useConnectionTest({
