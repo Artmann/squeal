@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/Artmann/squeal/compare/v1.4.1...v1.4.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* **build:** ship one universal macOS build ([879e0fd](https://github.com/Artmann/squeal/commit/879e0fdea799df6fdba32a6d21109efa3e255ddf))
+
 ## [1.4.1](https://github.com/Artmann/squeal/compare/v1.4.0...v1.4.1) (2026-08-18)
 
 
