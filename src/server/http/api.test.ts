@@ -126,8 +126,9 @@ describe('authentication', () => {
     )
   })
 
-  // The scheme token is case-insensitive per RFC 7235, and the platform's own
-  // bearer decoder ignores its case, so the trace-read middleware must too.
+  // The scheme token is case-insensitive per RFC 7235. Both routes now answer
+  // through presentsToken, so this pair is a regression guard on the shared
+  // predicate rather than on two independent ones.
   it('accepts a lowercase bearer scheme on a normal route', async () => {
     const response = await rawRequest(
       HttpClientRequest.get('/databases').pipe(
@@ -147,6 +148,38 @@ describe('authentication', () => {
 
     expect(response).toEqual({ body: { traces: [] }, status: 200 })
   })
+
+  // The two middlewares extracted the credential two different ways: the
+  // platform's decoder is `.slice('Bearer '.length)` and never looks at the
+  // scheme, while the trace-read path parsed it with a regex. They disagreed on
+  // real headers in both directions -- a doubled space was 401 on /databases
+  // and 200 on /traces, and any seven-character scheme was the reverse. Firing
+  // the same header at both routes is what stops the next divergence shipping.
+  it.each([
+    ['a doubled space after the scheme', `Bearer  ${testApiToken}`, 200],
+    ['a tab after the scheme', `bearer\t${testApiToken}`, 200],
+    ['a seven-character non-bearer scheme', `Digest ${testApiToken}`, 401],
+    ['no scheme at all', testApiToken, 401]
+  ])(
+    'answers %s alike on both authorized routes',
+    async (_description, authorization, status) => {
+      const databases = await rawRequest(
+        HttpClientRequest.get('/databases').pipe(
+          HttpClientRequest.setHeader('authorization', authorization)
+        )
+      )
+      const traces = await rawRequest(
+        HttpClientRequest.get('/traces').pipe(
+          HttpClientRequest.setHeader('authorization', authorization)
+        )
+      )
+
+      expect({ databases: databases.status, traces: traces.status }).toEqual({
+        databases: status,
+        traces: status
+      })
+    }
+  )
 
   // A browser always sends Origin cross-origin, so the development carve-out
   // must not apply to it — otherwise any visited page could read the span
