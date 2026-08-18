@@ -59,13 +59,15 @@ const getApiToken = memoizePromise(() => window.electron.getApiToken())
 // request transform reads.
 const currentTraceparent = FiberRef.unsafeMake<string | undefined>(undefined)
 
-// Payload encoding happens strictly before the request is executed, so a
-// ParseError raised while `sent` is still false means the payload was invalid
-// and nothing left the machine, while one raised afterwards means the response
-// did not match the contract. `run` gives every call its own marker, so
-// concurrent requests never read each other's state.
+// How far a call got, in one field. Undefined means no response ever reached
+// us; a number means one did, and is its status.
+//
+// That is enough to tell the two ParseErrors apart, which is the only reason
+// this exists — see `toThrowable` for why one field is enough.
+//
+// `run` gives every call its own marker, so concurrent requests never read
+// each other's state.
 interface RequestPhase {
-  sent: boolean
   status?: number
 }
 
@@ -88,11 +90,6 @@ const getClient = memoizePromise(() =>
             Effect.gen(function* () {
               const token = yield* Effect.promise(getApiToken)
               const traceparent = yield* FiberRef.get(currentTraceparent)
-              const phase = yield* FiberRef.get(currentRequestPhase)
-
-              if (phase !== undefined) {
-                phase.sent = true
-              }
 
               const authorized = HttpClientRequest.setHeader(
                 request,
@@ -189,9 +186,14 @@ function toThrowable(
   }
 
   if (ParseResult.isParseError(error)) {
-    // Nothing was sent: the payload failed to encode against the contract, so
-    // this is invalid user input and the issues map onto form fields.
-    if (!phase.sent) {
+    // A ParseError can only be raised in two places: before the request is
+    // executed, where every encoder runs — path, body, headers, url params —
+    // or after a response arrived and failed to decode. In between there is
+    // nothing to parse; a request that left and then failed on the wire
+    // raises a RequestError. So no status means no request, and this is the
+    // request failing to encode against the contract, which makes it invalid
+    // input whose issues map onto form fields.
+    if (phase.status === undefined) {
       return new ApiError(
         400,
         validationMessage,
@@ -201,8 +203,10 @@ function toThrowable(
 
     console.error('The API response did not match the contract:', error.message)
 
+    // The status is a number here by the branch above, and it is the real one:
+    // the response arrived and only its body was wrong.
     return new ApiError(
-      phase.status ?? 500,
+      phase.status,
       'Squeal could not read the response from its backend. Please report this.'
     )
   }
@@ -231,7 +235,7 @@ function toThrowable(
 
 function run<A, E>(
   effect: Effect.Effect<A, E, HttpClient.HttpClient>,
-  phase: RequestPhase = { sent: false }
+  phase: RequestPhase = {}
 ): Promise<A> {
   return runtime
     .runPromiseExit(Effect.locally(effect, currentRequestPhase, phase))
@@ -269,7 +273,7 @@ function traced<A, E>(
     kind: 'client',
     ...(parent === undefined ? {} : { parent })
   })
-  const phase: RequestPhase = { sent: false }
+  const phase: RequestPhase = {}
 
   return run(
     Effect.locally(effect, currentTraceparent, formatTraceparent(span.context)),
