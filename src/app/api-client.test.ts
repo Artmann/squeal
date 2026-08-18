@@ -476,10 +476,19 @@ describe('apiClient', () => {
         expect.fail('Expected the request to reject')
       } catch (error) {
         expect(error).toBeInstanceOf(ApiError)
-        expect((error as ApiError).message).toEqual(
-          'Squeal could not read the response from its backend. Please report this.'
+
+        // The status is the response's own. That is the only assertion
+        // separating this branch from the encode-failure one above, which
+        // answers 400 for a request that never went out — so a status
+        // synthesised here would report a failure that did not happen.
+        expect(error).toEqual(
+          expect.objectContaining({
+            details: undefined,
+            message:
+              'Squeal could not read the response from its backend. Please report this.',
+            statusCode: 200
+          })
         )
-        expect((error as ApiError).details).toBeUndefined()
       }
     })
   })
@@ -495,6 +504,47 @@ describe('apiClient', () => {
 
       expect(request?.attributes['http.status_code']).toEqual(200)
       expect(request?.status).toEqual('ok')
+    })
+
+    it('records the status of a tagged error on the span', async () => {
+      mockFetch.mockResolvedValueOnce(
+        respondWith(
+          {
+            _tag: 'DatabaseNotFoundError',
+            databaseId: 'missing',
+            message: 'Database not found'
+          },
+          { status: 404 }
+        )
+      )
+
+      await expect(apiClient.getDatabaseSchema('missing')).rejects.toBeDefined()
+
+      const spans = enqueueSpan.mock.calls.map(([record]) => record)
+      const request = spans.find(
+        (span) => span.name === 'HTTP GET /databases/:id/schema'
+      )
+
+      // A tagged error is rethrown as itself, so it is not an ApiError and the
+      // fallback beside the phase read cannot answer for it. The recorded
+      // status comes from the phase or from nowhere.
+      expect(request?.attributes['http.status_code']).toEqual(404)
+      expect(request?.status).toEqual('error')
+    })
+
+    it('records the substituted status when no response arrived', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Failed to fetch'))
+
+      await expect(apiClient.getDatabases()).rejects.toBeInstanceOf(ApiError)
+
+      const spans = enqueueSpan.mock.calls.map(([record]) => record)
+      const request = spans.find((span) => span.name === 'HTTP GET /databases')
+
+      // Nothing came back, so the phase has no status and the span takes the
+      // one the ApiError was given. Without that fallback the span for every
+      // unreachable backend carries no status at all.
+      expect(request?.attributes['http.status_code']).toEqual(503)
+      expect(request?.status).toEqual('error')
     })
 
     it('marks the span as errored when the request fails', async () => {
