@@ -120,4 +120,66 @@ describe('visibleRows', () => {
       'sibling'
     ])
   })
+
+  it('hides collapsed branches independently of each other', () => {
+    const layout = computeWaterfallLayout([
+      buildSpan({ durationMs: 100, id: 'root', startedAt: 1000 }),
+      buildSpan({ id: 'branch-a', parentSpanId: 'root', startedAt: 1010 }),
+      buildSpan({ id: 'a-child', parentSpanId: 'branch-a', startedAt: 1020 }),
+      buildSpan({ id: 'branch-b', parentSpanId: 'root', startedAt: 1030 }),
+      buildSpan({ id: 'b-child', parentSpanId: 'branch-b', startedAt: 1040 }),
+      buildSpan({
+        id: 'b-grandchild',
+        parentSpanId: 'b-child',
+        startedAt: 1050
+      })
+    ])
+
+    const visible = visibleRows(layout.rows, new Set(['branch-a', 'b-child']))
+
+    expect(visible.map((row) => row.span.id)).toEqual([
+      'root',
+      'branch-a',
+      'branch-b',
+      'b-child'
+    ])
+  })
+
+  it('keeps a branch hidden when a collapsed row sits inside it', () => {
+    const layout = computeWaterfallLayout([
+      buildSpan({ durationMs: 100, id: 'root', startedAt: 1000 }),
+      buildSpan({ id: 'child', parentSpanId: 'root', startedAt: 1010 }),
+      buildSpan({
+        id: 'grandchild',
+        parentSpanId: 'child',
+        startedAt: 1020
+      }),
+      buildSpan({ id: 'sibling', parentSpanId: 'root', startedAt: 1030 })
+    ])
+
+    const visible = visibleRows(layout.rows, new Set(['root', 'child']))
+
+    expect(visible.map((row) => row.span.id)).toEqual(['root'])
+  })
+
+  it('hides the children of a collapsed span that was re-parented as a root', () => {
+    const layout = computeWaterfallLayout([
+      buildSpan({
+        durationMs: 50,
+        id: 'orphan',
+        parentSpanId: 'not-ingested',
+        startedAt: 1000
+      }),
+      buildSpan({
+        id: 'orphan-child',
+        parentSpanId: 'orphan',
+        startedAt: 1010
+      }),
+      buildSpan({ id: 'other-root', startedAt: 1100 })
+    ])
+
+    const visible = visibleRows(layout.rows, new Set(['orphan']))
+
+    expect(visible.map((row) => row.span.id)).toEqual(['orphan', 'other-root'])
+  })
 })

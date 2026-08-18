@@ -75,25 +75,30 @@ export function computeWaterfallLayout(spans: SpanDto[]): WaterfallLayout {
   return { rows, totalDurationMs: traceEnd - traceStart }
 }
 
+// Reads ancestry off the tree `computeWaterfallLayout` emitted rather than off
+// `parentSpanId`, so the re-parenting of orphans above stays a local decision.
+// Requires `rows` in DFS pre-order carrying tree depth: a row's descendants are
+// exactly the rows between it and the next row at the same or lower depth.
 export function visibleRows(
   rows: WaterfallRow[],
   collapsed: Set<string>
 ): WaterfallRow[] {
-  const hidden = new Set<string>()
   const visible: WaterfallRow[] = []
 
-  for (const row of rows) {
-    if (row.span.parentSpanId && hidden.has(row.span.parentSpanId)) {
-      hidden.add(row.span.id)
+  let collapsedDepth = Number.POSITIVE_INFINITY
 
+  for (const row of rows) {
+    if (row.depth > collapsedDepth) {
       continue
     }
 
     visible.push(row)
 
-    if (collapsed.has(row.span.id)) {
-      hidden.add(row.span.id)
-    }
+    // Only a visible row moves the watermark, so a collapsed row nested inside
+    // an already collapsed branch cannot raise it back up.
+    collapsedDepth = collapsed.has(row.span.id)
+      ? row.depth
+      : Number.POSITIVE_INFINITY
   }
 
   return visible
