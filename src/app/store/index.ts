@@ -1,5 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 
 import databaseExplorerReducer, {
   DatabaseExplorerState
@@ -60,7 +60,13 @@ export function createStore() {
   return store
 }
 
-type AppDispatch = ReturnType<typeof createStore>['dispatch']
+type AppStore = ReturnType<typeof createStore>
+type AppDispatch = AppStore['dispatch']
 
 export const useAppDispatch = useDispatch.withTypes<AppDispatch>()
 export const useAppSelector = useSelector.withTypes<RootState>()
+
+// For the rare read that must not subscribe the component: a callback that
+// needs the state as it is at the moment it runs, not as it was when the
+// callback was created.
+export const useAppStore = useStore.withTypes<AppStore>()
