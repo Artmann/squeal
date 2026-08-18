@@ -50,6 +50,14 @@ describe('SpanDetailPanel', () => {
     expect(screen.getByText(/at x/)).toBeInTheDocument()
   })
 
+  it('does not paint an unset status as a success', () => {
+    render(<SpanDetailPanel span={{ ...span, status: 'unset' }} />)
+
+    const badge = screen.getByText('unset')
+
+    expect(badge.className).not.toContain('text-ok')
+  })
+
   it('has no close button of its own', () => {
     render(<SpanDetailPanel span={span} />)
 

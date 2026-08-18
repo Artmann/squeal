@@ -39,7 +39,11 @@ export function SpanDetailPanel({ span }: SpanDetailPanelProps): ReactElement {
         <span
           className={cn(
             'rounded-full px-2 py-0.5',
-            span.status === 'error' ? 'bg-err/20 text-err' : 'bg-ok/20 text-ok'
+            span.status === 'error' && 'bg-err/20 text-err',
+            span.status === 'ok' && 'bg-ok/20 text-ok',
+            // A span that ended without a verdict — an abandoned query trace —
+            // is neither, and painting it as a success would be a lie.
+            span.status === 'unset' && 'bg-hover text-text2'
           )}
         >
           {span.status}

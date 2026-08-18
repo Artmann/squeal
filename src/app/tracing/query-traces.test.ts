@@ -19,6 +19,10 @@ const query = {
   worksheetId: 'worksheet-1'
 }
 
+// Mirrors maxActiveQueryTraces in query-traces.ts. Lowering the cap there
+// without touching these tests should break them.
+const activeQueryTraceCap = 50
+
 async function flushedSpans() {
   const send = vi.fn().mockResolvedValue({ insertedCount: 0 })
 
@@ -36,6 +40,12 @@ async function flushedSpans() {
         statusMessage: string | null
       }[]
   )
+}
+
+function startQueryTraces(count: number): void {
+  for (let index = 0; index < count; index++) {
+    queryTraces.startQueryTrace({ ...query, id: `query-${index}` })
+  }
 }
 
 describe('query traces', () => {
@@ -131,5 +141,58 @@ describe('query traces', () => {
     expect(() =>
       queryTraces.finishQueryTrace({ error: null, id: 'unknown' })
     ).not.toThrow()
+  })
+
+  it('abandons the oldest trace once the cap is reached', async () => {
+    startQueryTraces(activeQueryTraceCap + 1)
+
+    const spans = await flushedSpans()
+
+    expect(spans.length).toEqual(1)
+    expect(spans[0]?.attributes['query.id']).toEqual('query-0')
+    expect(spans[0]?.status).toEqual('unset')
+    expect(spans[0]?.events.map((event) => event.name)).toEqual([
+      'query.abandoned'
+    ])
+  })
+
+  it('abandons nothing while the map is merely full', async () => {
+    startQueryTraces(activeQueryTraceCap)
+
+    expect(await flushedSpans()).toEqual([])
+  })
+
+  it('keeps abandoning as further traces start', async () => {
+    startQueryTraces(activeQueryTraceCap + 10)
+
+    const spans = await flushedSpans()
+
+    expect(spans.map((span) => span.attributes['query.id'])).toEqual(
+      Array.from({ length: 10 }, (_, index) => `query-${index}`)
+    )
+  })
+
+  it('keeps every trace but the abandoned one', () => {
+    startQueryTraces(activeQueryTraceCap + 1)
+
+    const parents = Array.from(
+      { length: activeQueryTraceCap + 1 },
+      (_, index) => queryTraces.getQueryTraceParent(`query-${index}`)
+    )
+
+    expect(parents.filter((parent) => parent === undefined).length).toEqual(1)
+    expect(parents[0]).toEqual(undefined)
+  })
+
+  it('ignores a finish for a trace that was abandoned', async () => {
+    startQueryTraces(activeQueryTraceCap + 1)
+    queryTraces.finishQueryTrace({ error: null, id: 'query-0' })
+
+    const spans = await flushedSpans()
+
+    expect(spans.length).toEqual(1)
+    expect(spans[0]?.events.map((event) => event.name)).toEqual([
+      'query.abandoned'
+    ])
   })
 })
