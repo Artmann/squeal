@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { Effect, Layer, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -41,6 +41,25 @@ function run<A, E>(
   effect: Effect.Effect<A, E, AppDatabase | DatabaseService | WorksheetService>
 ): Promise<A> {
   return Effect.runPromise(Effect.provide(effect, makeLayer()))
+}
+
+// A real write failure rather than a mocked one. SQLite's RAISE(ABORT) backs
+// the offending statement out and leaves the transaction open, which is the
+// state a rollback actually has to clean up — a stubbed client would prove
+// only that the code called `transaction`, not that the rollback works.
+function failUpdatesTo(table: 'databases' | 'worksheets', when = '1 = 1') {
+  return Effect.gen(function* () {
+    const appDatabase = yield* AppDatabase
+
+    yield* appDatabase.execute((client) =>
+      client.run(
+        sql.raw(
+          `CREATE TRIGGER fail_updates_${table} BEFORE UPDATE ON ${table} WHEN ${when} ` +
+            `BEGIN SELECT RAISE(ABORT, 'injected write failure'); END`
+        )
+      )
+    )
+  })
 }
 
 const differentServerError = expect.objectContaining({
@@ -384,6 +403,56 @@ describe('DatabaseService', () => {
     expect(remaining).toEqual([])
   })
 
+  // The purge-and-soft-delete and the unlink were two statements, so a failure
+  // between them left live worksheets holding the id of a soft-deleted
+  // connection: shown as unconnected, never adopted by create's auto-link,
+  // and answering "database not found" for every query run from them.
+  it('leaves the connection intact when unlinking its worksheets fails', async () => {
+    const { databaseRow, error, linked, worksheetRow } = await run(
+      Effect.gen(function* () {
+        const service = yield* DatabaseService
+        const worksheets = yield* WorksheetService
+        const appDatabase = yield* AppDatabase
+
+        yield* worksheets.create({ name: 'My First Worksheet' })
+
+        const created = yield* service.create('Pagila', connection)
+
+        const [linked] = yield* appDatabase.execute((client) =>
+          client.select().from(worksheetsTable)
+        )
+
+        yield* failUpdatesTo('worksheets')
+
+        const error = yield* Effect.flip(service.remove(created.database.id))
+
+        const [databaseRow] = yield* appDatabase.execute((client) =>
+          client.select().from(databasesTable)
+        )
+        const [worksheetRow] = yield* appDatabase.execute((client) =>
+          client.select().from(worksheetsTable)
+        )
+
+        return { databaseRow, error, linked, worksheetRow }
+      })
+    )
+
+    // Without a linked worksheet the unlink matches no rows, the trigger never
+    // fires, and the rest of this would pass for the wrong reason.
+    expect(linked.databaseId).toEqual(databaseRow.id)
+
+    expect(error._tag).toEqual('AppDatabaseError')
+    // The statement the trigger aborted, so an unrelated database error cannot
+    // satisfy the tag alone. cause is drizzle's wrapper message; the libsql
+    // one carrying "injected write failure" is nested below it.
+    expect(error.cause).toContain('update "worksheets"')
+    expect(databaseRow.deletedAt).toBeNull()
+    expect(
+      databaseRow.connectionInfo.slice(testEncryptionPrefix.length)
+    ).not.toEqual('{}')
+    expect(worksheetRow.databaseId).toEqual(databaseRow.id)
+  })
+
   it('fails with DatabaseNotFoundError when removing an unknown id', async () => {
     const error = await run(
       Effect.gen(function* () {
@@ -453,6 +522,56 @@ describe('DatabaseService', () => {
     expect(ordered.map((database) => database.name)).toEqual([
       'Second',
       'First'
+    ])
+  })
+
+  // Reordering wrote N rows in N statements, so a failure at row k persisted a
+  // partial order while the caller was told the whole thing failed — and
+  // list()'s ordering then interleaved renumbered and stale rows.
+  it('leaves every position unchanged when a reorder fails partway', async () => {
+    const { error, rows } = await run(
+      Effect.gen(function* () {
+        const service = yield* DatabaseService
+        const appDatabase = yield* AppDatabase
+
+        const first = yield* service.create('First', connection)
+        const second = yield* service.create('Second', connection)
+        const third = yield* service.create('Third', connection)
+
+        // Aborts on the row the statement renumbers to 2, so two rows have
+        // already been assigned inside the statement when it fires. That is
+        // what makes the assertion below about statement-level rollback rather
+        // than about failing before anything was written.
+        yield* failUpdatesTo('databases', 'NEW.sortOrder = 2')
+
+        const error = yield* Effect.flip(
+          service.reorder([
+            third.database.id,
+            first.database.id,
+            second.database.id
+          ])
+        )
+
+        const rows = yield* appDatabase.execute((client) =>
+          client
+            .select({
+              name: databasesTable.name,
+              sortOrder: databasesTable.sortOrder
+            })
+            .from(databasesTable)
+            .orderBy(databasesTable.name)
+        )
+
+        return { error, rows }
+      })
+    )
+
+    expect(error._tag).toEqual('AppDatabaseError')
+    expect(error.cause).toContain('update "databases" set "sortOrder"')
+    expect(rows).toEqual([
+      { name: 'First', sortOrder: null },
+      { name: 'Second', sortOrder: null },
+      { name: 'Third', sortOrder: null }
     ])
   })
 
