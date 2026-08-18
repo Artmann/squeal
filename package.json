@@ -9,6 +9,7 @@
     "generate-icons": "bun run scripts/generate-icons.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "make": "electron-forge make",
+    "make:mac": "tsx scripts/fetch-macos-bindings.ts && electron-forge make --arch=universal",
     "package": "electron-forge package",
     "seed": "tsx scripts/seed.ts",
     "start": "electron-forge start",

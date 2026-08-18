@@ -259,6 +259,22 @@ stop working, so both have comments at the code:
   updates. Removing the ZIP maker breaks macOS updates while every build still
   passes, which is how it was lost once already.
 
+macOS ships **one universal build** rather than an asset per architecture:
+`yarn make:mac` (`electron-forge make --arch=universal`), which the release
+workflow runs in place of `yarn make` on the single macOS runner. Two things
+make that work, and both are load-bearing:
+
+- `scripts/fetch-macos-bindings.ts` puts _both_ of libsql's macOS native
+  bindings into `node_modules` before the build. The x64 and arm64 slices are
+  packaged from the same host tree, and `@electron/universal` aborts the merge
+  when a Mach-O file exists in only one of them. `forge.config.ts` names those
+  bindings in `osxUniversal.x64ArchFiles` for the same reason.
+- The feed serves the universal asset to `darwin-x64` and `darwin-arm64` clients
+  alike, as soon as it is newer than the newest arch-specific asset
+  (`handleUpdate` in `update.electronjs.org`). That is what migrates an install
+  running under Rosetta — `process.arch` reports `x64` there, so a per-arch
+  release would keep feeding it the Intel build forever.
+
 Windows needs nothing special — the Squirrel `Setup.exe`, `RELEASES`, and
 `-full.nupkg` are already uploaded, and the feed serves the channel from them.
 Linux has no Electron updater support at all, so it takes a separate path: a
