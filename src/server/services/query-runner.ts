@@ -419,6 +419,17 @@ function isCancellationError(error: unknown): boolean {
     .includes('canceling statement due to user request')
 }
 
+// The message, never the object. A driver error carries the connection it was
+// thrown for -- pg hangs `address` and `port` off it, and the config is one
+// property away on several drivers -- and what this returns becomes a
+// QueryExecutionError's message, lands in the `queries.error` column, and is
+// read back by the renderer as `QueryDto.error`. Serializing the error itself
+// would put the connection in all three.
+//
+// The message alone still names the host and the user, because that is what
+// makes "password authentication failed for user ..." actionable. The same
+// extraction, with the same reason, is done at `connection-tests.ts` and
+// `databases.ts`.
 function extractErrorMessage(error: unknown): string {
   if (error instanceof AggregateError) {
     const messages = error.errors.map((entry) =>
