@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance
+} from 'vitest'
 
 interface CursorFixture {
   error?: Error
@@ -14,29 +22,36 @@ interface CursorFixture {
   rows: Record<string, unknown>[]
 }
 
-const { cursorState, mockConnect, mockEnd, mockQuery } = vi.hoisted(() => ({
-  cursorState: {
-    closeCount: 0,
-    createdWith: [] as string[],
-    fixtures: [] as CursorFixture[],
-    readRequests: [] as number[]
-  },
-  mockConnect: vi.fn(),
-  mockEnd: vi.fn(),
-  mockQuery: vi.fn()
-}))
+const { clientState, cursorState, mockConnect, mockEnd, mockQuery } =
+  vi.hoisted(() => ({
+    // node-postgres learns the backend process id during connect, so a client
+    // only carries one once the server has answered. Undefined is the default
+    // because that is what a client that never connected looks like.
+    clientState: { processId: undefined as number | undefined },
+    cursorState: {
+      closeCount: 0,
+      createdWith: [] as string[],
+      fixtures: [] as CursorFixture[],
+      readRequests: [] as number[]
+    },
+    mockConnect: vi.fn(),
+    mockEnd: vi.fn(),
+    mockQuery: vi.fn()
+  }))
 
 vi.mock('pg', () => {
   // Constructor-function mock, so `this` needs the shape it assigns.
   interface MockClientInstance {
     connect: typeof mockConnect
     end: typeof mockEnd
+    processID: number | undefined
     query: typeof mockQuery
   }
 
   function MockClient(this: MockClientInstance) {
     this.connect = mockConnect
     this.end = mockEnd
+    this.processID = clientState.processId
     this.query = mockQuery
   }
 
@@ -758,15 +773,27 @@ describe('connectWithRetry', () => {
 })
 
 describe('PostgresAdapter cancellation', () => {
+  // Silenced for the whole suite rather than the one test that asserts on it:
+  // the failing-cancel path logs, so a test merely exercising it would print a
+  // real outage line during a green run.
+  let logged: MockInstance<typeof console.log>
+
   beforeEach(() => {
     vi.clearAllMocks()
 
+    clientState.processId = undefined
     cursorState.closeCount = 0
     cursorState.createdWith.length = 0
     cursorState.fixtures.length = 0
     cursorState.readRequests.length = 0
 
+    logged = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
     mockQuery.mockImplementation((input: unknown) => input)
+  })
+
+  afterEach(() => {
+    logged.mockRestore()
   })
 
   it('fails fast when canceled before connecting', async () => {
@@ -899,5 +926,210 @@ describe('PostgresAdapter cancellation', () => {
 
     expect(mockConnect).not.toHaveBeenCalled()
     expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  it('asks the server to cancel the running backend', async () => {
+    clientState.processId = 4242
+
+    const adapter = new PostgresAdapter(connectionInfo)
+
+    let cancelPromise: Promise<void> | undefined
+
+    cursorState.fixtures.push({
+      error: driverError('canceling statement due to user request', '57014'),
+      fields: [],
+      onRead: () => {
+        cancelPromise ??= adapter.cancel()
+      },
+      rows: []
+    })
+
+    await expect(adapter.runQuery('SELECT pg_sleep(60)')).rejects.toEqual(
+      new QueryCanceledError()
+    )
+
+    await cancelPromise
+
+    // The connection running the statement is busy, so the request has to come
+    // over a second one — and it has to name the backend, or the server is
+    // asked to cancel nothing at all.
+    expect({
+      clientsConstructed: vi.mocked(Client).mock.calls.length,
+      statements: mockQuery.mock.calls.filter(
+        ([statement]) => typeof statement === 'string'
+      )
+    }).toEqual({
+      clientsConstructed: 2,
+      statements: [['SELECT pg_cancel_backend($1)', [4242]]]
+    })
+  })
+
+  it('resolves even when the cancel connection cannot be opened', async () => {
+    clientState.processId = 4242
+
+    // The query's own client connects; the throwaway one the cancel opens does
+    // not.
+    mockConnect.mockResolvedValueOnce(undefined)
+    mockConnect.mockRejectedValueOnce(new Error('Connection refused'))
+
+    const adapter = new PostgresAdapter(connectionInfo)
+
+    let cancelPromise: Promise<void> | undefined
+
+    cursorState.fixtures.push({
+      error: driverError('canceling statement due to user request', '57014'),
+      fields: [],
+      onRead: () => {
+        cancelPromise ??= adapter.cancel()
+      },
+      rows: []
+    })
+
+    await expect(adapter.runQuery('SELECT pg_sleep(60)')).rejects.toEqual(
+      new QueryCanceledError()
+    )
+
+    // A cancel that cannot reach the server is reported, not thrown: the route
+    // answers, the query keeps running, and the user can ask again.
+    await expect(cancelPromise).resolves.toBeUndefined()
+    expect(logged.mock.calls.map(String).join(' ')).toContain(
+      'Could not cancel the running query'
+    )
+  })
+
+  // The connect resolving and the statement starting are not the same instant.
+  // The adapter used to let go of the connecting client and only take hold of
+  // the running one several turns later, and a cancel arriving in between found
+  // nothing to act on — so the query the user had just canceled ran to
+  // completion and was recorded as a success.
+  it('reports a cancel that lands between connecting and executing', async () => {
+    clientState.processId = 4242
+
+    let finishConnecting: (() => void) | undefined
+
+    mockConnect.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishConnecting = () => resolve()
+        })
+    )
+
+    cursorState.fixtures.push({
+      fields: [{ name: 'id' }],
+      rowCount: 1,
+      rows: [{ id: 1 }]
+    })
+
+    const adapter = new PostgresAdapter(connectionInfo)
+    const runPromise = adapter.runQuery('SELECT id FROM users')
+
+    await vi.waitFor(() => {
+      expect(mockConnect).toHaveBeenCalled()
+    })
+
+    finishConnecting?.()
+
+    // One turn of the microtask queue: the earliest moment anything outside the
+    // adapter can look, and still long before `runQuery` resumes to send the
+    // statement. The connection is already owned as the running one by then —
+    // the request below is what proves it, since a handover left for later would
+    // have this cancel tearing down a connecting socket instead.
+    //
+    // Measured: this test passes at one, two, and three turns and fails at zero
+    // and at four. The count is load-bearing, so a refactor that adds or removes
+    // an async frame in `acquireConnection` will fail this — loudly, but looking
+    // like a product bug. Both edges are real: at zero the cancel takes the
+    // `connecting` branch and never asks the server, at four the statement has
+    // already gone out.
+    await Promise.resolve()
+
+    const cancelPromise = adapter.cancel()
+
+    await expect(runPromise).rejects.toEqual(new QueryCanceledError())
+
+    await cancelPromise
+
+    expect({
+      requested: mockQuery.mock.calls.filter(
+        ([statement]) => typeof statement === 'string'
+      ),
+      statements: cursorState.createdWith
+    }).toEqual({
+      requested: [['SELECT pg_cancel_backend($1)', [4242]]],
+      statements: []
+    })
+  })
+
+  // The other side of the same instant: the user gives up while the connect is
+  // still in flight and the server answers anyway. Aborting the socket comes too
+  // late to matter, so all that is left is the record that they asked — and a
+  // handover that overwrites it hands the query a connection to run on.
+  it('reports a cancel the connection beat by a moment', async () => {
+    let finishConnecting: (() => void) | undefined
+
+    mockConnect.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishConnecting = () => resolve()
+        })
+    )
+
+    cursorState.fixtures.push({
+      fields: [{ name: 'id' }],
+      rowCount: 1,
+      rows: [{ id: 1 }]
+    })
+
+    const adapter = new PostgresAdapter(connectionInfo)
+    const runPromise = adapter.runQuery('SELECT id FROM users')
+
+    await vi.waitFor(() => {
+      expect(mockConnect).toHaveBeenCalled()
+    })
+
+    const cancelPromise = adapter.cancel()
+
+    finishConnecting?.()
+
+    await expect(runPromise).rejects.toEqual(new QueryCanceledError())
+
+    await cancelPromise
+
+    // No request over a second connection is the half that says which branch
+    // ran: this cancel tore down a socket that was still connecting, rather
+    // than naming a backend that was never reached.
+    expect({
+      requested: mockQuery.mock.calls.filter(
+        ([statement]) => typeof statement === 'string'
+      ),
+      statements: cursorState.createdWith
+    }).toEqual({ requested: [], statements: [] })
+  })
+
+  // The backoff between two connect attempts is the longest stretch in which
+  // the adapter holds nothing at all, so a cancel landing there has only the
+  // record of itself to leave behind — and the top of the next attempt is the
+  // one place that record can be read. Without it, giving up on a server that
+  // is refusing connections still waits out the whole retry schedule.
+  it('answers a cancel that lands during the backoff', async () => {
+    mockConnect.mockRejectedValueOnce(
+      new Error('sorry, too many clients already')
+    )
+
+    const adapter = new PostgresAdapter(connectionInfo)
+    const runPromise = adapter.runQuery('SELECT id FROM users')
+
+    await vi.waitFor(() => {
+      expect(mockConnect).toHaveBeenCalledTimes(1)
+    })
+
+    await adapter.cancel()
+
+    await expect(runPromise).rejects.toEqual(new QueryCanceledError())
+
+    expect({
+      connects: mockConnect.mock.calls.length,
+      statements: cursorState.createdWith
+    }).toEqual({ connects: 1, statements: [] })
   })
 })

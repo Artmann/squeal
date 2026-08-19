@@ -27,66 +27,66 @@ import {
 } from './server-version'
 import { createSslOptions } from './ssl-options'
 
+// One adapter runs one operation at a time — the factory builds a fresh one
+// per connection — so its whole lifecycle is a single value. Three independent
+// fields could not say that: a client handed on from connecting to running
+// passed through a moment where every field read as "nothing here", and a
+// cancel arriving in it had nothing to act on.
+type AdapterState =
+  | { kind: 'canceled' }
+  | { client: Client; kind: 'connecting' }
+  | { kind: 'idle' }
+  | { client: Client; kind: 'running' }
+
 export class PostgresAdapter implements DatabaseAdapter {
   protected readonly connectionInfo: PostgresConnectionInfo
 
-  private activeClient: Client | null = null
-
-  private canceled = false
-
-  private connectingClient: Client | null = null
+  private state: AdapterState = { kind: 'idle' }
 
   constructor(connectionInfo: PostgresConnectionInfo) {
     this.connectionInfo = connectionInfo
   }
 
+  // Every branch has to be non-throwing: shutdown cancels running queries
+  // inside a five second budget, and a rejection there would abort the rest of
+  // it.
   async cancel(): Promise<void> {
-    this.canceled = true
+    const state = this.state
 
-    // A connect still in flight can simply be aborted — ending the client
-    // tears down the socket and the pending connect rejects.
-    const connectingClient = this.connectingClient
+    // Recorded before anything is awaited, and never cleared. The steps this
+    // query still has ahead of it each check it, so an answer that only lived
+    // as long as a handle would be lost exactly in the moments no handle
+    // exists.
+    this.state = { kind: 'canceled' }
 
-    if (connectingClient) {
-      try {
-        await connectingClient.end()
-      } catch {
-        // Aborting is best-effort; the connect rejecting is what matters.
+    switch (state.kind) {
+      case 'canceled':
+      case 'idle': {
+        return
       }
 
-      return
-    }
+      // A connect still in flight can simply be aborted — ending the client
+      // tears down the socket and the pending connect rejects.
+      case 'connecting': {
+        try {
+          await state.client.end()
+        } catch {
+          // Aborting is best-effort; the connect rejecting is what matters.
+        }
 
-    const backendProcessId = getBackendProcessId(this.activeClient)
+        return
+      }
 
-    if (!backendProcessId) {
-      return
-    }
+      case 'running': {
+        return await this.cancelBackend(state.client)
+      }
 
-    // Postgres cancellation must be issued over a separate connection — the
-    // one running the query is busy — so we open a throwaway client and ask
-    // the server to cancel the running backend. A failed cancel must not
-    // reject the cancel route: the query keeps running and can be canceled
-    // again.
-    const cancelClient = new Client(createClientConfig(this.connectionInfo))
+      // A fifth kind would otherwise fall out of the switch and return as if
+      // there had been nothing to cancel.
+      default: {
+        const unhandled: never = state
 
-    try {
-      await cancelClient.connect()
-
-      await cancelClient.query('SELECT pg_cancel_backend($1)', [
-        backendProcessId
-      ])
-    } catch (error) {
-      log.warn(
-        `Could not cancel the running query: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
-    } finally {
-      try {
-        await cancelClient.end()
-      } catch {
-        // Cleanup is best-effort.
+        return unhandled
       }
     }
   }
@@ -99,6 +99,8 @@ export class PostgresAdapter implements DatabaseAdapter {
     try {
       return await this.getSchemaWithClient(client)
     } finally {
+      this.release()
+
       await closeQuietly(() => client.end(), 'schema')
     }
   }
@@ -133,9 +135,17 @@ export class PostgresAdapter implements DatabaseAdapter {
   async runQuery(query: string): Promise<QueryResult> {
     const client = await this.acquireConnection()
 
-    this.activeClient = client
-
     try {
+      // Asked once, here, rather than left to the statement to notice: a
+      // cancel that lands while the connection is being handed over reaches
+      // the server before any statement does, so there is nothing running for
+      // pg_cancel_backend to stop and no 57014 coming back. Without this the
+      // query the user just canceled runs to completion and is recorded as a
+      // success.
+      if (this.canceled) {
+        throw new QueryCanceledError()
+      }
+
       return await this.executeWithIdentifierRetry(client, query)
     } catch (error) {
       // Wraps the whole attempt rather than the statement alone, so it also
@@ -148,7 +158,7 @@ export class PostgresAdapter implements DatabaseAdapter {
 
       throw error
     } finally {
-      this.activeClient = null
+      this.release()
 
       await closeQuietly(() => client.end(), 'query')
     }
@@ -163,6 +173,9 @@ export class PostgresAdapter implements DatabaseAdapter {
   ): Promise<Client> {
     return connectWithRetry(
       async () => {
+        // Each attempt re-enters `connecting` with its own client, and this is
+        // also where a cancel that landed during the backoff between two of
+        // them stops the next one from being opened at all.
         if (this.canceled) {
           throw new QueryCanceledError()
         }
@@ -172,14 +185,12 @@ export class PostgresAdapter implements DatabaseAdapter {
           ...configOverrides
         })
 
-        // Exposed so cancel() can abort a connect still in flight instead of
+        // Held so cancel() can abort a connect still in flight instead of
         // silently doing nothing before the query reaches the server.
-        this.connectingClient = client
+        this.state = { client, kind: 'connecting' }
 
         try {
           await client.connect()
-
-          return client
         } catch (error) {
           // A client that failed to connect can't be reused; drop it before
           // the next attempt so we never leak a half-open connection.
@@ -193,10 +204,23 @@ export class PostgresAdapter implements DatabaseAdapter {
             throw new QueryCanceledError()
           }
 
+          // Nothing is in flight between attempts, so there is nothing for a
+          // cancel arriving now to tear down — only the check above to find.
+          this.state = { kind: 'idle' }
+
           throw error
-        } finally {
-          this.connectingClient = null
         }
+
+        // In the same step the connect resolves in, with nothing awaited
+        // between: the handle goes straight from one state to the next rather
+        // than through a gap where the adapter is holding nothing.
+        if (this.canceled) {
+          throw new QueryCanceledError()
+        }
+
+        this.state = { client, kind: 'running' }
+
+        return client
       },
       {
         delays: connectionRetryDelays,
@@ -207,6 +231,54 @@ export class PostgresAdapter implements DatabaseAdapter {
           )
       }
     )
+  }
+
+  // Postgres cancellation must be issued over a separate connection — the one
+  // running the query is busy — so we open a throwaway client and ask the
+  // server to cancel the running backend. A failed cancel must not reject the
+  // cancel route: the query keeps running and can be canceled again.
+  private async cancelBackend(client: Client): Promise<void> {
+    const backendProcessId = getBackendProcessId(client)
+
+    if (!backendProcessId) {
+      return
+    }
+
+    // Inside the try because building the config reads the CA file off disk:
+    // a certificate moved or deleted since the query started would otherwise
+    // throw out of `cancel()` itself, which every branch here promises not to
+    // do.
+    let cancelClient: Client | undefined
+
+    try {
+      cancelClient = new Client(createClientConfig(this.connectionInfo))
+
+      await cancelClient.connect()
+
+      await cancelClient.query('SELECT pg_cancel_backend($1)', [
+        backendProcessId
+      ])
+    } catch (error) {
+      log.warn(
+        `Could not cancel the running query: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    } finally {
+      try {
+        await cancelClient?.end()
+      } catch {
+        // Cleanup is best-effort.
+      }
+    }
+  }
+
+  // Read through a getter rather than by comparing `this.state` at each call
+  // site: the compiler narrows a field it has just seen assigned, and calls two
+  // of these five checks unreachable — the opposite of the truth, since both
+  // exist because a cancel can land between the assignment and the check.
+  private get canceled(): boolean {
+    return this.state.kind === 'canceled'
   }
 
   private async executeQuery(
@@ -303,6 +375,15 @@ export class PostgresAdapter implements DatabaseAdapter {
       columnsResult.rows,
       foreignKeysResult.rows
     )
+  }
+
+  // Only from `running`: `canceled` is terminal, so an operation finishing
+  // after the user asked to stop it must not hand the adapter back as if
+  // nothing had been asked.
+  private release(): void {
+    if (this.state.kind === 'running') {
+      this.state = { kind: 'idle' }
+    }
   }
 
   async testConnection(): Promise<void> {
@@ -467,8 +548,8 @@ function toQueryResult(
 
 // node-postgres exposes the backend process id at runtime, but it is not
 // present on the published Client type.
-function getBackendProcessId(client: Client | null): number | undefined {
-  if (!client || !('processID' in client)) {
+function getBackendProcessId(client: Client): number | undefined {
+  if (!('processID' in client)) {
     return undefined
   }
 
