@@ -1,5 +1,5 @@
 // The bridge between Effect's tracing and Squeal's span store: a custom
-// Tracer whose spans persist straight into the spans table via writeSpans.
+// Tracer whose finished spans are queued for the batched writer in TracerLive.
 // Effect already generates W3C-format ids, so the renderer's traceparent
 // propagation and the existing dashboard keep working unchanged.
 import {
@@ -31,19 +31,30 @@ import {
 import { writeSpans } from '@/main/tracing/span-writer'
 
 export interface SquealTracerOptions {
-  // Injectable for tests; defaults to the spans-table writer.
-  persist?: (records: SpanRecord[]) => Promise<unknown>
+  // Required, and one span at a time. Durability is `TracerLive`'s business:
+  // this sink hands the span over and cannot report back, because the only
+  // sink ever wired up offers it to a queue and returns. A default here used to
+  // make a second, fully-formed write path representable — a bare
+  // `makeSquealTracer()` would have written each span inline against the
+  // `@/database` singleton, bypassing `AppDatabase`, the bounded queue, the
+  // drop counter and the teardown ordering below, all of which this module
+  // exists to impose.
+  emit: (record: SpanRecord) => void
 }
 
-export function makeSquealTracer(
-  options: SquealTracerOptions = {}
-): Tracer.Tracer {
-  const persist = options.persist ?? writeSpans
-
+export function makeSquealTracer(options: SquealTracerOptions): Tracer.Tracer {
   return Tracer.make({
     context: (execution) => execution(),
     span: (name, parent, _context, links, startTime, kind) =>
-      new SquealSpan(name, parent, _context, links, startTime, kind, persist)
+      new SquealSpan(
+        name,
+        parent,
+        _context,
+        links,
+        startTime,
+        kind,
+        options.emit
+      )
   })
 }
 
@@ -66,23 +77,21 @@ const droppedSpanLogInterval = 100
 // operation it measures, and unbounded in-flight writes are exactly what this
 // queue exists to prevent. A full queue means the writer has fallen far
 // behind, so spans are dropped — loudly — instead of being retained.
-function makeQueuedPersist(
+export function makeQueuedEmit(
   queue: Queue.Queue<SpanRecord>
-): (records: SpanRecord[]) => Promise<unknown> {
+): (record: SpanRecord) => void {
   let dropped = 0
 
-  return (records) => {
-    for (const record of records) {
-      if (!Queue.unsafeOffer(queue, record)) {
-        dropped += 1
-
-        if (dropped % droppedSpanLogInterval === 1) {
-          log.warn(`Span queue is full; dropped ${dropped} span(s).`)
-        }
-      }
+  return (record) => {
+    if (Queue.unsafeOffer(queue, record)) {
+      return
     }
 
-    return Promise.resolve()
+    dropped += 1
+
+    if (dropped % droppedSpanLogInterval === 1) {
+      log.warn(`Span queue is full; dropped ${dropped} span(s).`)
+    }
   }
 }
 
@@ -138,9 +147,7 @@ export const TracerLive = Layer.unwrapScoped(
 
     yield* Effect.forkScoped(Effect.forever(drainBatch))
 
-    return Layer.setTracer(
-      makeSquealTracer({ persist: makeQueuedPersist(queue) })
-    )
+    return Layer.setTracer(makeSquealTracer({ emit: makeQueuedEmit(queue) }))
   })
 )
 
@@ -157,8 +164,8 @@ class SquealSpan implements Tracer.Span {
   readonly traceId: string
   status: Tracer.SpanStatus
 
+  private readonly emit: (record: SpanRecord) => void
   private readonly events: SpanEvent[] = []
-  private readonly persist: (records: SpanRecord[]) => Promise<unknown>
 
   constructor(
     name: string,
@@ -167,7 +174,7 @@ class SquealSpan implements Tracer.Span {
     links: ReadonlyArray<Tracer.SpanLink>,
     startTime: bigint,
     kind: Tracer.SpanKind,
-    persist: (records: SpanRecord[]) => Promise<unknown>
+    emit: (record: SpanRecord) => void
   ) {
     // Inbound parents come from client headers, and the platform's b3 fallback
     // does not validate them at all. An unusable id would produce a trace the
@@ -180,11 +187,11 @@ class SquealSpan implements Tracer.Span {
     )
 
     this.context = context
+    this.emit = emit
     this.kind = kind
     this.links = links.slice()
     this.name = name
     this.parent = usableParent
-    this.persist = persist
     this.sampled = Option.match(usableParent, {
       onNone: () => true,
       onSome: (span) => span.sampled
@@ -214,17 +221,10 @@ class SquealSpan implements Tracer.Span {
 
     this.status = { _tag: 'Ended', endTime, exit, startTime }
 
-    const record = this.toRecord(startTime, endTime, exit)
-
-    // A failed write is logged and swallowed — tracing must never take the
-    // traced operation down with it.
-    void this.persist([record]).then(undefined, (error: unknown) => {
-      log.error(
-        `Could not write span ${record.name}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
-    })
+    // Handed over and forgotten. Ending a span must not be able to fail the
+    // operation it measures, and the queued sink does not: writing is the drain
+    // fiber's job, and its error policy lives with the write.
+    this.emit(this.toRecord(startTime, endTime, exit))
   }
 
   event(

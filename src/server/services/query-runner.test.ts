@@ -437,10 +437,8 @@ describe('QueryRunner', () => {
   it('emits the query span pipeline into the span store', async () => {
     const written: SpanRecord[] = []
     const tracer = makeSquealTracer({
-      persist: (records) => {
-        written.push(...records)
-
-        return Promise.resolve(records.length)
+      emit: (record) => {
+        written.push(record)
       }
     })
 
