@@ -22,60 +22,9 @@ vi.mock('./tracing/exporter', () => ({ enqueueSpan }))
 vi.stubGlobal('fetch', mockFetch)
 
 import { apiClient } from './api-client'
+import { capturedFetch, jsonResponse } from './test-fetch'
 
 const traceparentPattern = /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/
-
-interface CapturedRequest {
-  headers: Record<string, string>
-  method: string
-  url: string
-}
-
-function toHeaderRecord(
-  source: HeadersInit | undefined
-): Record<string, string> {
-  const headers: Record<string, string> = {}
-
-  if (source === undefined) {
-    return headers
-  }
-
-  new Headers(source).forEach((value, key) => {
-    headers[key.toLowerCase()] = value
-  })
-
-  return headers
-}
-
-// The client hands fetch a Request object, so assertions read it back rather
-// than inspecting a plain options bag.
-function captured(callIndex = 0): CapturedRequest {
-  const [input, init] = mockFetch.mock.calls[callIndex] as [
-    Request | string,
-    RequestInit | undefined
-  ]
-
-  if (input instanceof Request) {
-    return {
-      headers: toHeaderRecord(input.headers),
-      method: input.method,
-      url: input.url
-    }
-  }
-
-  return {
-    headers: toHeaderRecord(init?.headers),
-    method: init?.method ?? 'GET',
-    url: String(input)
-  }
-}
-
-function respondWith(data: unknown, options: { status?: number } = {}) {
-  return new Response(JSON.stringify(data), {
-    headers: { 'content-type': 'application/json' },
-    status: options.status ?? 200
-  })
-}
 
 const databaseDto: DatabaseDto = {
   connectionInfo: {
@@ -113,6 +62,21 @@ const queryDto: QueryDto = {
   worksheetId: 'ws-123'
 }
 
+const spanRecord: SpanRecord = {
+  attributes: {},
+  durationMs: 1,
+  events: [],
+  id: '1'.repeat(16),
+  kind: 'client',
+  name: 'HTTP GET /databases',
+  parentSpanId: null,
+  serviceName: 'renderer',
+  startedAt: 1704067200000,
+  status: 'ok',
+  statusMessage: null,
+  traceId: 'a'.repeat(32)
+}
+
 describe('apiClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -124,11 +88,11 @@ describe('apiClient', () => {
 
   describe('requests', () => {
     it('sends the bearer token and a traceparent on traced calls', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({ databases: [] }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ databases: [] }))
 
       await apiClient.getDatabases()
 
-      const request = captured()
+      const request = await capturedFetch()
 
       expect(request.url).toEqual('http://127.0.0.1:7847/databases')
       expect(request.method).toEqual('GET')
@@ -138,7 +102,7 @@ describe('apiClient', () => {
 
     it('posts a database and returns the created row', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith(
+        jsonResponse(
           { database: databaseDto, updatedWorksheet: worksheetDto },
           { status: 201 }
         )
@@ -156,10 +120,27 @@ describe('apiClient', () => {
         type: 'postgres'
       })
 
-      const request = captured()
+      const request = await capturedFetch()
 
-      expect(request.method).toEqual('POST')
-      expect(request.url).toEqual('http://127.0.0.1:7847/databases')
+      expect({
+        body: request.body,
+        method: request.method,
+        url: request.url
+      }).toEqual({
+        body: {
+          connectionInfo: {
+            database: 'testdb',
+            host: 'localhost',
+            password: 'secret',
+            port: 5432,
+            username: 'admin'
+          },
+          name: 'Test Database',
+          type: 'postgres'
+        },
+        method: 'POST',
+        url: 'http://127.0.0.1:7847/databases'
+      })
       expect(result).toEqual({
         database: databaseDto,
         updatedWorksheet: worksheetDto
@@ -169,11 +150,11 @@ describe('apiClient', () => {
     it('unwraps the schema from the response', async () => {
       const schema: SchemaInfoDto = { databaseName: 'testdb', tables: [] }
 
-      mockFetch.mockResolvedValueOnce(respondWith({ schema }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ schema }))
 
       const result = await apiClient.getDatabaseSchema('db-123')
 
-      expect(captured().url).toEqual(
+      expect((await capturedFetch()).url).toEqual(
         'http://127.0.0.1:7847/databases/db-123/schema'
       )
       expect(result).toEqual(schema)
@@ -181,23 +162,84 @@ describe('apiClient', () => {
 
     it('unwraps the worksheet from a patch response', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith({ worksheet: { ...worksheetDto, name: 'Renamed' } })
+        jsonResponse({ worksheet: { ...worksheetDto, name: 'Renamed' } })
       )
 
       const result = await apiClient.updateWorksheet('ws-123', {
         name: 'Renamed'
       })
 
-      const request = captured()
+      const request = await capturedFetch()
 
-      expect(request.method).toEqual('PATCH')
-      expect(request.url).toEqual('http://127.0.0.1:7847/worksheets/ws-123')
-      expect(result.name).toEqual('Renamed')
+      expect({
+        body: request.body,
+        method: request.method,
+        url: request.url
+      }).toEqual({
+        body: { name: 'Renamed' },
+        method: 'PATCH',
+        url: 'http://127.0.0.1:7847/worksheets/ws-123'
+      })
+      expect(result).toEqual({ ...worksheetDto, name: 'Renamed' })
+    })
+
+    // The third verb that carries a payload, and the one whose payload is the
+    // whole request: an order the server cannot read is an order it drops.
+    it('puts the worksheet order as a list of ids', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ worksheets: [worksheetDto] })
+      )
+
+      await apiClient.reorderWorksheets(['ws-2', 'ws-123', 'ws-3'])
+
+      const request = await capturedFetch()
+
+      expect({
+        body: request.body,
+        method: request.method,
+        url: request.url
+      }).toEqual({
+        body: { worksheetIds: ['ws-2', 'ws-123', 'ws-3'] },
+        method: 'PUT',
+        url: 'http://127.0.0.1:7847/worksheets/order'
+      })
+    })
+
+    // The renderer mints the id and the timestamp before the request leaves, so
+    // the poller has something to poll for; both have to survive encoding.
+    it('sends the id the renderer minted for a query', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ query: queryDto }))
+
+      await apiClient.createQuery({
+        content: 'select 1',
+        databaseId: 'db-123',
+        id: 'query-1',
+        queriedAt: 1704067200000,
+        worksheetId: 'ws-123'
+      })
+
+      const request = await capturedFetch()
+
+      expect({
+        body: request.body,
+        method: request.method,
+        url: request.url
+      }).toEqual({
+        body: {
+          content: 'select 1',
+          databaseId: 'db-123',
+          id: 'query-1',
+          queriedAt: 1704067200000,
+          worksheetId: 'ws-123'
+        },
+        method: 'POST',
+        url: 'http://127.0.0.1:7847/queries'
+      })
     })
 
     it('returns a failed connection test as data, not an error', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith({
+        jsonResponse({
           message: 'password authentication failed',
           success: false
         })
@@ -221,7 +263,7 @@ describe('apiClient', () => {
 
   describe('tracing', () => {
     it('continues a provided parent trace', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({ query: queryDto }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ query: queryDto }))
 
       const traceId = 'a'.repeat(32)
 
@@ -236,55 +278,61 @@ describe('apiClient', () => {
         { traceParent: { spanId: '00f067aa0ba902b7', traceId } }
       )
 
-      expect(captured().headers.traceparent).toMatch(
+      expect((await capturedFetch()).headers.traceparent).toMatch(
         new RegExp(`^00-${traceId}-[0-9a-f]{16}-01$`)
       )
     })
 
     it('does not send a traceparent for health checks', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({ status: 'ok' }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ status: 'ok' }))
 
       await apiClient.getHealth()
 
-      expect(captured().headers.traceparent).toBeUndefined()
+      expect((await capturedFetch()).headers.traceparent).toBeUndefined()
     })
 
     it('does not send a traceparent for the result poller', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({ query: queryDto }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ query: queryDto }))
 
       await apiClient.getQuery('query-1')
 
-      expect(captured().headers.traceparent).toBeUndefined()
+      expect((await capturedFetch()).headers.traceparent).toBeUndefined()
     })
 
     it('does not send a traceparent when ingesting spans', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({ insertedCount: 1 }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ insertedCount: 1 }))
 
-      await apiClient.ingestSpans([
-        {
-          attributes: {},
-          durationMs: 1,
-          events: [],
-          id: '1'.repeat(16),
-          kind: 'client',
-          name: 'HTTP GET /databases',
-          parentSpanId: null,
-          serviceName: 'renderer',
-          startedAt: 1704067200000,
-          status: 'ok',
-          statusMessage: null,
-          traceId: 'a'.repeat(32)
-        }
-      ])
+      await apiClient.ingestSpans([spanRecord])
 
-      expect(captured().headers.traceparent).toBeUndefined()
+      expect((await capturedFetch()).headers.traceparent).toBeUndefined()
+    })
+
+    // The batch is the one wire format the renderer authors rather than
+    // consumes, and it wraps the records the exporter collected in a field the
+    // caller never passes.
+    it('wraps a span batch in the payload the ingest route expects', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ insertedCount: 1 }))
+
+      await apiClient.ingestSpans([spanRecord])
+
+      const request = await capturedFetch()
+
+      expect({
+        body: request.body,
+        method: request.method,
+        url: request.url
+      }).toEqual({
+        body: { spans: [spanRecord] },
+        method: 'POST',
+        url: 'http://127.0.0.1:7847/traces/spans'
+      })
     })
   })
 
   describe('errors', () => {
     it('throws the tagged error so callers can discriminate on _tag', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith(
+        jsonResponse(
           {
             _tag: 'DatabaseNotFoundError',
             databaseId: 'missing',
@@ -309,7 +357,7 @@ describe('apiClient', () => {
 
     it('throws a tagged QueryNotFoundError from the poller', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith(
+        jsonResponse(
           {
             _tag: 'QueryNotFoundError',
             message: 'Query not found',
@@ -331,7 +379,7 @@ describe('apiClient', () => {
 
     it('maps a decode error to an ApiError carrying field details', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith(
+        jsonResponse(
           {
             _tag: 'HttpApiDecodeError',
             issues: [
@@ -379,7 +427,7 @@ describe('apiClient', () => {
     })
 
     it('reports a 500 without leaking the platform status message', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({}, { status: 500 }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({}, { status: 500 }))
 
       try {
         await apiClient.getDatabases()
@@ -421,7 +469,7 @@ describe('apiClient', () => {
 
     it('reports a response that does not match the contract as a bug', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith({ databases: [{ id: 123 }] }, { status: 200 })
+        jsonResponse({ databases: [{ id: 123 }] }, { status: 200 })
       )
 
       try {
@@ -439,7 +487,7 @@ describe('apiClient', () => {
 
   describe('spans', () => {
     it('records the response status code on the client span', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({ databases: [] }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ databases: [] }))
 
       await apiClient.getDatabases()
 
@@ -451,7 +499,7 @@ describe('apiClient', () => {
     })
 
     it('marks the span as errored when the request fails', async () => {
-      mockFetch.mockResolvedValueOnce(respondWith({}, { status: 500 }))
+      mockFetch.mockResolvedValueOnce(jsonResponse({}, { status: 500 }))
 
       await expect(apiClient.getDatabases()).rejects.toBeInstanceOf(ApiError)
 
