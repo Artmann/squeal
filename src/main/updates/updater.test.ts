@@ -329,47 +329,107 @@ describe('createUpdater', () => {
     expect(ready.state.checks).toEqual(1)
   })
 
-  it('installs only when an update is ready', () => {
+  it('refuses a claim until an update is ready', () => {
     const subject = makeSubject()
 
-    expect(subject.updater.install()).toEqual(false)
+    expect(subject.updater.beginInstall()).toEqual(null)
+
+    subject.updater.check()
+    subject.emit.downloaded('1.3.0')
+
+    expect(subject.updater.beginInstall()).toEqual(subject.updater.status())
+  })
+
+  it('hands nothing to the backend until the claim is completed', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.downloaded('1.3.0')
+    subject.updater.beginInstall()
+
+    // The hand-off is deliberately later than the claim: the HTTP response has
+    // to reach the renderer before the app starts quitting under it.
     expect(subject.state.installs).toEqual(0)
 
-    subject.updater.check()
-    subject.emit.downloaded('1.3.0')
+    subject.updater.completeInstall()
 
-    expect(subject.updater.install()).toEqual(true)
     expect(subject.state.installs).toEqual(1)
   })
 
-  // The install is handed to the backend on a delay so the HTTP response can
-  // leave first, which opens a window for a retry or a second client to ask
-  // again. Squirrel spawns its installer per quitAndInstall call.
-  it('only ever hands one install to the backend', () => {
+  // The gap between the claim and the hand-off is the window a retry or a
+  // second client can ask in. A latch taken at hand-off time refuses the
+  // duplicate hand-off but closes too late to say so, and the second request is
+  // answered with a success for an install that was dropped.
+  it('refuses a second claim before the first has been handed over', () => {
     const subject = makeSubject()
 
     subject.updater.check()
     subject.emit.downloaded('1.3.0')
 
-    expect(subject.updater.install()).toEqual(true)
-    expect(subject.updater.install()).toEqual(false)
-    expect(subject.updater.install()).toEqual(false)
-    expect(subject.state.installs).toEqual(1)
+    const claims = [
+      subject.updater.beginInstall(),
+      subject.updater.beginInstall(),
+      subject.updater.beginInstall()
+    ]
+
+    subject.updater.completeInstall()
+
+    expect({ claims, installs: subject.state.installs }).toEqual({
+      claims: [subject.updater.status(), null, null],
+      installs: 1
+    })
   })
 
-  it('does not let a later check reopen installing', () => {
+  it('refuses a claim while an update is only available', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.found('1.3.0', updateMessages.linux)
+
+    // `available` is the state packaged Linux sits in: a newer version exists
+    // and this platform cannot install it, so the GitHub backend's install()
+    // throws by design. Nothing between the button and that defect but this
+    // guard, and every other refusal here comes from the claim instead.
+    expect({
+      claim: subject.updater.beginInstall(),
+      installs: subject.state.installs,
+      state: subject.updater.status().state
+    }).toEqual({ claim: null, installs: 0, state: 'available' })
+  })
+
+  it('does not let a later check reopen the claim', () => {
     const subject = makeSubject()
 
     subject.updater.check()
     subject.emit.downloaded('1.3.0')
-    subject.updater.install()
+    subject.updater.beginInstall()
 
     // A check cannot start while an update is ready, but the events behind one
     // can still arrive — a second downloaded must not license a second swap.
     subject.emit.downloaded('1.4.0')
 
-    expect(subject.updater.install()).toEqual(false)
-    expect(subject.state.installs).toEqual(1)
+    expect(subject.updater.beginInstall()).toEqual(null)
+  })
+
+  it('does not let a later download reopen the claim', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.downloaded('1.3.0')
+    subject.updater.beginInstall()
+
+    // A ready update blocks `check`, but a failure afterwards unblocks it, so
+    // the scheduled check can run and land a second download while the first
+    // install is still on its way to the backend. The claim is one-way: the app
+    // is already being replaced, and Squirrel would swap the bundle twice.
+    subject.emit.failed(new Error('the feed went away'))
+    subject.updater.check()
+    subject.emit.downloaded('1.4.0')
+
+    expect({
+      claim: subject.updater.beginInstall(),
+      state: subject.updater.status().state
+    }).toEqual({ claim: null, state: 'ready' })
   })
 
   it('removes its listeners when disposed', () => {
@@ -394,14 +454,14 @@ describe('createUpdater', () => {
       expect(subject.state.subscribed).toEqual(false)
     })
 
-    it('never checks or installs', () => {
+    it('never checks or claims an install', () => {
       const subject = makeSubject({
         unsupported: updateMessages.notInApplicationsFolder
       })
 
       subject.updater.check()
 
-      expect(subject.updater.install()).toEqual(false)
+      expect(subject.updater.beginInstall()).toEqual(null)
       expect(subject.state).toEqual({
         checks: 0,
         installs: 0,

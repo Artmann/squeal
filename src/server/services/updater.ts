@@ -35,20 +35,31 @@ export class Updater extends Effect.Service<Updater>()('Updater', {
     const status = Effect.sync(() => updater.status())
 
     const install = Effect.fn('Updater.install')(function* () {
-      const current = updater.status()
+      // One evaluation decides both the response and the claim, so a second
+      // request inside the delay below is refused with the 409 the contract
+      // promises rather than being handed a 200 and silently dropped.
+      const claimed = yield* Effect.sync(() => updater.beginInstall())
 
-      if (current.state !== 'ready') {
+      if (claimed === null) {
+        // The status is read only to pick the prose. It has no say in the
+        // refusal — that was already decided above — so the two cannot
+        // disagree the way the guard this replaced could.
+        const { state } = yield* status
+
         return yield* new UpdateNotReadyError({
-          message: updateMessages.notReady
+          message:
+            state === 'ready'
+              ? updateMessages.installUnderway
+              : updateMessages.notReady
         })
       }
 
       yield* Effect.sleep(installDelay).pipe(
-        Effect.andThen(Effect.sync(() => updater.install())),
+        Effect.andThen(Effect.sync(() => updater.completeInstall())),
         Effect.forkIn(scope)
       )
 
-      return current
+      return claimed
     })
 
     return { check, install, status }
