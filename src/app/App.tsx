@@ -27,7 +27,6 @@ import {
 import { useCancelQuery } from './hooks/mutations'
 import { useStartQuery } from './hooks/use-start-query'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
-import type { QueryDto } from '@/glue/api/schemas'
 import { useAppDispatch, useAppSelector } from './store'
 import { selectActiveWorksheetId } from './store/tabs-slice'
 import { uiActions } from './store/ui-slice'
@@ -104,20 +103,6 @@ function useActiveStatement(openWorksheetId: string | undefined) {
   }
 }
 
-function useCancelRunningQuery(query: QueryDto | undefined) {
-  const cancelQuery = useCancelQuery()
-
-  const { cancel: cancelQueryById } = cancelQuery
-
-  const handleCancelQuery = useCallback(() => {
-    if (query?.id) {
-      cancelQueryById(query.id)
-    }
-  }, [cancelQueryById, query?.id])
-
-  return { handleCancelQuery, isCancelPending: cancelQuery.isPending }
-}
-
 function useLatestQuery(openWorksheetId: string | undefined) {
   const queries = useQueriesList()
 
@@ -176,7 +161,7 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
 
   useQueryResultSync(query)
 
-  const { handleCancelQuery, isCancelPending } = useCancelRunningQuery(query)
+  const { cancel: handleCancelQuery, isCanceling } = useCancelQuery(query)
 
   const { flushSave, queueSave, saveState } =
     useWorksheetAutosave(openWorksheetId)
@@ -215,7 +200,7 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     handleCancelQuery,
     handleRunQuery,
     handleUpdateContent,
-    isCancelPending,
+    isCanceling,
     isQueryRunning: Boolean(query && !query.finishedAt),
     query,
     saveState,
@@ -313,7 +298,7 @@ function Workspace(): ReactElement {
     handleCancelQuery,
     handleRunQuery,
     handleUpdateContent,
-    isCancelPending,
+    isCanceling,
     isQueryRunning,
     query,
     saveState,
@@ -330,7 +315,7 @@ function Workspace(): ReactElement {
 
         <WorksheetToolbar
           activeStatement={activeStatement}
-          isCancelPending={isCancelPending}
+          isCanceling={isCanceling}
           isQueryRunning={isQueryRunning}
           onCancelQuery={handleCancelQuery}
           onRunQuery={handleRunQuery}

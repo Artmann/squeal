@@ -45,7 +45,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={statement}
-        isCancelPending={false}
+        isCanceling={false}
         isQueryRunning={false}
         onCancelQuery={vi.fn()}
         onRunQuery={onRunQuery}
@@ -68,7 +68,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={statement}
-        isCancelPending={false}
+        isCanceling={false}
         isQueryRunning={false}
         onCancelQuery={vi.fn()}
         onRunQuery={vi.fn()}
@@ -85,7 +85,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={statement}
-        isCancelPending={false}
+        isCanceling={false}
         isQueryRunning={false}
         onCancelQuery={vi.fn()}
         onRunQuery={vi.fn()}
@@ -102,7 +102,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={null}
-        isCancelPending={false}
+        isCanceling={false}
         isQueryRunning={false}
         onCancelQuery={vi.fn()}
         onRunQuery={vi.fn()}
@@ -123,7 +123,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={statement}
-        isCancelPending={false}
+        isCanceling={false}
         isQueryRunning={false}
         onCancelQuery={vi.fn()}
         onRunQuery={vi.fn()}
@@ -143,7 +143,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={statement}
-        isCancelPending={false}
+        isCanceling={false}
         isQueryRunning
         onCancelQuery={onCancelQuery}
         onRunQuery={vi.fn()}
@@ -162,7 +162,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={statement}
-        isCancelPending
+        isCanceling
         isQueryRunning
         onCancelQuery={vi.fn()}
         onRunQuery={vi.fn()}
@@ -177,7 +177,7 @@ describe('WorksheetToolbar', () => {
     renderWithProviders(
       <WorksheetToolbar
         activeStatement={statement}
-        isCancelPending={false}
+        isCanceling={false}
         isQueryRunning={false}
         onCancelQuery={vi.fn()}
         onRunQuery={vi.fn()}
