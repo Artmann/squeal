@@ -1,8 +1,9 @@
 import { HttpServerRequest } from '@effect/platform'
-import { Config, Effect, Layer, Redacted } from 'effect'
+import { Effect, Layer, Redacted } from 'effect'
 
 import { UnauthorizedError } from '@/glue/api/errors'
 import { Authorization, TraceReadAuthorization } from '@/glue/api/security'
+import { ServerConfig } from '../config'
 import { ApiToken } from './api-token'
 import { presentsToken } from './authorization'
 
@@ -40,9 +41,7 @@ export const AuthorizationLive = Layer.effect(
 export const TraceReadAuthorizationLive = Layer.effect(
   TraceReadAuthorization,
   Effect.gen(function* () {
-    const publicTraceReads = yield* Config.boolean('PUBLIC_TRACE_READS').pipe(
-      Config.withDefault(false)
-    )
+    const { publicTraceReads } = yield* ServerConfig
     const token = yield* ApiToken
 
     return Effect.gen(function* () {

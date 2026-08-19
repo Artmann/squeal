@@ -9,10 +9,11 @@ import {
 // Subpath import on purpose: the package barrel pulls in cluster modules
 // whose optional peers are not installed.
 import * as NodeHttpServer from '@effect/platform-node/NodeHttpServer'
-import { Config, Effect, Layer, Option } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import { createServer } from 'node:http'
 
 import { SquealApi } from '@/glue/api/api'
+import { ServerConfig } from '../config'
 import { shouldSkipTracing } from '../tracing/trace-skip'
 import {
   AuthorizationLive,
@@ -53,10 +54,7 @@ export const ApiLive = HttpApiBuilder.api(SquealApi).pipe(
 // Origin a packaged renderer sends when loaded from file://.
 export const CorsLive = Layer.unwrapEffect(
   Effect.gen(function* () {
-    const allowedOrigins = yield* Config.string('ALLOWED_ORIGINS').pipe(
-      Config.withDefault('null')
-    )
-    const allowed = allowedOrigins.split(',')
+    const { allowedOrigins } = yield* ServerConfig
 
     return HttpApiBuilder.middlewareCors({
       allowedHeaders: ['Authorization', 'Content-Type', 'traceparent'],
@@ -74,7 +72,12 @@ export const CorsLive = Layer.unwrapEffect(
       // comparing the request's Origin, so a packaged build (whose only allowed
       // origin is 'null') would answer every caller with
       // `access-control-allow-origin: null`.
-      allowedOrigins: (origin) => allowed.includes(origin)
+      // `origin` is typed `string` but the middleware passes
+      // `request.headers['origin']`, which is undefined whenever the request
+      // sends no Origin at all. `includes(undefined)` is false, which is the
+      // answer we want -- but anything that dereferences it here would throw on
+      // every such request instead.
+      allowedOrigins: (origin) => allowedOrigins.includes(origin)
     })
   })
 )
