@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -110,12 +110,25 @@ function resolveTargets(overrides: Record<string, string> = {}): SeedTargets {
 }
 
 /** Run the seed itself, from `directory`, and return everything it said. */
-function runSeed(): string {
+function runSeed(overrides: Record<string, string>): string {
+  // Structural rather than per-case. With nothing setting `SQLITE_PATH` the
+  // seed falls back to the repository's own `seed-sqlite/pagila.sqlite` — the
+  // developer's sample database, which `seedSqlite` deletes before it writes.
+  // One case here that forgets to point it somewhere else is enough to lose
+  // that file, and the case would still pass.
+  const target = resolveTargets(overrides).sqlitePath
+
+  if (!resolve(directory, target).startsWith(resolve(directory))) {
+    throw new Error(
+      `This case would run the seed against '${target}', which is outside the temporary directory it was given. Point SQLITE_PATH — in the case's \`.env\` or in its overrides — at a path under it.`
+    )
+  }
+
   try {
     execFileSync(process.execPath, [tsxCli, seedScript], {
       cwd: directory,
       encoding: 'utf-8',
-      env: childEnvironment({ SQLITE_PATH: join(directory, 'pagila.sqlite') }),
+      env: childEnvironment(overrides),
       stdio: 'pipe',
       timeout: 60_000
     })
@@ -223,6 +236,100 @@ describe('the seed targets', () => {
       `POSTGRES_URL=postgresql://postgres:postgres@${unreachableHost}:5433/squeal`
     )
 
-    expect(runSeed()).toContain(unreachableHost)
+    expect(
+      runSeed({ SQLITE_PATH: join(directory, 'pagila.sqlite') })
+    ).toContain(unreachableHost)
+  })
+
+  // `14` is `SQLITE_CANTOPEN`, and the message libsql raises says only that:
+  // no mention of `SQLITE_PATH`, of `.env`, or of the directory being the
+  // thing that is missing. The reader has to know libsql's error codes are
+  // SQLite's and go look up the number.
+  //
+  // The check runs before `seedPostgres`, which is why the Postgres in this
+  // `.env` is one that cannot resolve and the assertion says the output does
+  // not mention it. Config that is wrong should be caught before the seed
+  // drops a schema, not after.
+  it('names SQLITE_PATH when the directory it points into is missing', () => {
+    const missingDirectory = join(directory, 'no-such-dir')
+    const missingPath = join(missingDirectory, 'pagila.sqlite')
+
+    writeDotEnv(
+      `POSTGRES_URL=postgresql://postgres:postgres@${unreachableHost}:5433/squeal`,
+      `SQLITE_PATH=${missingPath}`
+    )
+
+    const output = runSeed({})
+
+    expect({
+      beforeTouchingPostgres: !output.includes(unreachableHost),
+      // Quoted on its own, not merely present. The path the seed would have
+      // written starts with the missing directory, so a message naming only
+      // that path already contains it as a substring while leaving the reader
+      // to work out which segment is the part that is not there. Only a
+      // message that names the directory by itself closes the quote here.
+      namesTheDirectory: output.includes(`'${missingDirectory}'`),
+      namesTheSource: output.includes('SQLITE_PATH'),
+      // A phrase, which is as close as a test gets to "the message says what
+      // to do about it": there is no shape to look for, only the instruction
+      // itself. So rewording it turns this red even when the rewording is an
+      // improvement — a cost taken knowingly, because the alternative is a
+      // message that can quietly stop saying anything actionable.
+      saysWhatToDo: output.includes('Create the directory')
+    }).toEqual({
+      beforeTouchingPostgres: true,
+      namesTheDirectory: true,
+      namesTheSource: true,
+      saysWhatToDo: true
+    })
+  })
+
+  // `existsSync` answers for a file as readily as for a directory, so a
+  // `SQLITE_PATH` one segment too deep — the sample database itself taken for
+  // the directory to put it in — walks straight past the check and reaches
+  // libsql, which fails with the bare `14` the check exists to replace.
+  it('names SQLITE_PATH when what it points into is a file', () => {
+    const file = join(directory, 'not-a-directory')
+
+    writeFileSync(file, '', 'utf-8')
+    writeDotEnv(
+      `POSTGRES_URL=postgresql://postgres:postgres@${unreachableHost}:5433/squeal`,
+      `SQLITE_PATH=${join(file, 'pagila.sqlite')}`
+    )
+
+    const output = runSeed({})
+
+    expect({
+      beforeTouchingPostgres: !output.includes(unreachableHost),
+      namesTheSource: output.includes('SQLITE_PATH'),
+      namesWhatIsWrong: output.includes(file)
+    }).toEqual({
+      beforeTouchingPostgres: true,
+      namesTheSource: true,
+      namesWhatIsWrong: true
+    })
+  })
+
+  // `.env.example` ships a relative `SQLITE_PATH` and `.env` is read from the
+  // working directory, so relative is the shape a developer most likely has.
+  // Printed back as written, the message tells someone looking at a repository
+  // that visibly contains `seed-sqlite/` that `./seed-sqlite` does not exist,
+  // and never says what `./` was resolved against — the same complaint the
+  // check makes of libsql, in the other direction.
+  it('resolves a relative SQLITE_PATH before naming the directory', () => {
+    writeDotEnv(
+      `POSTGRES_URL=postgresql://postgres:postgres@${unreachableHost}:5433/squeal`,
+      'SQLITE_PATH=./no-such-dir/pagila.sqlite'
+    )
+
+    const output = runSeed({})
+
+    expect({
+      beforeTouchingPostgres: !output.includes(unreachableHost),
+      namesTheResolvedDirectory: output.includes(join(directory, 'no-such-dir'))
+    }).toEqual({
+      beforeTouchingPostgres: true,
+      namesTheResolvedDirectory: true
+    })
   })
 })
