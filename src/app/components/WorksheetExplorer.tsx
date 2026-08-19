@@ -1,5 +1,4 @@
-import { closestCenter, DndContext } from '@dnd-kit/core'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { DndContext } from '@dnd-kit/core'
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { FileBracesIcon, Pencil, PlusIcon, Trash2 } from 'lucide-react'
@@ -15,10 +14,9 @@ import {
 } from '../hooks/mutations'
 import {
   staticListStrategy,
-  useDropIndicator,
+  useListReorder,
   type DropIndicator
-} from '../hooks/use-drop-indicator'
-import { useReorderDrag } from '../hooks/use-reorder-drag'
+} from '../hooks/use-list-reorder'
 import { useWorksheetRename } from '../hooks/use-worksheet-rename'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
@@ -184,17 +182,13 @@ export function WorksheetExplorer(): ReactElement {
   const filteredWorksheetIds = filteredWorksheets.map(
     (worksheet) => worksheet.id
   )
-  const {
-    dropIndicatorFor,
-    handleDragOver,
-    handleDragStart,
-    resetDropIndicator
-  } = useDropIndicator(filteredWorksheetIds)
-
-  const { handleDragEnd, sensors } = useReorderDrag({
+  // The reorder runs over the whole list; the filtered rows on screen are a
+  // subsequence of it, and asking for the indicator by id is what lets those
+  // two lists differ without any index having to line up.
+  const { dndContextProps, dropIndicatorFor } = useListReorder({
+    axis: 'vertical',
     ids: worksheets.data.map((worksheet) => worksheet.id),
-    onReorder: reorderWorksheets.mutate,
-    resetDropIndicator
+    onReorder: reorderWorksheets.mutate
   })
 
   // Worksheets show which database they run against, so the names are looked
@@ -246,23 +240,15 @@ export function WorksheetExplorer(): ReactElement {
           </p>
         )}
 
-        <DndContext
-          collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis]}
-          sensors={sensors}
-          onDragCancel={resetDropIndicator}
-          onDragEnd={handleDragEnd}
-          onDragOver={handleDragOver}
-          onDragStart={handleDragStart}
-        >
+        <DndContext {...dndContextProps}>
           <SortableContext
             items={filteredWorksheetIds}
             strategy={staticListStrategy}
           >
-            {filteredWorksheets.map((worksheet, index) => (
+            {filteredWorksheets.map((worksheet) => (
               <WorksheetRow
                 key={worksheet.id}
-                dropIndicator={dropIndicatorFor(index)}
+                dropIndicator={dropIndicatorFor(worksheet.id)}
                 isSortingDisabled={
                   isSortingDisabled || editingWorksheetId === worksheet.id
                 }
