@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatTraceparent, parseTraceparent } from './traceparent'
+import { formatTraceparent, isValidSpanId, isValidTraceId } from './traceparent'
 
 const spanId = '00f067aa0ba902b7'
 const traceId = '4bf92f3577b34da6a3ce929d0e0e4736'
@@ -13,33 +13,76 @@ describe('formatTraceparent', () => {
   })
 })
 
-describe('parseTraceparent', () => {
-  it('parses a valid header', () => {
-    expect(parseTraceparent(`00-${traceId}-${spanId}-01`)).toEqual({
-      spanId,
-      traceId
-    })
-  })
-
-  it('accepts any flag byte', () => {
-    expect(parseTraceparent(`00-${traceId}-${spanId}-00`)).toEqual({
-      spanId,
-      traceId
-    })
-  })
-
+// These two decide whether an id is usable, and every id reaching the app from
+// outside goes through them: a `traceparent`, a `b3` header, the renderer's
+// span ingest, and the `/traces` route parameters — the last three through
+// `Schema.filter` in `src/glue/api/schemas.ts`. An id that fails here cannot be
+// looked up again, so storing one produces a trace the dashboard lists and
+// `GET /traces/:id` then refuses to open.
+//
+// The cases below are the ones no caller covers. `@effect/platform` matches the
+// same hex shape case-insensitively, so an uppercase id reaches these and
+// nothing else rejects it; `b3` does not validate at all, so everything reaches
+// these. Both spellings of a wrong-but-plausible pattern — an `i` flag, or
+// `a-z` in the character class — otherwise survive the entire suite.
+describe('isValidTraceId', () => {
   it.each([
-    ['undefined', undefined],
-    ['an empty string', ''],
-    ['a wrong version', `ff-${traceId}-${spanId}-01`],
-    ['a short trace id', `00-${traceId.slice(1)}-${spanId}-01`],
-    ['a short span id', `00-${traceId}-${spanId.slice(1)}-01`],
-    ['uppercase hex', `00-${traceId.toUpperCase()}-${spanId}-01`],
-    ['an all-zero trace id', `00-${'0'.repeat(32)}-${spanId}-01`],
-    ['an all-zero span id', `00-${traceId}-${'0'.repeat(16)}-01`],
-    ['missing flags', `00-${traceId}-${spanId}`],
-    ['extra segments', `00-${traceId}-${spanId}-01-99`]
-  ])('returns undefined for %s', (_label, header) => {
-    expect(parseTraceparent(header)).toEqual(undefined)
+    {
+      accepted: true,
+      description: 'a lowercase 32-character id',
+      value: traceId
+    },
+    {
+      accepted: false,
+      description: 'the same id in uppercase',
+      value: traceId.toUpperCase()
+    },
+    { accepted: false, description: 'all zeros', value: '0'.repeat(32) },
+    {
+      accepted: true,
+      description: 'leading zeros that are not all of them',
+      value: `${'0'.repeat(31)}1`
+    },
+    {
+      accepted: false,
+      description: 'non-hex characters',
+      value: 'z'.repeat(32)
+    },
+    { accepted: false, description: 'too few characters', value: '0123456789' },
+    { accepted: false, description: 'a span id', value: spanId },
+    { accepted: false, description: 'nothing at all', value: '' }
+  ])('is $accepted for $description', ({ accepted, value }) => {
+    expect(isValidTraceId(value)).toEqual(accepted)
+  })
+})
+
+describe('isValidSpanId', () => {
+  it.each([
+    {
+      accepted: true,
+      description: 'a lowercase 16-character id',
+      value: spanId
+    },
+    {
+      accepted: false,
+      description: 'the same id in uppercase',
+      value: spanId.toUpperCase()
+    },
+    { accepted: false, description: 'all zeros', value: '0'.repeat(16) },
+    {
+      accepted: true,
+      description: 'leading zeros that are not all of them',
+      value: `${'0'.repeat(15)}1`
+    },
+    {
+      accepted: false,
+      description: 'non-hex characters',
+      value: 'z'.repeat(16)
+    },
+    { accepted: false, description: 'too few characters', value: '0123' },
+    { accepted: false, description: 'a trace id', value: traceId },
+    { accepted: false, description: 'nothing at all', value: '' }
+  ])('is $accepted for $description', ({ accepted, value }) => {
+    expect(isValidSpanId(value)).toEqual(accepted)
   })
 })
