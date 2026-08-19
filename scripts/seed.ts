@@ -1,8 +1,8 @@
 import { createClient } from '@libsql/client'
 import { execSync } from 'child_process'
-import { existsSync, unlinkSync } from 'fs'
+import { existsSync, statSync, unlinkSync } from 'fs'
 import { readdir, readFile } from 'fs/promises'
-import { join } from 'path'
+import { dirname, join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import { Client } from 'pg'
 
@@ -109,8 +109,50 @@ async function seedSqlite() {
   }
 }
 
+/**
+ * Fail on a SQLite target the seed cannot write into.
+ *
+ * Checked here rather than in `seedSqlite()`, where the path is finally used,
+ * because everything between the two drops and recreates a schema — a typo in
+ * `.env` is worth catching while the developer's Postgres is still intact.
+ *
+ * Left to the driver, the seed dies on `createClient` with
+ * `ConnectionFailed("Unable to open connection to local database
+ * /C:/…/no-such-dir/pagila.sqlite: 14")` — a numeric code, a path wearing the
+ * leading slash `pathToFileURL` gave it on Windows, and no mention of either
+ * the setting that chose it or which part of it does not exist.
+ *
+ * The configured path is quoted as it was written and the directory as it
+ * resolved, because those are two different things whenever `SQLITE_PATH` is
+ * relative — which is the shape `.env.example` ships. Told only that
+ * `./seed-sqlite` does not exist, a reader looking at a repository that
+ * visibly contains `seed-sqlite/` learns nothing.
+ */
+function checkSqliteDirectory() {
+  const directory = resolve(dirname(sqlitePath))
+  const status = statSync(directory, { throwIfNoEntry: false })
+
+  if (status?.isDirectory() === true) {
+    return
+  }
+
+  // `existsSync` alone would pass a file here, and the seed would go on to ask
+  // libsql to open a database under it — the same bare `14`, for a path that
+  // looks present.
+  const problem =
+    status === undefined
+      ? `its directory '${directory}' does not exist`
+      : `'${directory}' is a file, not the directory it would have to be`
+
+  throw new Error(
+    `The SQLite database is set to go to '${sqlitePath}', but ${problem}. Create the directory, or point SQLITE_PATH — from .env, or from your shell if you exported it there — at one that already exists.`
+  )
+}
+
 async function seed() {
   try {
+    checkSqliteDirectory()
+
     await seedPostgres()
     await seedMysql()
     await seedSqlite()
