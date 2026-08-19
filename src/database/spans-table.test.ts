@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import {
-  getTestDatabase,
-  resetTestDatabase,
-  setupApiMocks
-} from '@/test/api-test-helper'
-
-setupApiMocks()
+import { getTestDatabase, resetTestDatabase } from '@/test/api-test-helper'
 
 import { spansTable } from './schema'
 
