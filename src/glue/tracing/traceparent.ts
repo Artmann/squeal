@@ -1,7 +1,9 @@
 // Shared between the main process and the renderer. Keep this module free of
 // main-process imports — the renderer bundles it.
 
-import { SpanContext } from './spans'
+// Type-only on purpose: `spans.ts` needs the id validators below to build
+// its schema, and importing the value back would make that a real cycle.
+import type { SpanContext } from './spans'
 
 const spanIdPattern = /^[0-9a-f]{16}$/
 const traceIdPattern = /^[0-9a-f]{32}$/
