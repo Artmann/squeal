@@ -1,5 +1,4 @@
-import { closestCenter, DndContext } from '@dnd-kit/core'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { DndContext } from '@dnd-kit/core'
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
@@ -31,10 +30,9 @@ import {
 import { getRefreshShortcut } from '../refresh-shortcut'
 import {
   staticListStrategy,
-  useDropIndicator,
+  useListReorder,
   type DropIndicator
-} from '../hooks/use-drop-indicator'
-import { useReorderDrag } from '../hooks/use-reorder-drag'
+} from '../hooks/use-list-reorder'
 import { useStartQuery } from '../hooks/use-start-query'
 import { databaseSearchQueryUpdated } from '../store/editor-slice'
 import { tabsActions } from '../store/tabs-slice'
@@ -298,17 +296,13 @@ export function DatabaseExplorer(): ReactElement {
   const reorderDatabases = useReorderDatabases()
 
   const renderedDatabaseIds = renderedRows.map((row) => row.database.id)
-  const {
-    dropIndicatorFor,
-    handleDragOver,
-    handleDragStart,
-    resetDropIndicator
-  } = useDropIndicator(renderedDatabaseIds)
-
-  const { handleDragEnd, sensors } = useReorderDrag({
+  // The reorder runs over the whole list; the rows a search has left on screen
+  // are a subsequence of it, and asking for the indicator by id is what lets
+  // those two lists differ without any index having to line up.
+  const { dndContextProps, dropIndicatorFor } = useListReorder({
+    axis: 'vertical',
     ids: databases.data.map((database) => database.id),
-    onReorder: reorderDatabases.mutate,
-    resetDropIndicator
+    onReorder: reorderDatabases.mutate
   })
 
   const handleEditDatabase = useCallback(
@@ -346,24 +340,16 @@ export function DatabaseExplorer(): ReactElement {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-[10px]">
-        <DndContext
-          collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis]}
-          sensors={sensors}
-          onDragCancel={resetDropIndicator}
-          onDragEnd={handleDragEnd}
-          onDragOver={handleDragOver}
-          onDragStart={handleDragStart}
-        >
+        <DndContext {...dndContextProps}>
           <SortableContext
             items={renderedDatabaseIds}
             strategy={staticListStrategy}
           >
-            {renderedRows.map((row, index) => (
+            {renderedRows.map((row) => (
               <DatabaseRow
                 key={row.database.id}
                 database={row.database}
-                dropIndicator={dropIndicatorFor(index)}
+                dropIndicator={dropIndicatorFor(row.database.id)}
                 expansion={expandedDatabases[row.database.id]}
                 hasMultipleSchemas={row.hasMultipleSchemas}
                 isSortingDisabled={isSortingDisabled}

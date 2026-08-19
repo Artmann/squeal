@@ -1,5 +1,4 @@
-import { closestCenter, DndContext } from '@dnd-kit/core'
-import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
+import { DndContext } from '@dnd-kit/core'
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Pencil, PlusIcon, XIcon } from 'lucide-react'
@@ -11,10 +10,9 @@ import { useCreateWorksheet } from '../hooks/mutations'
 import { useWorksheets } from '../hooks/queries'
 import {
   staticListStrategy,
-  useDropIndicator,
+  useListReorder,
   type DropIndicator
-} from '../hooks/use-drop-indicator'
-import { useReorderDrag } from '../hooks/use-reorder-drag'
+} from '../hooks/use-list-reorder'
 import {
   useWorksheetRename,
   type WorksheetRenameControls
@@ -247,19 +245,14 @@ export function WorksheetTabs(): ReactElement {
     [dispatch]
   )
 
-  const {
-    dropIndicatorFor,
-    handleDragOver,
-    handleDragStart,
-    resetDropIndicator
-  } = useDropIndicator(openTabIds)
-
-  // The drop indicator works off the rendered tabs, but `tabsReordered` ignores
-  // an order that is not exactly the open tabs, so the drag gets the full list.
-  const { handleDragEnd, sensors } = useReorderDrag({
+  // `tabsReordered` ignores an order that is not exactly the open tabs, so the
+  // reorder runs over every open id — including one whose worksheet has gone
+  // and has no tab on screen. The indicator is asked for by id, so the tabs
+  // rendered from `openTabs` only have to be a subsequence of that.
+  const { dndContextProps, dropIndicatorFor } = useListReorder({
+    axis: 'horizontal',
     ids: openWorksheetIds,
-    onReorder: handleReorder,
-    resetDropIndicator
+    onReorder: handleReorder
   })
 
   useTabHotkeys({
@@ -276,23 +269,15 @@ export function WorksheetTabs(): ReactElement {
         className="flex items-stretch overflow-x-auto [&::-webkit-scrollbar]:hidden"
         role="tablist"
       >
-        <DndContext
-          collisionDetection={closestCenter}
-          modifiers={[restrictToHorizontalAxis]}
-          sensors={sensors}
-          onDragCancel={resetDropIndicator}
-          onDragEnd={handleDragEnd}
-          onDragOver={handleDragOver}
-          onDragStart={handleDragStart}
-        >
+        <DndContext {...dndContextProps}>
           <SortableContext
             items={openTabIds}
             strategy={staticListStrategy}
           >
-            {openTabs.map((worksheet, index) => (
+            {openTabs.map((worksheet) => (
               <WorksheetTab
                 key={worksheet.id}
-                dropIndicator={dropIndicatorFor(index)}
+                dropIndicator={dropIndicatorFor(worksheet.id)}
                 isActive={worksheet.id === activeWorksheetId}
                 registerElement={registerTabElement}
                 rename={rename}
