@@ -1,14 +1,17 @@
 import {
   Cause,
+  Chunk,
   Context,
   Effect,
   Exit,
   FiberId,
   Layer,
   Option,
+  Queue,
   Tracer
 } from 'effect'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { log } from 'tiny-typescript-logger'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { spansTable } from '@/database/schema'
 import { SpanRecord } from '@/glue/tracing/spans'
@@ -36,7 +39,7 @@ vi.mock('@/main/tracing/span-writer', async (importOriginal) => {
   }
 })
 
-import { makeSquealTracer, TracerLive } from './effect-tracer'
+import { makeQueuedEmit, makeSquealTracer, TracerLive } from './effect-tracer'
 
 const startNanos = 1_700_000_000_000_000_000n
 const endNanos = startNanos + 25_000_000n
@@ -44,14 +47,29 @@ const endNanos = startNanos + 25_000_000n
 function makeCollector() {
   const written: SpanRecord[] = []
   const tracer = makeSquealTracer({
-    persist: (records) => {
-      written.push(...records)
-
-      return Promise.resolve(records.length)
+    emit: (record) => {
+      written.push(record)
     }
   })
 
   return { tracer, written }
+}
+
+function makeRecord(name: string): SpanRecord {
+  return {
+    attributes: {},
+    durationMs: 1,
+    events: [],
+    id: 'a'.repeat(16),
+    kind: 'internal',
+    name,
+    parentSpanId: null,
+    serviceName: 'main',
+    startedAt: 1_700_000_000_000,
+    status: 'ok',
+    statusMessage: null,
+    traceId: 'b'.repeat(32)
+  }
 }
 
 function startSpan(
@@ -332,6 +350,113 @@ describe('TracerLive', () => {
     expect(rows.map((row) => row.name).sort()).toEqual([
       'queued.child',
       'queued.parent'
+    ])
+  })
+})
+
+// Offering never blocks, so a writer that has fallen behind has to be answered
+// by dropping rather than by retaining — and the only record that the drop
+// happened is the counter and its log line. Nothing else in the app can observe
+// a span that was never written.
+describe('makeQueuedEmit', () => {
+  beforeEach(() => {
+    vi.spyOn(log, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('offers each span to the queue in order', async () => {
+    const queue = Effect.runSync(Queue.bounded<SpanRecord>(4))
+    const emit = makeQueuedEmit(queue)
+
+    emit(makeRecord('first'))
+    emit(makeRecord('second'))
+
+    const queued = await Effect.runPromise(Queue.takeAll(queue))
+
+    // The silence is half the assertion. Counting a span that was accepted as
+    // dropped shifts every later count by exactly one, which cancels against
+    // the `% 100 === 1` offset and leaves the drop tests below green.
+    expect({
+      queued: Chunk.toReadonlyArray(queued).map((record) => record.name),
+      warnings: vi.mocked(log.warn).mock.calls
+    }).toEqual({ queued: ['first', 'second'], warnings: [] })
+  })
+
+  // The span that does not fit is the one dropped — the queue keeps what it
+  // already accepted, so a burst loses its tail rather than its head.
+  it('drops the span a full queue has no room for', async () => {
+    const queue = Effect.runSync(Queue.bounded<SpanRecord>(1))
+    const emit = makeQueuedEmit(queue)
+
+    emit(makeRecord('kept'))
+    emit(makeRecord('dropped'))
+
+    const queued = await Effect.runPromise(Queue.takeAll(queue))
+
+    expect({
+      queued: Chunk.toReadonlyArray(queued).map((record) => record.name),
+      warnings: vi.mocked(log.warn).mock.calls
+    }).toEqual({
+      queued: ['kept'],
+      warnings: [['Span queue is full; dropped 1 span(s).']]
+    })
+  })
+
+  // Dropping is what a full queue does, not a mode the sink latches into: the
+  // moment the drain takes one off, the next span goes in.
+  it('accepts spans again once the queue has room', async () => {
+    const queue = Effect.runSync(Queue.bounded<SpanRecord>(1))
+    const emit = makeQueuedEmit(queue)
+
+    emit(makeRecord('kept'))
+    emit(makeRecord('dropped'))
+
+    await Effect.runPromise(Queue.take(queue))
+
+    emit(makeRecord('kept again'))
+
+    const queued = await Effect.runPromise(Queue.takeAll(queue))
+
+    expect(Chunk.toReadonlyArray(queued).map((record) => record.name)).toEqual([
+      'kept again'
+    ])
+  })
+
+  // A writer far enough behind to drop is far enough behind to drop thousands,
+  // and a line each would bury whatever is actually wrong. The first one still
+  // has to appear immediately, or the first hundred losses are silent.
+  it('logs the first drop and then only every hundredth', () => {
+    const queue = Effect.runSync(Queue.bounded<SpanRecord>(1))
+    const emit = makeQueuedEmit(queue)
+
+    for (let index = 0; index < 202; index += 1) {
+      emit(makeRecord(`span.${index}`))
+    }
+
+    expect(vi.mocked(log.warn).mock.calls).toEqual([
+      ['Span queue is full; dropped 1 span(s).'],
+      ['Span queue is full; dropped 101 span(s).'],
+      ['Span queue is full; dropped 201 span(s).']
+    ])
+  })
+
+  // Each tracer gets its own counter, so one instance's drops cannot silence
+  // another's first warning.
+  it('counts drops per sink rather than across all of them', () => {
+    const first = makeQueuedEmit(Effect.runSync(Queue.bounded<SpanRecord>(1)))
+    const second = makeQueuedEmit(Effect.runSync(Queue.bounded<SpanRecord>(1)))
+
+    first(makeRecord('one'))
+    first(makeRecord('one too many'))
+    second(makeRecord('two'))
+    second(makeRecord('two too many'))
+
+    expect(vi.mocked(log.warn).mock.calls).toEqual([
+      ['Span queue is full; dropped 1 span(s).'],
+      ['Span queue is full; dropped 1 span(s).']
     ])
   })
 })
