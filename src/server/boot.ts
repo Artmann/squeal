@@ -8,12 +8,13 @@ import { AppDatabase } from './services/app-database'
 import { SecretStorageSettings } from './services/secret-storage-settings'
 
 export const boot = Effect.gen(function* () {
-  // Depending on AppDatabase guarantees schema initialization has run.
-  yield* AppDatabase
+  // Depending on AppDatabase guarantees schema initialization has run, and
+  // its client is the one the reconciliation below writes through.
+  const appDatabase = yield* AppDatabase
 
   // Rows still unfinished from the previous process can never complete —
   // mark them failed before the renderer can start polling them.
-  yield* Effect.promise(() => markInterruptedQueries())
+  yield* Effect.promise(() => markInterruptedQueries(appDatabase.client))
 
   // Resolving the mode is what decides whether the keychain may be touched at
   // all, so it strictly precedes any encrypt. Requires app.ready, which is why

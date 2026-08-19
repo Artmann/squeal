@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { log } from 'tiny-typescript-logger'
 
-import { database } from '@/database'
+import type { database } from '@/database'
 
 const dayInMilliseconds = 24 * 60 * 60 * 1000
 
@@ -18,18 +18,19 @@ export interface DeleteExpiredSpansOptions {
 // the oldest spans regardless of trace, which can truncate the tail of an old
 // trace — acceptable for a local debug tool.
 export async function deleteExpiredSpans(
+  client: typeof database,
   options: DeleteExpiredSpansOptions = {}
 ): Promise<number> {
   const maxSpanCount = options.maxSpanCount ?? defaultMaxSpanCount
   const retentionDays = options.retentionDays ?? defaultTraceRetentionDays
   const cutoff = Date.now() - retentionDays * dayInMilliseconds
 
-  const expired = await database.run(sql`
+  const expired = await client.run(sql`
     DELETE FROM spans
     WHERE startedAt < ${cutoff}
   `)
 
-  const overCap = await database.run(sql`
+  const overCap = await client.run(sql`
     DELETE FROM spans
     WHERE id NOT IN (
       SELECT id FROM spans

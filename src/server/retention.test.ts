@@ -1,5 +1,6 @@
 import {
   Cause,
+  Context,
   Duration,
   Effect,
   Exit,
@@ -14,14 +15,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { makeTestAppDatabase } from '@/test/effect-test-helper'
 import { RetentionLive } from './retention'
+import { AppDatabase, type AppDatabaseClient } from './services/app-database'
 
-// The sweeps reach SQLite through the `@/database` singleton rather than
-// through AppDatabase, so there is no layer to substitute for them yet — see
-// issue #85. Mocking the two modules is what lets the shipped RetentionLive run
-// exactly as `runtime.ts` builds it.
+// The sweeps are the subject of their own tests, against their own databases.
+// What is being checked here is the fiber around them — the order, the
+// schedule, and what a failure does to both — so they are mocked out to
+// something that resolves on command. That leaves the shipped RetentionLive
+// running exactly as `runtime.ts` builds it.
 const { deleteExpiredQueries, deleteExpiredSpans } = vi.hoisted(() => ({
-  deleteExpiredQueries: vi.fn<() => Promise<number>>(),
-  deleteExpiredSpans: vi.fn<() => Promise<number>>()
+  deleteExpiredQueries: vi.fn<(client: AppDatabaseClient) => Promise<number>>(),
+  deleteExpiredSpans: vi.fn<(client: AppDatabaseClient) => Promise<number>>()
 }))
 
 vi.mock('@/main/queries/query-retention', () => ({ deleteExpiredQueries }))
@@ -85,11 +88,46 @@ describe('RetentionLive', () => {
     expect(swept).toEqual({ queries: 1, spans: 1 })
   })
 
+  // The client the sweeps are handed, rather than one they went and found.
+  // A sweep reaching a module singleton would pass every case in its own file,
+  // where the two are the same database — this is the seam where they are not.
+  it('sweeps the client the app database built', async () => {
+    const swept = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(makeTestAppDatabase())
+
+          yield* Layer.build(
+            RetentionLive.pipe(Layer.provide(Layer.succeedContext(context)))
+          )
+
+          yield* settle
+
+          const { client } = Context.get(context, AppDatabase)
+
+          // Identity rather than `toEqual`, which is the exception to the
+          // project's default: two drizzle instances over two empty in-memory
+          // databases differ only in the client object each holds, so a shape
+          // comparison would answer for an implementation detail instead of
+          // the question. The cost is a failure that reports `false` without
+          // saying what was passed — read the mock's calls if it ever does.
+          return {
+            queries: deleteExpiredQueries.mock.calls[0]?.[0] === client,
+            spans: deleteExpiredSpans.mock.calls[0]?.[0] === client
+          }
+        })
+      ).pipe(Effect.provide(captureLogs), Effect.provide(TestContext))
+    )
+
+    expect(swept).toEqual({ queries: true, spans: true })
+  })
+
   it('refuses to build without the app database', async () => {
-    // Nothing in the fiber reads the client, so dropping the dependency would
-    // still compile and still pass every other test here -- and retention
-    // would be free to sweep a schema that has not been created yet. The cast
-    // is the only way to ask for a build the type system is meant to refuse.
+    // Dropping the dependency is now a type error rather than a silent
+    // reordering, because the sweeps need the client it carries — but the
+    // layer is still what creates the schema, and retention still must not run
+    // before it has. The cast is the only way to ask for a build the type
+    // system is meant to refuse.
     const withoutTheDatabase = RetentionLive as unknown as Layer.Layer<never>
 
     const exit = await Effect.runPromiseExit(

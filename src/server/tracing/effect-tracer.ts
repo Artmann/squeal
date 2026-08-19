@@ -107,7 +107,7 @@ export const TracerLive = Layer.unwrapScoped(
 
     const writeBatch = (records: ReadonlyArray<SpanRecord>) =>
       appDatabase
-        .execute((client) => writeSpans([...records], client))
+        .execute((client) => writeSpans(client, [...records]))
         .pipe(
           Effect.catchAllCause((cause) =>
             Effect.logError('Could not write spans', cause)

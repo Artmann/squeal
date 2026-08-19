@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { log } from 'tiny-typescript-logger'
 
-import { database } from '@/database'
+import type { database } from '@/database'
 
 const dayInMilliseconds = 24 * 60 * 60 * 1000
 
@@ -12,11 +12,12 @@ export const defaultRetentionDays = 30
 // newest query is always kept regardless of age because the result panel
 // shows it.
 export async function deleteExpiredQueries(
+  client: typeof database,
   retentionDays = defaultRetentionDays
 ): Promise<number> {
   const cutoff = Date.now() - retentionDays * dayInMilliseconds
 
-  const result = await database.run(sql`
+  const result = await client.run(sql`
     DELETE FROM queries
     WHERE queriedAt < ${cutoff}
       AND queriedAt < (
