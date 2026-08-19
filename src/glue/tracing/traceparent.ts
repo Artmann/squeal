@@ -5,7 +5,6 @@ import { SpanContext } from './spans'
 
 const spanIdPattern = /^[0-9a-f]{16}$/
 const traceIdPattern = /^[0-9a-f]{32}$/
-const traceparentPattern = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/
 
 export function formatTraceparent(context: SpanContext): string {
   return `00-${context.traceId}-${context.spanId}-01`
@@ -15,34 +14,20 @@ export function formatTraceparent(context: SpanContext): string {
 // from anywhere — a traceparent, a b3 header, or the renderer's span ingest —
 // and an id that fails this check cannot be looked up again, so it must never
 // be stored.
+//
+// Reading the header is not this module's job. `@effect/platform` does it in
+// its own HTTP middleware and hands the result to the request span as its
+// parent; these two are what `SquealSpan` then applies to that parent, because
+// the platform accepts ids the spec forbids — all-zero ones, and uppercase hex,
+// since its patterns carry the `i` flag — and does not check a `b3` header at
+// all. See `src/server/http/traceparent-propagation.test.ts` for the path from
+// header to parent.
 export function isValidSpanId(value: string): boolean {
   return spanIdPattern.test(value) && !isAllZeros(value)
 }
 
 export function isValidTraceId(value: string): boolean {
   return traceIdPattern.test(value) && !isAllZeros(value)
-}
-
-export function parseTraceparent(
-  header: string | undefined
-): SpanContext | undefined {
-  if (!header) {
-    return undefined
-  }
-
-  const match = traceparentPattern.exec(header)
-  const traceId = match?.[1]
-  const spanId = match?.[2]
-
-  if (!traceId || !spanId) {
-    return undefined
-  }
-
-  if (!isValidTraceId(traceId) || !isValidSpanId(spanId)) {
-    return undefined
-  }
-
-  return { spanId, traceId }
 }
 
 function isAllZeros(value: string): boolean {
