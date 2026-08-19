@@ -7,6 +7,7 @@ import { configDefaults, defineConfig } from 'vitest/config'
 // the jsdom environment the React tests need.
 const backendTestPatterns = [
   'scripts/**/*.test.ts',
+  'src/build/**/*.test.ts',
   'src/glue/**/*.test.ts',
   'src/server/**/*.test.ts'
 ]

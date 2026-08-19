@@ -12,14 +12,12 @@ import { execFileSync } from 'child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join, resolve } from 'path'
 
-// Root external packages (Vite externals that need runtime resolution).
-// Every module externalized in vite.main.config.ts has to be reachable from
-// this list, either directly or as a transitive dependency. mysql2 and
-// pg-cursor are not dependencies of @libsql/client or pg, so they need naming:
-// src/databases/create-adapter.ts imports all three adapters at module level,
-// which means a single missing package breaks every database type, not just its
-// own.
-const rootExternalPackages = ['@libsql/client', 'mysql2', 'pg', 'pg-cursor']
+// A relative path rather than the `@` alias: Forge loads this config through
+// its own TypeScript loader, which knows nothing of the Vite alias.
+import {
+  asarUnpackGlob,
+  rootExternalPackages
+} from './src/build/native-packages'
 
 interface PackageDependency {
   name: string
@@ -213,9 +211,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     appBundleId: 'co.artmann.squeal',
     asar: {
-      // Kept in step with rootExternalPackages: these resolve at runtime, so
-      // they must stay outside the archive. libsql carries the native binding.
-      unpack: '**/node_modules/{@libsql,libsql,mysql2,pg,pg-cursor}/**/*'
+      unpack: asarUnpackGlob
     },
     // macOS ships one universal build, stitched from an x64 slice and an arm64
     // slice that are both packaged from this machine's node_modules — so both
@@ -245,7 +241,10 @@ const config: ForgeConfig = {
       osxNotarize: {
         appleId: process.env.APPLE_ID ?? '',
         appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD ?? '',
-        teamId: process.env.APPLE_TEAM_ID
+        // Never empty in practice — it is what `signsWithAppleIdentity`
+        // tests for — but the check is a `Boolean(...)` TypeScript cannot
+        // narrow through, and notarization requires a string.
+        teamId: process.env.APPLE_TEAM_ID ?? ''
       },
       osxSign: {
         identity: 'Developer ID Application',
