@@ -22,7 +22,6 @@ const baseQuery: QueryDto = {
   id: 'query-1',
   queriedAt: 1000,
   result: null,
-  truncated: false,
   worksheetId: 'worksheet-1'
 }
 

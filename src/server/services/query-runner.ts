@@ -503,7 +503,6 @@ function transformQueryRow(row: QueryRow): QueryDto {
     id: row.id,
     queriedAt: row.queriedAt,
     result: parsed,
-    truncated: parsed?.truncated ?? false,
     worksheetId: row.worksheetId
   }
 }
