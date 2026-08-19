@@ -105,6 +105,12 @@ const multiSchemaSchema: SchemaInfo = {
 }
 
 describe('DatabaseExplorer', () => {
+  // Several tests below assert that no schema was requested, and the mock is
+  // shared across the file.
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('renders the header and search input', () => {
     renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
 
@@ -493,6 +499,112 @@ describe('DatabaseExplorer', () => {
     expect(
       screen.getByRole('button', { name: 'Test Database' })
     ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  describe('a connection whose stored details cannot be read', () => {
+    const unreadableDatabase: DatabaseDto = {
+      ...testDatabase,
+      connectionInfo: null,
+      id: 'db-unreadable',
+      name: 'Broken Connection'
+    }
+
+    // One line, not a sentence per row: with several broken connections a
+    // paragraph each buries the list it describes, so the row carries a short
+    // action and the marker's tooltip carries the explanation.
+    it('marks the row and asks for nothing it cannot get', () => {
+      renderWithProviders(<DatabaseExplorer />, {
+        databases: [unreadableDatabase]
+      })
+
+      expect(screen.getByText('Re-enter details')).toBeInTheDocument()
+
+      expect(
+        screen.getByRole('img', {
+          name: "Squeal can't read this connection's saved details. Re-enter them to repair it."
+        })
+      ).toBeInTheDocument()
+
+      // The list already said the secret is unreadable, so the schema request
+      // would only fail for a reason that is already known.
+      expect(apiClient.getDatabaseSchema).not.toHaveBeenCalled()
+    })
+
+    it('keeps the whole row to a single line', () => {
+      renderWithProviders(<DatabaseExplorer />, {
+        databases: [unreadableDatabase]
+      })
+
+      // The sentence lives in the tooltip, so it must not also be on screen.
+      expect(screen.queryByText(/Squeal can't read/)).not.toBeInTheDocument()
+    })
+
+    it('opens the connection form when the row is clicked', async () => {
+      const user = userEvent.setup()
+
+      const { store } = renderWithProviders(<DatabaseExplorer />, {
+        databases: [unreadableDatabase]
+      })
+
+      await user.click(screen.getByText('Broken Connection'))
+
+      expect(store.getState().ui.editorScreen).toEqual({
+        databaseId: 'db-unreadable',
+        type: 'edit-database'
+      })
+    })
+
+    it('still asks for the schemas of the connections it can read', () => {
+      renderWithProviders(<DatabaseExplorer />, {
+        databases: [unreadableDatabase, testDatabase]
+      })
+
+      expect(apiClient.getDatabaseSchema).toHaveBeenCalledTimes(1)
+      expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('db-123')
+    })
+  })
+
+  describe('a schema that will not load', () => {
+    const failureMessage =
+      'Failed to load schema for "Test Database": connection refused'
+
+    const expandedOptions = {
+      databaseExplorer: {
+        expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+      },
+      databases: [testDatabase]
+    }
+
+    it('gives the reason instead of an empty tree', async () => {
+      vi.mocked(apiClient.getDatabaseSchema).mockRejectedValue(
+        new Error(failureMessage)
+      )
+
+      renderWithProviders(<DatabaseExplorer />, expandedOptions)
+
+      expect(await screen.findByText(failureMessage)).toBeInTheDocument()
+
+      // Marked on the row as well, so a collapsed one is not silent.
+      expect(
+        screen.getByRole('img', { name: failureMessage })
+      ).toBeInTheDocument()
+    })
+
+    it('asks again when the retry is taken', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.getDatabaseSchema).mockRejectedValue(
+        new Error(failureMessage)
+      )
+
+      renderWithProviders(<DatabaseExplorer />, expandedOptions)
+
+      await user.click(await screen.findByRole('button', { name: 'Retry' }))
+
+      await waitFor(() => {
+        expect(apiClient.getDatabaseSchema).toHaveBeenCalledTimes(2)
+      })
+    })
   })
 
   describe('querying a table from the context menu', () => {

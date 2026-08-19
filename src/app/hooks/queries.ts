@@ -14,6 +14,7 @@ import type {
   SecretStorageResponse,
   UpdateStatusResponse
 } from '@/glue/api/schemas'
+import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
 import { canceledQueryMessage } from '@/glue/queries'
 
 const queryPollInterval = 250
@@ -101,17 +102,27 @@ function useDatabaseSchema(databaseId: string | undefined) {
   })
 }
 
+export interface DatabaseSchemaRequest {
+  databaseId: string
+  /** False for a database whose schema cannot be loaded, so nothing is asked. */
+  isEnabled: boolean
+}
+
 // Warms every database's schema in the background so search and expansion are
 // instant, and is the source the explorer reads each row's tables from. Uses
 // the same query keys as useDatabaseSchema, so the version read there is a
-// cache hit rather than a second request. Results line up by index with
-// databaseIds.
-export function useDatabaseSchemas(databaseIds: string[]) {
+// cache hit rather than a second request. Results line up by index with the
+// requests.
+//
+// A per-request `isEnabled` rather than a pre-filtered list, because callers
+// line the results up with their own database array by index — dropping the
+// databases that must not be asked would shift every index after them.
+export function useDatabaseSchemas(requests: DatabaseSchemaRequest[]) {
   return useQueries({
-    queries: databaseIds.map((databaseId) => ({
+    queries: requests.map(({ databaseId, isEnabled }) => ({
       queryKey: queryKeys.schema(databaseId),
       queryFn: () => apiClient.getDatabaseSchema(databaseId),
-      enabled: Boolean(databaseId),
+      enabled: Boolean(databaseId) && isEnabled,
       staleTime: Infinity
     }))
   })
@@ -122,9 +133,20 @@ export function useDatabaseSchemas(databaseIds: string[]) {
 // rather than a request of its own. Undefined until the schema has loaded, and
 // whenever the probe could not answer — a database that reports no version is
 // normal, not an error.
+//
+// Takes the row rather than its id so it can tell the two "no version" cases
+// apart: a connection whose stored secret cannot be read has no schema to load,
+// and asking anyway spends a failing request on an answer already known. The
+// worksheet's own databaseId is not enough — it can still name a row that was
+// deleted.
 export function useServerVersion(
-  databaseId: string | undefined
+  database: DatabaseDto | undefined
 ): string | undefined {
+  const databaseId =
+    database === undefined || isConnectionUnreadable(database)
+      ? undefined
+      : database.id
+
   const schema = useDatabaseSchema(databaseId)
 
   return schema.data?.serverVersion

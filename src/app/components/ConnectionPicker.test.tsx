@@ -226,6 +226,29 @@ describe('ConnectionPicker', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
+  it('marks a connection whose stored details cannot be read', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<ConnectionPicker />, {
+      databases: [testDatabase, { ...testDatabase2, connectionInfo: null }],
+      openWorksheetId: 'ws-123',
+      worksheets: [testWorksheet]
+    })
+
+    await user.click(screen.getByRole('button'))
+
+    const marks = screen.getAllByRole('img', {
+      name: "Squeal can't read this connection's saved details. Re-enter them to repair it."
+    })
+
+    // Only the broken one, and it stays selectable — a worksheet pointing at it
+    // has to be able to point somewhere else.
+    expect(marks).toHaveLength(1)
+    expect(
+      screen.getByRole('option', { name: /Staging DB/ })
+    ).toBeInTheDocument()
+  })
+
   it('offers to add a database when none are configured', async () => {
     const user = userEvent.setup()
 

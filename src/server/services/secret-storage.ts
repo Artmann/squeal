@@ -20,8 +20,9 @@ export class SecretStorage extends Effect.Service<SecretStorage>()(
     sync: () => ({
       decrypt: (value: string) =>
         Effect.try({
-          catch: () =>
+          catch: (cause) =>
             new SecretDecryptError({
+              cause: String(cause),
               message:
                 'A stored connection secret could not be decrypted. Edit the connection and re-enter its password.'
             }),

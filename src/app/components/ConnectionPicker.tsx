@@ -1,4 +1,9 @@
-import { ChevronDownIcon, DatabaseIcon, SearchIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  DatabaseIcon,
+  SearchIcon,
+  TriangleAlertIcon
+} from 'lucide-react'
 import {
   type KeyboardEvent,
   ReactElement,
@@ -12,7 +17,8 @@ import {
 } from 'react'
 import invariant from 'tiny-invariant'
 
-import type { DatabaseDto } from '@/glue/databases'
+import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
+import { secretStorageMessages } from '@/glue/secret-storage'
 
 import { useCollections } from '../collections-context'
 import { useDatabases, useWorksheets } from '../hooks/queries'
@@ -479,6 +485,23 @@ function ConnectionPopover({
             <DatabaseIcon className="size-3 shrink-0 text-text3" />
 
             <span className="max-w-[200px] truncate">{database.name}</span>
+
+            {/* Still selectable: refusing the choice would strand a worksheet
+                whose connection broke. Running is what asks for a password, and
+                that is where the run is refused. */}
+            {isConnectionUnreadable(database) && (
+              <span
+                aria-label={secretStorageMessages.unreadableConnection}
+                className="ml-auto flex shrink-0 items-center"
+                role="img"
+                title={secretStorageMessages.unreadableConnection}
+              >
+                <TriangleAlertIcon
+                  aria-hidden
+                  className="size-3 text-err"
+                />
+              </span>
+            )}
           </div>
         ))}
       </div>

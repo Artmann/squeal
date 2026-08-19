@@ -692,7 +692,15 @@ describe('DatabaseService', () => {
       })
     )
 
-    expect(unreadable._tag).toEqual('SecretDecryptError')
+    // Named, so a handler answering the user can say which connection to go and
+    // repair without looking the row up again.
+    expect(unreadable).toEqual(
+      expect.objectContaining({
+        _tag: 'SecretDecryptError',
+        databaseName: 'Broken'
+      })
+    )
+
     expect(updated.name).toEqual('Repaired')
 
     // The repaired row is readable again. The password is blank because the

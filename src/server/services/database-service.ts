@@ -176,7 +176,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
           transformDatabase(record).pipe(
             Effect.catchTag('SecretDecryptError', (error) =>
               Effect.logWarning(
-                `Could not read connection info for database ${record.id}: ${error.message}`
+                `Could not read connection info for database ${record.id}: ${describeSecretDecryptError(error)}`
               ).pipe(Effect.as(toUnreadableDatabase(record)))
             )
           )
@@ -265,14 +265,17 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
             return Option.none<DatabaseWithSecrets>()
           }
 
+          // Named here because this is the last frame that knows which row it
+          // was: callers get an id at best, and a handler answering the user
+          // should be able to say which connection to go and repair.
           const connectionInfo = yield* parseConnectionInfo(
             record.value.connectionInfo
-          )
+          ).pipe(Effect.mapError(withDatabaseName(record.value.name)))
 
           const connection = yield* toDatabaseConnection(
             record.value.type as DatabaseType,
             connectionInfo
-          )
+          ).pipe(Effect.mapError(withDatabaseName(record.value.name)))
 
           return Option.some<DatabaseWithSecrets>({
             connection,
@@ -550,6 +553,29 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
     })
   }
 ) {}
+
+// The user-facing sentence is the same however decryption failed, so the log
+// gets the keychain's own words appended when there are any.
+function describeSecretDecryptError(error: SecretDecryptError): string {
+  if (error.cause === undefined) {
+    return error.message
+  }
+
+  return `${error.message} (${error.cause})`
+}
+
+// Rebuilt field by field rather than spread: the error is an Error subclass, so
+// a spread would also hand the constructor properties that are not fields.
+function withDatabaseName(
+  databaseName: string
+): (error: SecretDecryptError) => SecretDecryptError {
+  return (error) =>
+    new SecretDecryptError({
+      cause: error.cause,
+      databaseName,
+      message: error.message
+    })
+}
 
 // The stored password may only be lent back to the server it was saved for,
 // reached the way it was saved to be reached. Host and port decide where the
