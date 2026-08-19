@@ -9,6 +9,8 @@
 // arrive through an UpdateBackend, so the transitions can be driven by a fake.
 // `src/main/updates/electron-updater.ts` builds the real backends.
 
+import invariant from 'tiny-invariant'
+
 export type UpdateState =
   // A newer version exists but this platform cannot install it itself.
   | 'available'
@@ -63,13 +65,16 @@ export interface UpdaterOptions {
 }
 
 export interface Updater {
+  // Claims the install: the ready status when this caller got it, null when
+  // nothing is ready or someone already holds it — the caller's cue to answer
+  // the request with an error rather than restarting the app. Only one caller
+  // can ever hold the claim, so the app can only be told to swap itself once.
+  beginInstall(): UpdateStatus | null
   check(): void
+  // Hands the claimed install to the backend. Reachable only by whoever
+  // `beginInstall` said yes to.
+  completeInstall(): void
   dispose(): void
-  // False when nothing is ready to install — the caller's cue to answer the
-  // request with an error rather than restarting the app — and also false for
-  // every call after the first, so the app can only ever be told to swap
-  // itself once.
-  install(): boolean
   status(): UpdateStatus
 }
 
@@ -81,6 +86,8 @@ export const updateMessages = {
   developmentBuild: 'Updates are only available in a packaged build.',
   downloadFailed:
     'The update could not be downloaded. Squeal will try again later, or you can download it from the release page.',
+  installUnderway:
+    'Squeal is already installing an update — it will restart on its own in a moment.',
   linux:
     'Squeal cannot update itself on Linux. Download the latest .deb or .rpm from the release page.',
   notInApplicationsFolder:
@@ -170,9 +177,12 @@ export function createUpdater(options: UpdaterOptions): Updater {
       ? idleStatus
       : { ...idleStatus, message: unsupported, state: 'unsupported' }
 
-  // One-way: once the app has been told to replace itself there is nothing to
-  // reset it for, and the process is on its way out.
-  let installing = false
+  // One-way: once someone holds the claim there is nothing to release it for,
+  // and the process is on its way out. Nothing resets it if the holder is
+  // interrupted before handing the install over — that costs the user an update
+  // they asked for, but it is only reachable during shutdown, where the install
+  // was going to be abandoned anyway.
+  let claimed = false
 
   function fail(error: unknown, message: string): void {
     status = { ...status, lastCheckedAt: now(), message, state: 'error' }
@@ -229,6 +239,23 @@ export function createUpdater(options: UpdaterOptions): Updater {
       : (): void => undefined
 
   return {
+    beginInstall(): UpdateStatus | null {
+      // The claim is taken here, at ask time, rather than at hand-off time.
+      // The install reaches the backend on a short delay so the HTTP response
+      // can leave first, and that gap is exactly the window a retry or a second
+      // client can ask in — a latch taken on the far side of it still refuses
+      // the duplicate hand-off, so the bundle was never swapped twice. What it
+      // cannot do is say so: it closes after the answer has already gone out,
+      // and the second caller is told 200 for an install that was dropped.
+      if (status.state !== 'ready' || claimed) {
+        return null
+      }
+
+      claimed = true
+
+      return status
+    },
+
     check(): void {
       // Squirrel downloads the update again for every extra `checkForUpdates()`
       // call, and once one is ready there is nothing left to learn.
@@ -251,25 +278,14 @@ export function createUpdater(options: UpdaterOptions): Updater {
       }
     },
 
-    dispose(): void {
-      unsubscribe()
-    },
-
-    install(): boolean {
-      // Idempotent rather than merely guarded. The install is handed to the
-      // backend on a short delay so the HTTP response can reach the renderer
-      // first, which leaves a window where a retry or a second client can ask
-      // again — and Squirrel spawns its installer per quitAndInstall call, so
-      // the second one buys a redundant swap of the bundle being replaced.
-      if (status.state !== 'ready' || installing) {
-        return false
-      }
-
-      installing = true
+    completeInstall(): void {
+      invariant(claimed, 'The install was claimed before it was handed over.')
 
       backend.install()
+    },
 
-      return true
+    dispose(): void {
+      unsubscribe()
     },
 
     status(): UpdateStatus {
