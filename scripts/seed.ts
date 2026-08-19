@@ -6,9 +6,7 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { Client } from 'pg'
 
-const postgresUrl =
-  process.env.POSTGRES_URL ??
-  'postgresql://postgres:postgres@localhost:5433/squeal'
+import { postgresUrl, sqlitePath } from './seed-config'
 
 async function runSeedFiles(
   seedDirectory: string,
@@ -74,10 +72,6 @@ async function seedMysql() {
 
   console.log('MySQL seeded successfully!\n')
 }
-
-const sqlitePath =
-  process.env.SQLITE_PATH ??
-  join(__dirname, '..', 'seed-sqlite', 'pagila.sqlite')
 
 async function seedSqlite() {
   console.log('Seeding SQLite database...')
