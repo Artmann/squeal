@@ -4,6 +4,7 @@ import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DatabaseDto } from '@/glue/databases'
+import { QueryDto } from '@/glue/api/schemas'
 import { WorksheetDto } from '@/glue/worksheets'
 import { App, useWorksheetSession } from './App'
 import { useAppSelector } from './store'
@@ -12,9 +13,11 @@ import { renderWithProviders } from './test-utils'
 
 vi.mock('./api-client', () => ({
   apiClient: {
+    cancelQuery: vi.fn(async () => undefined),
     createQuery: vi.fn(),
     getDatabases: vi.fn(async () => []),
     getDatabaseSchema: vi.fn(async () => ({ tables: [] })),
+    getQuery: vi.fn(),
     updateWorksheet: vi.fn()
   }
 }))
@@ -203,6 +206,65 @@ describe('running a query', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('canceling a query', () => {
+  const runningQuery: QueryDto = {
+    content: 'SELECT pg_sleep(30);',
+    databaseId: 'database-1',
+    error: null,
+    finishedAt: null,
+    id: 'q-1',
+    queriedAt: 1,
+    result: null,
+    truncated: false,
+    worksheetId: 'ws-1'
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(apiClient.updateWorksheet).mockResolvedValue(testWorksheet)
+    vi.mocked(apiClient.getQuery).mockResolvedValue(runningQuery)
+  })
+
+  // The whole app rather than a probe: the props `App` hands the toolbar are
+  // the wiring under test, and a probe that passes them itself would keep
+  // passing with `App` unwired.
+  function renderApp(): void {
+    renderWithProviders(<App />, {
+      databases: [testDatabase],
+      openWorksheetId: 'ws-1',
+      queries: [runningQuery],
+      ui: { gettingStartedDismissed: true },
+      worksheets: [testWorksheet]
+    })
+  }
+
+  it('cancels the running query when the button is clicked', async () => {
+    renderApp()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.cancelQuery).mock.calls).toEqual([['q-1']])
+    })
+  })
+
+  // The row stays running until the backend finalizes it, so the button is on
+  // screen the whole time the request is in flight. Saying "Canceling…" and
+  // refusing further clicks is the only feedback the user gets in that window.
+  it('shows the cancel as in flight until the backend finalizes the row', async () => {
+    renderApp()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    const button = await screen.findByRole('button', { name: 'Canceling…' })
+
+    expect({
+      disabled: button.hasAttribute('disabled'),
+      label: button.textContent
+    }).toEqual({ disabled: true, label: 'Canceling…' })
   })
 })
 

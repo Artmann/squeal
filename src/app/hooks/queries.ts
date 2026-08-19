@@ -16,7 +16,7 @@ import type {
 } from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
 
-export const queryPollInterval = 250
+const queryPollInterval = 250
 
 export function useDatabases() {
   const { databases } = useCollections()

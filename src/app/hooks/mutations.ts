@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { apiClient } from '../api-client'
@@ -32,13 +32,39 @@ export interface CancelQuery {
  * it belongs to.
  */
 export function useCancelQuery(query: QueryDto | undefined): CancelQuery {
-  const [cancelingQueryId, setCancelingQueryId] = useState<string | undefined>(
-    undefined
-  )
+  const [cancelingQueryId, setCancelingQueryId] = useState<string>()
+
+  // A rejection lands long after the click that built its handler, so it cannot
+  // read the flag out of its own closure. The ref is written with the state and
+  // only ever beside it, so there is still one answer to "which query is the
+  // button showing as canceling".
+  const shownCancelingId = useRef<string | undefined>(undefined)
+
+  const setCanceling = useCallback((queryId: string | undefined): void => {
+    shownCancelingId.current = queryId
+
+    setCancelingQueryId(queryId)
+  }, [])
 
   const runningQueryId = query?.finishedAt === null ? query.id : undefined
   const isCanceling =
     runningQueryId !== undefined && cancelingQueryId === runningQueryId
+
+  // Forgetting the id once its own row goes terminal. The flag is derived, so
+  // the button has already gone — but a row can regress from finished back to
+  // running when a slow insert response lands after the poller saw it finish,
+  // and a remembered id would relabel that button "Canceling…" with nothing in
+  // flight. Only this query's own terminal row clears it, so a cancel left
+  // behind in another worksheet is still reported when you go back to it.
+  useEffect(() => {
+    if (
+      cancelingQueryId !== undefined &&
+      query?.id === cancelingQueryId &&
+      query.finishedAt !== null
+    ) {
+      setCanceling(undefined)
+    }
+  }, [cancelingQueryId, query?.finishedAt, query?.id, setCanceling])
 
   const cancel = useCallback(() => {
     // The button now stays on screen for as long as the query runs, so this is
@@ -47,22 +73,36 @@ export function useCancelQuery(query: QueryDto | undefined): CancelQuery {
       return
     }
 
-    setCancelingQueryId(runningQueryId)
+    const canceledQueryId = runningQueryId
 
-    void apiClient.cancelQuery(runningQueryId).catch((error: unknown) => {
-      const reason =
-        error instanceof Error ? error.message : 'The request failed.'
+    setCanceling(canceledQueryId)
+
+    void apiClient.cancelQuery(canceledQueryId).catch((error: unknown) => {
+      // A rejection for a query the button has moved on from has nothing left
+      // to report: clearing the flag would re-enable a Cancel whose own request
+      // is still in flight, and the message would describe a query that is no
+      // longer running.
+      if (shownCancelingId.current !== canceledQueryId) {
+        return
+      }
 
       // A cancel that never reached the backend is not a cancel: the query is
       // still running, and leaving the button on "Canceling…" would say
       // otherwise.
-      setCancelingQueryId(undefined)
+      setCanceling(undefined)
+
+      // The fact first, then what to do about it — `reason` carries the
+      // client's own advice ("Restart Squeal and try again."), and the fallback
+      // has to supply some, because a rejection that is not an `Error` has no
+      // message worth showing.
+      const reason =
+        error instanceof Error ? error.message : 'Try canceling it again.'
 
       toast.error('Could not cancel the query', {
-        description: `${reason} The query is still running.`
+        description: `The query is still running. ${reason}`
       })
     })
-  }, [isCanceling, runningQueryId])
+  }, [isCanceling, runningQueryId, setCanceling])
 
   return { cancel, isCanceling }
 }

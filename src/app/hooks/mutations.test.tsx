@@ -1,5 +1,6 @@
 import { act, fireEvent, renderHook, screen } from '@testing-library/react'
 import { ReactElement } from 'react'
+import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { canceledQueryMessage } from '@/glue/queries'
@@ -84,6 +85,49 @@ function stayRunning(): void {
   vi.mocked(apiClient.cancelQuery).mockImplementation(async () => undefined)
 }
 
+// A backend that refuses the cancel outright, with the row left running — what
+// the user sees when the request never lands.
+function failCancel(): void {
+  vi.mocked(apiClient.getQuery).mockImplementation(async () => runningQuery)
+  vi.mocked(apiClient.cancelQuery).mockRejectedValue(
+    new Error('The connection was lost.')
+  )
+}
+
+/**
+ * A backend whose cancel answers only when the test says so, and whose row can
+ * be finalized separately. That is the only way to put a whole query lifetime
+ * between the click and the answer to it.
+ */
+function deferredCancels() {
+  const rejecters = new Map<string, (error: Error) => void>()
+
+  let row = runningQuery
+
+  vi.mocked(apiClient.getQuery).mockImplementation(async () => row)
+  vi.mocked(apiClient.cancelQuery).mockImplementation(
+    (queryId: string) =>
+      new Promise<void>((_resolve, reject) => {
+        rejecters.set(queryId, reject)
+      })
+  )
+
+  return {
+    async fail(queryId: string): Promise<void> {
+      const reject = rejecters.get(queryId)
+
+      invariant(reject, `No cancel is in flight for ${queryId}.`)
+
+      await act(async () => {
+        reject(new Error('The connection was lost.'))
+      })
+    },
+    finalize(): void {
+      row = canceledQuery
+    }
+  }
+}
+
 describe('useCancelQuery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -111,8 +155,10 @@ describe('useCancelQuery', () => {
 
     expect(await screen.findByText('canceling')).toBeInTheDocument()
 
-    expect(screen.getByText('running')).toBeInTheDocument()
-    expect(screen.getByText('no error')).toBeInTheDocument()
+    expect({
+      error: screen.getByText('no error').textContent,
+      row: screen.getByText('running').textContent
+    }).toEqual({ error: 'no error', row: 'running' })
   })
 
   it('shows the query as canceled once the backend finalizes it', async () => {
@@ -192,10 +238,7 @@ describe('useCancelQuery', () => {
   // on "Canceling…" forever would tell the user the query is on its way out
   // when nothing has asked for it.
   it('offers cancel again when the request fails', async () => {
-    vi.mocked(apiClient.getQuery).mockImplementation(async () => runningQuery)
-    vi.mocked(apiClient.cancelQuery).mockRejectedValue(
-      new Error('The connection was lost.')
-    )
+    failCancel()
 
     renderWithProviders(<CancelProbe />, { queries: [runningQuery] })
 
@@ -209,10 +252,7 @@ describe('useCancelQuery', () => {
   // The query keeps running either way, so the one thing the user must not be
   // left with is a click that looks like it worked.
   it('says so when the cancel request fails', async () => {
-    vi.mocked(apiClient.getQuery).mockImplementation(async () => runningQuery)
-    vi.mocked(apiClient.cancelQuery).mockRejectedValue(
-      new Error('The connection was lost.')
-    )
+    failCancel()
 
     renderWithProviders(<CancelProbe />, { queries: [runningQuery] })
 
@@ -223,7 +263,120 @@ describe('useCancelQuery', () => {
     ).toBeInTheDocument()
 
     expect(
-      screen.getByText('The connection was lost. The query is still running.')
+      screen.getByText('The query is still running. The connection was lost.')
+    ).toBeInTheDocument()
+  })
+
+  // A cancel request can outlive the query it belongs to: the backend bounds
+  // its cancel work at five seconds and the poller can write the terminal row
+  // first. A rejection that lands after that describes a query nobody is
+  // looking at any more, and saying so would be a message about nothing.
+  it('says nothing when the cancel fails after the query has finished', async () => {
+    const cancels = deferredCancels()
+
+    renderWithProviders(<CancelProbe />, { queries: [runningQuery] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }))
+
+    expect(await screen.findByText('canceling')).toBeInTheDocument()
+
+    cancels.finalize()
+
+    expect(await screen.findByText('finished')).toBeInTheDocument()
+
+    await cancels.fail('q-1')
+
+    // Absence needs a wait: the toast the other cases assert on is only found
+    // by polling, so checking immediately would pass without proving anything.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })
+
+    expect(screen.queryByText('Could not cancel the query')).toBeNull()
+  })
+
+  // The same rejection must not re-enable a Cancel that belongs to a different
+  // query — that one's own request is still in flight.
+  it('leaves a later query alone when an earlier cancel fails', async () => {
+    const cancels = deferredCancels()
+
+    const { rerender, result } = renderHook(
+      ({ query }: { query: QueryDto }) => useCancelQuery(query),
+      { initialProps: { query: runningQuery } }
+    )
+
+    act(() => {
+      result.current.cancel()
+    })
+
+    rerender({ query: { ...runningQuery, id: 'q-2' } })
+
+    act(() => {
+      result.current.cancel()
+    })
+
+    await cancels.fail('q-1')
+
+    expect(result.current.isCanceling).toEqual(true)
+  })
+
+  // A finished row can go back to running: a slow insert response landing after
+  // the poller already saw the query finish rewrites it. The button must not
+  // come back saying "Canceling…" with nothing in flight.
+  it('forgets the cancel once the query it belongs to has finished', () => {
+    stayRunning()
+
+    const { rerender, result } = renderHook(
+      ({ query }: { query: QueryDto }) => useCancelQuery(query),
+      { initialProps: { query: runningQuery } }
+    )
+
+    act(() => {
+      result.current.cancel()
+    })
+
+    rerender({ query: canceledQuery })
+    rerender({ query: runningQuery })
+
+    expect(result.current.isCanceling).toEqual(false)
+  })
+
+  // Only the canceled query's own terminal row means the cancel is over. Every
+  // worksheet has its own latest query, so looking at a finished one elsewhere
+  // must leave the cancel you started intact for when you come back to it.
+  it('keeps the cancel while a different query is finished', () => {
+    stayRunning()
+
+    const { rerender, result } = renderHook(
+      ({ query }: { query: QueryDto }) => useCancelQuery(query),
+      { initialProps: { query: runningQuery } }
+    )
+
+    act(() => {
+      result.current.cancel()
+    })
+
+    rerender({ query: { ...canceledQuery, id: 'q-2' } })
+    rerender({ query: runningQuery })
+
+    expect(result.current.isCanceling).toEqual(true)
+  })
+
+  // A rejection that is not an `Error` has no message worth showing, so the
+  // advice has to come from us — an empty half would read as a cut-off
+  // sentence.
+  it('still says what to do when the failure carries no message', async () => {
+    vi.mocked(apiClient.getQuery).mockImplementation(async () => runningQuery)
+    vi.mocked(apiClient.cancelQuery).mockRejectedValue('no message at all')
+
+    renderWithProviders(<CancelProbe />, { queries: [runningQuery] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }))
+
+    expect(
+      await screen.findByText(
+        'The query is still running. Try canceling it again.'
+      )
     ).toBeInTheDocument()
   })
 
