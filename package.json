@@ -6,6 +6,7 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "generate-icons": "bun run scripts/generate-icons.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "make": "electron-forge make",

@@ -35,6 +35,7 @@ free of main-process imports. See `CLAUDE.md` for the architecture in detail.
 - `yarn test:watch` - Run the test suite in watch mode
 - `yarn lint` - Run ESLint
 - `yarn format` - Format code with Prettier
+- `yarn format:check` - Check formatting without writing (what CI runs)
 - `yarn seed` - Seed the sample databases
 - `yarn package` - Package the app
 - `yarn make` - Build distributable

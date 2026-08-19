@@ -132,7 +132,8 @@ disposes on `before-quit`.
 
 - `yarn start` - Development mode
 - `yarn seed` - Seed PostgreSQL with Pagila sample data
-- `yarn lint` / `yarn format` - Code quality
+- `yarn lint` / `yarn format` - Code quality (`yarn format:check` is the
+  read-only form CI runs)
 - `yarn typecheck` - Runs two projects: `tsconfig.backend.json` (strict, covers
   `src/server` and `src/glue`) and `tsconfig.renderer.json`
 - `yarn test` - Vitest, split into a `backend` project (node environment) and a
