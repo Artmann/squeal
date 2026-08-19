@@ -1,13 +1,10 @@
 import { sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import {
-  getTestDatabase,
-  resetTestDatabase,
-  setupApiMocks
-} from '@/test/api-test-helper'
-
-setupApiMocks()
+// Above the imports below it, not merely near them: the `@/database` mock
+// registers as this module is evaluated, and anything evaluated first misses
+// it. See the note in the helper.
+import { getTestDatabase, resetTestDatabase } from '@/test/api-test-helper'
 
 import {
   interruptedQueryMessage,
