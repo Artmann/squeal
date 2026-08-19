@@ -160,22 +160,27 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+// What the updater is doing right now. Nothing else is ever in flight: an
+// install is claimed rather than reported, and by the time one is handed over
+// the process is on its way out.
+type Activity = 'checking' | 'downloading' | 'idle'
+
+// What the last completed check learned, and the only thing that owns a
+// message, a version, or a notes URL. Held apart from the activity because the
+// two answer different questions: sharing one slot is what let a finished
+// check's message describe an attempt still in flight, and let an update found
+// by one check outlive the check that failed to find it again.
+type Knowledge =
+  | { kind: 'available'; message: string; version: string }
+  | { kind: 'error'; message: string }
+  | { kind: 'none' }
+  | { kind: 'ready'; version: string | null }
+  | { kind: 'unsupported'; message: string }
+
 export function createUpdater(options: UpdaterOptions): Updater {
   const { backend, currentVersion, logError, now, unsupported } = options
 
-  const idleStatus: UpdateStatus = {
-    currentVersion,
-    lastCheckedAt: null,
-    message: null,
-    releaseNotesUrl: null,
-    state: 'idle',
-    version: null
-  }
-
-  let status: UpdateStatus =
-    unsupported === null
-      ? idleStatus
-      : { ...idleStatus, message: unsupported, state: 'unsupported' }
+  let activity: Activity = 'idle'
 
   // One-way: once someone holds the claim there is nothing to release it for,
   // and the process is on its way out. Nothing resets it if the holder is
@@ -184,8 +189,82 @@ export function createUpdater(options: UpdaterOptions): Updater {
   // was going to be abandoned anyway.
   let claimed = false
 
+  let knowledge: Knowledge =
+    unsupported === null
+      ? { kind: 'none' }
+      : { kind: 'unsupported', message: unsupported }
+
+  let lastCheckedAt: number | null = null
+
+  // The one place the two halves become the flat status the contract declares.
+  // An activity outranks the knowledge behind it, which is how the state label
+  // has always read; what it no longer does is carry that knowledge's fields
+  // into a state which has not earned them.
+  function project(): UpdateStatus {
+    const base = { currentVersion, lastCheckedAt }
+
+    if (activity !== 'idle') {
+      return {
+        ...base,
+        message: null,
+        releaseNotesUrl: null,
+        state: activity,
+        version: null
+      }
+    }
+
+    switch (knowledge.kind) {
+      case 'available':
+        return {
+          ...base,
+          message: knowledge.message,
+          releaseNotesUrl: releaseNotesUrl(knowledge.version),
+          state: 'available',
+          version: knowledge.version
+        }
+
+      case 'error':
+        return {
+          ...base,
+          message: knowledge.message,
+          releaseNotesUrl: null,
+          state: 'error',
+          version: null
+        }
+
+      case 'none':
+        return {
+          ...base,
+          message: null,
+          releaseNotesUrl: null,
+          state: 'idle',
+          version: null
+        }
+
+      case 'ready':
+        return {
+          ...base,
+          message: null,
+          releaseNotesUrl: releaseNotesUrl(knowledge.version),
+          state: 'ready',
+          version: knowledge.version
+        }
+
+      case 'unsupported':
+        return {
+          ...base,
+          message: knowledge.message,
+          releaseNotesUrl: null,
+          state: 'unsupported',
+          version: null
+        }
+    }
+  }
+
   function fail(error: unknown, message: string): void {
-    status = { ...status, lastCheckedAt: now(), message, state: 'error' }
+    activity = 'idle'
+    knowledge = { kind: 'error', message }
+    lastCheckedAt = now()
 
     logError(`Squeal could not update itself: ${describeError(error)}`)
   }
@@ -196,44 +275,36 @@ export function createUpdater(options: UpdaterOptions): Updater {
     unsupported === null
       ? backend.subscribe({
           downloaded: (version) => {
-            status = {
-              ...status,
-              lastCheckedAt: now(),
-              message: null,
-              releaseNotesUrl: releaseNotesUrl(version),
-              state: 'ready',
-              version
-            }
+            activity = 'idle'
+            knowledge = { kind: 'ready', version }
+            lastCheckedAt = now()
           },
 
           downloading: () => {
-            status = { ...status, state: 'downloading' }
+            activity = 'downloading'
           },
 
           failed: (error) => {
             // Which message applies depends on how far the attempt got, and
-            // only the state we are leaving still knows that.
+            // only the activity it is ending still knows that.
             fail(
               error,
-              status.state === 'downloading'
+              activity === 'downloading'
                 ? updateMessages.downloadFailed
                 : updateMessages.checkFailed
             )
           },
 
           found: (version, message) => {
-            status = {
-              ...status,
-              lastCheckedAt: now(),
-              message,
-              releaseNotesUrl: releaseNotesUrl(version),
-              state: 'available',
-              version
-            }
+            activity = 'idle'
+            knowledge = { kind: 'available', message, version }
+            lastCheckedAt = now()
           },
 
           notFound: () => {
-            status = { ...idleStatus, lastCheckedAt: now() }
+            activity = 'idle'
+            knowledge = { kind: 'none' }
+            lastCheckedAt = now()
           }
         })
       : (): void => undefined
@@ -247,29 +318,33 @@ export function createUpdater(options: UpdaterOptions): Updater {
       // the duplicate hand-off, so the bundle was never swapped twice. What it
       // cannot do is say so: it closes after the answer has already gone out,
       // and the second caller is told 200 for an install that was dropped.
-      if (status.state !== 'ready' || claimed) {
+      //
+      // Off the projection rather than `knowledge`, because that is what the
+      // caller is handed: an activity in flight outranks the knowledge behind
+      // it there, so reading only `knowledge` would license a claim and answer
+      // it with a status that does not say ready.
+      if (project().state !== 'ready' || claimed) {
         return null
       }
 
       claimed = true
 
-      return status
+      return project()
     },
 
     check(): void {
       // Squirrel downloads the update again for every extra `checkForUpdates()`
       // call, and once one is ready there is nothing left to learn.
       const busy =
-        status.state === 'checking' ||
-        status.state === 'downloading' ||
-        status.state === 'ready' ||
-        status.state === 'unsupported'
+        activity !== 'idle' ||
+        knowledge.kind === 'ready' ||
+        knowledge.kind === 'unsupported'
 
       if (busy) {
         return
       }
 
-      status = { ...status, state: 'checking' }
+      activity = 'checking'
 
       try {
         backend.check()
@@ -289,7 +364,7 @@ export function createUpdater(options: UpdaterOptions): Updater {
     },
 
     status(): UpdateStatus {
-      return status
+      return project()
     }
   }
 }
