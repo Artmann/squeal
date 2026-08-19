@@ -391,16 +391,11 @@ export function DatabaseExplorer(): ReactElement {
             {renderedRows.map((row) => (
               <DatabaseRow
                 key={row.database.id}
-                database={row.database}
                 dropIndicator={dropIndicatorFor(row.database.id)}
                 expansion={expandedDatabases[row.database.id]}
-                hasMultipleSchemas={row.hasMultipleSchemas}
                 isSortingDisabled={isSortingDisabled}
-                isUnreadable={row.isUnreadable}
-                schemaError={row.schemaError}
-                searchMatch={row.searchMatch}
+                row={row}
                 searchQuery={normalizedSearchQuery}
-                tables={row.tables}
                 onDelete={handleDeleteDatabase}
                 onEdit={handleEditDatabase}
                 onRefresh={refresh}
@@ -485,22 +480,19 @@ function DatabaseExplorerHeader({
 }
 
 interface DatabaseRowProps {
-  database: DatabaseDto
   dropIndicator: DropIndicator
   /** The user's own decision, or `undefined` if they have never made one. */
   expansion: DatabaseExpansion | undefined
-  hasMultipleSchemas: boolean
   isSortingDisabled: boolean
-  isUnreadable: boolean
+  // Six of this component's props were the six fields of one row, listed out
+  // again here and passed one by one at the call site. Taking the row itself
+  // means adding something a row carries does not touch this signature.
+  row: RenderedDatabaseRow
+  /** Normalized, so trailing whitespace does not count as a new question. */
+  searchQuery: string
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
   onRefresh: (database: DatabaseDto) => void
-  schemaError?: string
-  /** Only for deciding whether the row is open — what it shows is `tables`. */
-  searchMatch?: DatabaseMatch
-  /** Normalized, so trailing whitespace does not count as a new question. */
-  searchQuery: string
-  tables: TableInfo[]
 }
 
 // A decision only speaks for the context it was made in:
@@ -589,20 +581,24 @@ function useRowActivation({
 }
 
 function DatabaseRow({
-  database,
   dropIndicator,
   expansion,
-  hasMultipleSchemas,
   isSortingDisabled,
-  isUnreadable,
+  row,
+  searchQuery,
   onDelete,
   onEdit,
-  onRefresh,
-  schemaError,
-  searchMatch,
-  searchQuery,
-  tables
+  onRefresh
 }: DatabaseRowProps): ReactElement {
+  const {
+    database,
+    hasMultipleSchemas,
+    isUnreadable,
+    schemaError,
+    searchMatch,
+    tables
+  } = row
+
   const isDatabaseExpanded =
     !isUnreadable && isRowExpanded(expansion, searchMatch, searchQuery)
 
@@ -622,6 +618,11 @@ function DatabaseRow({
     transform,
     transition
   } = useSortable({ disabled: isSortingDisabled, id: database.id })
+
+  // While filtering only dragging is off, so skip the sortable props entirely —
+  // spreading them would mark the row aria-disabled even though clicking still
+  // works.
+  const sortableProps = isSortingDisabled ? {} : { ...attributes, ...listeners }
 
   return (
     // The transform lives on the wrapper so an expanded subtree moves with the
@@ -643,10 +644,7 @@ function DatabaseRow({
         isExpanded={isDatabaseExpanded}
         isUnreadable={isUnreadable}
         schemaError={schemaError}
-        // While filtering only dragging is off, so skip the sortable props
-        // entirely — spreading them would mark the row aria-disabled even
-        // though clicking still works.
-        sortableProps={isSortingDisabled ? {} : { ...attributes, ...listeners }}
+        sortableProps={sortableProps}
         onActivate={handleActivate}
         onDelete={onDelete}
         onEdit={onEdit}
