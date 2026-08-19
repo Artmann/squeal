@@ -43,6 +43,16 @@ const testWorksheet: WorksheetDto = {
   sortOrder: null
 }
 
+const secondWorksheet: WorksheetDto = {
+  content: '',
+  createdAt: 1704067300000,
+  databaseId: null,
+  id: 'ws-456',
+  lastOpenedAt: null,
+  name: 'Second Worksheet',
+  sortOrder: null
+}
+
 describe('WorksheetExplorer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -113,15 +123,6 @@ describe('WorksheetExplorer', () => {
 
   it('persists the last-opened time when a worksheet is selected', async () => {
     const user = userEvent.setup()
-    const secondWorksheet: WorksheetDto = {
-      content: '',
-      createdAt: 1704067300000,
-      databaseId: null,
-      id: 'ws-456',
-      lastOpenedAt: null,
-      name: 'Second Worksheet',
-      sortOrder: null
-    }
 
     renderWithProviders(<WorksheetExplorer />, {
       databases: [],
@@ -136,6 +137,36 @@ describe('WorksheetExplorer', () => {
         lastOpenedAt: expect.any(Number)
       })
     })
+  })
+
+  // The tab is already open by the time the PATCH is sent, and what it costs is
+  // the MRU order. Rejecting the promise unhandled would surface as a
+  // `renderer.error` trace for something the user never asked for.
+  it('opens the worksheet anyway when recording the time fails', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.updateWorksheet).mockRejectedValue(
+      new Error('Database is locked')
+    )
+
+    const { store } = renderWithProviders(<WorksheetExplorer />, {
+      databases: [],
+      openWorksheetId: 'ws-123',
+      worksheets: [testWorksheet, secondWorksheet]
+    })
+
+    await user.click(screen.getByText('Second Worksheet'))
+
+    await waitFor(() => {
+      expect(apiClient.updateWorksheet).toHaveBeenCalledWith('ws-456', {
+        lastOpenedAt: expect.any(Number)
+      })
+    })
+
+    expect({
+      activeWorksheetId: store.getState().tabs.activeWorksheetId,
+      alerts: screen.queryAllByRole('alert').map((alert) => alert.textContent)
+    }).toEqual({ activeWorksheetId: 'ws-456', alerts: [] })
   })
 
   describe('rename', () => {
