@@ -6,7 +6,7 @@ import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 // whose optional peers are not installed.
 import * as NodeHttpServer from '@effect/platform-node/NodeHttpServer'
 import { drizzle } from 'drizzle-orm/libsql'
-import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
+import { Effect, Layer, Redacted } from 'effect'
 
 import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
@@ -15,6 +15,7 @@ import { UpdateNotReadyError } from '@/glue/api/errors'
 import type { DatabaseConnection, SecretStorageMode } from '@/glue/api/schemas'
 import type { KeychainProbeResult } from '@/main/databases/secret-storage'
 import { updateMessages } from '@/main/updates/updater'
+import { ServerConfig } from '@/server/config'
 import { ApiToken } from '@/server/http/api-token'
 import { ApiLive, CorsLive, ServeLive } from '@/server/http/server'
 import {
@@ -202,7 +203,7 @@ export interface TestApiOptions {
   adapter?: TestAdapterConfig
   // Defaults to the packaged profile: one allowed origin, so the CORS fast-path
   // regression stays covered.
-  allowedOrigins?: string[]
+  allowedOrigins?: ReadonlyArray<string>
   publicTraceReads?: boolean
   // What the keychain answers when the user asks for encryption.
   secretStorageProbe?: KeychainProbeResult
@@ -227,14 +228,10 @@ export function makeTestApi(options: TestApiOptions = {}) {
     Layer.provideMerge(updater.layer)
   )
 
-  const configuration = Layer.setConfigProvider(
-    ConfigProvider.fromMap(
-      new Map([
-        ['ALLOWED_ORIGINS', (options.allowedOrigins ?? ['null']).join(',')],
-        ['PUBLIC_TRACE_READS', String(options.publicTraceReads ?? false)]
-      ])
-    )
-  )
+  const configuration = Layer.succeed(ServerConfig, {
+    allowedOrigins: options.allowedOrigins ?? ['null'],
+    publicTraceReads: options.publicTraceReads ?? false
+  })
 
   // ServeLive and CorsLive come from the production module so the harness runs
   // the real host guard, body limit, and CORS behaviour.

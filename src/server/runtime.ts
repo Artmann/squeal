@@ -2,9 +2,10 @@
 // ManagedRuntime that owns it: building the runtime initializes the app
 // database, runs the boot effects, starts the HTTP server, and forks the
 // retention fiber; disposing it tears all of that down in reverse.
-import { ConfigProvider, Layer, ManagedRuntime, Redacted } from 'effect'
+import { Layer, ManagedRuntime, Redacted } from 'effect'
 
 import { boot } from './boot'
+import { ServerConfig } from './config'
 import { ApiToken } from './http/api-token'
 import { HttpLive } from './http/server'
 import { RetentionLive } from './retention'
@@ -21,7 +22,7 @@ import { TracerLive } from './tracing/effect-tracer'
 import { UpdaterLive } from './updates'
 
 export interface MainRuntimeOptions {
-  allowedOrigins: string[]
+  allowedOrigins: ReadonlyArray<string>
   publicTraceReads: boolean
   token: string
 }
@@ -44,15 +45,6 @@ const ServicesLive = Layer.mergeAll(
 const BootLive = Layer.effectDiscard(boot)
 
 export function makeMainRuntime(options: MainRuntimeOptions) {
-  const configuration = Layer.setConfigProvider(
-    ConfigProvider.fromMap(
-      new Map([
-        ['ALLOWED_ORIGINS', options.allowedOrigins.join(',')],
-        ['PUBLIC_TRACE_READS', String(options.publicTraceReads)]
-      ])
-    )
-  )
-
   // Order matters and is not obvious: `provideMerge` builds right to left, so
   // ServicesLive (and with it AppDatabase) is acquired first and released last.
   // TracerLive sits inside it deliberately — the tracer must flush its queued
@@ -66,7 +58,12 @@ export function makeMainRuntime(options: MainRuntimeOptions) {
     Layer.provideMerge(TracerLive),
     Layer.provideMerge(ServicesLive),
     Layer.provide(Layer.succeed(ApiToken, Redacted.make(options.token))),
-    Layer.provide(configuration)
+    Layer.provide(
+      Layer.succeed(ServerConfig, {
+        allowedOrigins: options.allowedOrigins,
+        publicTraceReads: options.publicTraceReads
+      })
+    )
   )
 
   return ManagedRuntime.make(MainLive)

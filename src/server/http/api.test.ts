@@ -220,6 +220,21 @@ describe('cors', () => {
     expect(headers['access-control-allow-origin']).toEqual('null')
   })
 
+  // The allowlist is a list of origins, not one delimited string, so a comma
+  // inside a configured origin names no second origin. It cannot happen with
+  // the two profiles the app ships, and that is the point: the encoding must
+  // not be able to invent an allowed origin nobody configured.
+  it('does not read a comma inside a configured origin as a separator', async () => {
+    const headers = await rawHeaders(
+      HttpClientRequest.get('/health').pipe(
+        HttpClientRequest.setHeader('origin', 'https://evil.example')
+      ),
+      { allowedOrigins: ['https://squeal.example,https://evil.example'] }
+    )
+
+    expect(headers['access-control-allow-origin']).toBeUndefined()
+  })
+
   it('allows a configured development origin', async () => {
     const headers = await rawHeaders(
       HttpClientRequest.get('/health').pipe(
