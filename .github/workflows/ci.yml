@@ -59,7 +59,7 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Check formatting
-        run: npx prettier --check .
+        run: yarn format:check
 
   lint:
     name: Lint
