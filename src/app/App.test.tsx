@@ -11,6 +11,26 @@ import { useAppSelector } from './store'
 import { selectActiveWorksheetId, tabsActions } from './store/tabs-slice'
 import { renderWithProviders } from './test-utils'
 
+// `App` loads the editor lazily, and the real one pulls in CodeMirror and the
+// SQL language support behind it — a chunk large enough that waiting on it here
+// would make the test a race against the bundler. The stub keeps the one thing
+// `App` reaches the editor through: the `onChange` that carries an edit back
+// out.
+vi.mock('./components/WorksheetEditor', () => ({
+  WorksheetEditor: ({
+    onChange
+  }: {
+    onChange?: (value: string) => void
+  }): ReactElement => (
+    <button
+      type="button"
+      onClick={() => onChange?.('SELECT 2;')}
+    >
+      type into the editor
+    </button>
+  )
+}))
+
 vi.mock('./api-client', () => ({
   apiClient: {
     cancelQuery: vi.fn(async () => undefined),
@@ -284,6 +304,60 @@ describe('canceling a query', () => {
       disabled: button.hasAttribute('disabled'),
       label: button.textContent
     }).toEqual({ disabled: true, label: 'Canceling…' })
+  })
+})
+
+describe('a save that fails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // The whole app rather than a probe: the prop `App` hands the status bar is
+  // the wiring under test, and a probe that passes it itself would keep passing
+  // with `App` unwired. The toast is gone within seconds, so this notice is the
+  // only standing sign that the worksheet on screen has unsaved edits.
+  it('shows the failure in the status bar', async () => {
+    vi.mocked(apiClient.updateWorksheet).mockRejectedValue(
+      new Error('The connection was lost.')
+    )
+
+    renderWithProviders(<App />, {
+      databases: [testDatabase],
+      openWorksheetId: 'ws-1',
+      queries: [],
+      ui: { gettingStartedDismissed: true },
+      worksheets: [testWorksheet]
+    })
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'type into the editor' })
+    )
+
+    expect(await screen.findByText('Save failed')).toBeInTheDocument()
+  })
+
+  it('says nothing in the status bar while saves succeed', async () => {
+    vi.mocked(apiClient.updateWorksheet).mockResolvedValue(testWorksheet)
+
+    renderWithProviders(<App />, {
+      databases: [testDatabase],
+      openWorksheetId: 'ws-1',
+      queries: [],
+      ui: { gettingStartedDismissed: true },
+      worksheets: [testWorksheet]
+    })
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'type into the editor' })
+    )
+
+    await waitFor(() => {
+      expect(apiClient.updateWorksheet).toHaveBeenCalledWith('ws-1', {
+        content: 'SELECT 2;'
+      })
+    })
+
+    expect(screen.queryByText('Save failed')).toBeNull()
   })
 })
 

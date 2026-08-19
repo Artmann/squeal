@@ -5,7 +5,6 @@ import { isQueryFinished } from '@/glue/queries'
 import type { QueryDto } from '@/glue/api/schemas'
 import type { DatabaseDto } from '@/glue/databases'
 
-import type { SaveState } from '../hooks/useWorksheetAutosave'
 import { useServerVersion } from '../hooks/queries'
 import { useAppDispatch } from '../store'
 import { uiActions } from '../store/ui-slice'
@@ -18,8 +17,8 @@ interface StatusBarProps {
   cursorPosition: CursorPosition | undefined
   /** The worksheet's connection, or undefined when it has none this app knows. */
   database: DatabaseDto | undefined
+  hasSaveFailed: boolean
   query: QueryDto | undefined
-  saveState: SaveState
 }
 
 const healthColors: Record<ConnectionHealth, string> = {
@@ -69,8 +68,8 @@ function formatRunSummary(query: QueryDto | undefined): string | undefined {
 export function StatusBar({
   cursorPosition,
   database,
-  query,
-  saveState
+  hasSaveFailed,
+  query
 }: StatusBarProps): ReactElement {
   const dispatch = useAppDispatch()
   const serverVersion = useServerVersion(database)
@@ -102,7 +101,7 @@ export function StatusBar({
       )}
 
       <div className="ml-auto flex items-center gap-4">
-        {saveState === 'error' && <span className="text-err">Save failed</span>}
+        {hasSaveFailed && <span className="text-err">Save failed</span>}
 
         <span className="text-text3">
           {cursorPosition

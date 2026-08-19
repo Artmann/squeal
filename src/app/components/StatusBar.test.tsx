@@ -82,10 +82,24 @@ function renderStatusBar(
     <StatusBar
       cursorPosition={undefined}
       database={database}
+      hasSaveFailed={false}
       query={current}
-      saveState="idle"
     />,
     { databases: database ? [database] : [] }
+  )
+}
+
+// The save notice needs neither a query nor a connection, and giving it one
+// would put the row-count summary in the same status bar it asserts the absence
+// of a message in.
+function renderSaveState(hasSaveFailed: boolean): void {
+  renderWithProviders(
+    <StatusBar
+      cursorPosition={undefined}
+      database={undefined}
+      hasSaveFailed={hasSaveFailed}
+      query={undefined}
+    />
   )
 }
 
@@ -181,5 +195,19 @@ describe('StatusBar', () => {
       grouped: summary?.includes(count(1234567)),
       ungrouped: summary?.includes('1234567')
     }).toEqual({ grouped: true, ungrouped: false })
+  })
+
+  // The only standing sign that the worksheet on screen has edits the backend
+  // never took. The toast that raised it is gone within seconds.
+  it('says so while the open worksheet has a failed save', () => {
+    renderSaveState(true)
+
+    expect(screen.getByText('Save failed')).toBeInTheDocument()
+  })
+
+  it('says nothing while the open worksheet is saving cleanly', () => {
+    renderSaveState(false)
+
+    expect(screen.queryByText('Save failed')).toBeNull()
   })
 })

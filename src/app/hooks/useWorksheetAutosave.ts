@@ -6,8 +6,6 @@ import { useCollections } from '../collections-context'
 
 const saveDebounceMs = 300
 
-export type SaveState = 'error' | 'idle' | 'saved' | 'saving'
-
 export function useWorksheetAutosave(openWorksheetId: string | undefined) {
   const { worksheets: worksheetsCollection } = useCollections()
 
@@ -15,7 +13,14 @@ export function useWorksheetAutosave(openWorksheetId: string | undefined) {
   const pendingSave = useRef<{ content: string; id: string } | undefined>(
     undefined
   )
-  const [saveState, setSaveState] = useState<SaveState>('idle')
+  // The worksheet is carried with the failure rather than beside it. Saves
+  // resolve in completion order and switching worksheets flushes the outgoing
+  // one, so a failure normally lands after the worksheet it belongs to has
+  // stopped being the open one — and a bare flag reported it against whichever
+  // worksheet was open when it arrived.
+  const [failedSave, setFailedSave] = useState<{ worksheetId: string } | null>(
+    null
+  )
 
   const flushSave = useCallback(() => {
     if (saveTimer.current) {
@@ -37,10 +42,15 @@ export function useWorksheetAutosave(openWorksheetId: string | undefined) {
 
     void transaction.isPersisted.promise
       .then(() => {
-        setSaveState('saved')
+        // Only this worksheet's own failure is cleared: a save that finally
+        // lands for the worksheet you left says nothing about the one you are
+        // looking at now.
+        setFailedSave((current) =>
+          current?.worksheetId === pending.id ? null : current
+        )
       })
       .catch(() => {
-        setSaveState('error')
+        setFailedSave({ worksheetId: pending.id })
         toast.error('Failed to save worksheet')
       })
   }, [worksheetsCollection])
@@ -63,8 +73,6 @@ export function useWorksheetAutosave(openWorksheetId: string | undefined) {
         clearTimeout(saveTimer.current)
       }
 
-      setSaveState('saving')
-
       saveTimer.current = setTimeout(flushSave, saveDebounceMs)
     },
     [flushSave, openWorksheetId]
@@ -72,5 +80,15 @@ export function useWorksheetAutosave(openWorksheetId: string | undefined) {
 
   // `flushSave` is exposed so callers that need the saved copy to be current —
   // running a query — can close the debounce window instead of waiting it out.
-  return { flushSave, queueSave, saveState }
+  return {
+    flushSave,
+    // Derived rather than reset when the worksheet changes, so coming back to a
+    // worksheet whose last save failed still says so — those edits really are
+    // unsaved. Compared against the record rather than through `?.`, which
+    // would answer `undefined === undefined` with "failed" before any worksheet
+    // is open.
+    hasSaveFailed:
+      failedSave !== null && failedSave.worksheetId === openWorksheetId,
+    queueSave
+  }
 }
