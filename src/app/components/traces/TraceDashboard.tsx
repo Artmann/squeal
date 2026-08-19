@@ -11,6 +11,7 @@ import {
   ReactElement,
   ReactNode,
   useCallback,
+  useEffect,
   useState
 } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -32,9 +33,19 @@ const dashboardRefetchIntervalMs = 2000
 
 // Derived from the child components rather than imported, so this file does not
 // need to know where the DTOs live.
-type Spans = ComponentProps<typeof TraceWaterfall>['spans']
 type Traces = ComponentProps<typeof TraceList>['traces']
 type Trace = Traces[number]
+
+/**
+ * The three screens the dashboard has, stated once. A span is only selectable
+ * inside a trace, and saying so here is what lets the spans query take a
+ * definite id and lets the sidebar be produced from the same status branch as
+ * the waterfall it belongs to.
+ */
+type TraceView =
+  | { kind: 'list' }
+  | { kind: 'span'; spanId: string; traceId: string }
+  | { kind: 'spans'; traceId: string }
 
 function CenteredState({ children }: { children: ReactNode }): ReactElement {
   return (
@@ -83,43 +94,60 @@ function ErrorState({
 function useTraceSelection() {
   const dispatch = useAppDispatch()
 
-  const [selectedSpanId, setSelectedSpanId] = useState<string | undefined>()
-  const [selectedTraceId, setSelectedTraceId] = useState<string | undefined>()
+  const [view, setView] = useState<TraceView>({ kind: 'list' })
 
   const handleClose = useCallback(() => {
     dispatch(uiActions.closeTraceDashboard())
   }, [dispatch])
 
   const handleBack = useCallback(() => {
-    setSelectedSpanId(undefined)
-    setSelectedTraceId(undefined)
+    setView({ kind: 'list' })
+  }, [])
+
+  const handleOpenTrace = useCallback((traceId: string) => {
+    setView({ kind: 'spans', traceId })
+  }, [])
+
+  // Takes undefined as well: the waterfall clears the selection by calling it
+  // with undefined when the already-selected row is clicked again.
+  const handleSelectSpan = useCallback((spanId: string | undefined) => {
+    setView((current) => {
+      if (current.kind === 'list') {
+        return current
+      }
+
+      if (spanId === undefined) {
+        return { kind: 'spans', traceId: current.traceId }
+      }
+
+      return { kind: 'span', spanId, traceId: current.traceId }
+    })
   }, [])
 
   const handleEscape = useCallback(() => {
-    if (selectedSpanId) {
-      setSelectedSpanId(undefined)
+    if (view.kind === 'span') {
+      handleSelectSpan(undefined)
 
       return
     }
 
-    if (selectedTraceId) {
+    if (view.kind === 'spans') {
       handleBack()
 
       return
     }
 
     handleClose()
-  }, [handleBack, handleClose, selectedSpanId, selectedTraceId])
+  }, [handleBack, handleClose, handleSelectSpan, view.kind])
 
   useHotkeys('escape', handleEscape, { enableOnFormTags: true })
 
   return {
     handleBack,
     handleClose,
-    selectedSpanId,
-    selectedTraceId,
-    setSelectedSpanId,
-    setSelectedTraceId
+    handleOpenTrace,
+    handleSelectSpan,
+    view
   }
 }
 
@@ -261,36 +289,80 @@ function TraceDashboardHeader({
   )
 }
 
+/**
+ * Owns the spans of one trace: the query, the waterfall, and the detail sidebar
+ * that reads the same rows. Keeping the sidebar in here is the point — it is
+ * rendered from the success branch, so a failed poll cannot leave it standing
+ * beside an error. TanStack Query keeps the last successful `data` through a
+ * failed refetch, which is exactly how that used to happen.
+ */
 function TraceSpansPanel({
   onSelectSpan,
   selectedSpanId,
-  traceSpans
+  traceId
 }: {
   // Takes undefined as well: the waterfall calls it with undefined to clear
   // the selection when the already-selected row is clicked again.
   onSelectSpan: (spanId: string | undefined) => void
   selectedSpanId: string | undefined
-  traceSpans: UseQueryResult<Spans>
+  traceId: string
 }): ReactElement {
+  const traceSpans = useQuery({
+    queryFn: () => apiClient.getTraceSpans(traceId),
+    queryKey: queryKeys.traceSpans(traceId),
+    refetchInterval: dashboardRefetchIntervalMs
+  })
+
+  // Only from a successful load: TanStack Query keeps the last `data` through a
+  // failed refetch, and rendering the sidebar from rows the waterfall beside it
+  // has already replaced with an error is the split screen this component was
+  // taking apart.
+  const spans = traceSpans.isSuccess ? traceSpans.data : undefined
+  const selectedSpan = spans?.find((span) => span.id === selectedSpanId)
+
+  // No span to show means no span is selected. Retention trimming the span and
+  // a poll that failed both arrive here, and in both the id names something the
+  // user cannot see — which the escape ladder would otherwise still step
+  // through, spending its first press on nothing.
+  useEffect(() => {
+    if (selectedSpanId !== undefined && selectedSpan === undefined) {
+      onSelectSpan(undefined)
+    }
+  }, [onSelectSpan, selectedSpan, selectedSpanId])
+
+  // Each branch carries the same wrapper: it is what gives the panel its width
+  // in the row, and `CenteredState` centres inside whatever it is given.
   if (traceSpans.isPending) {
-    return <LoadingState label="Loading trace" />
+    return (
+      <div className="flex-1 overflow-auto p-6">
+        <LoadingState label="Loading trace" />
+      </div>
+    )
   }
 
   if (traceSpans.isError) {
     return (
-      <ErrorState
-        message="Could not load this trace."
-        onRetry={() => void traceSpans.refetch()}
-      />
+      <div className="flex-1 overflow-auto p-6">
+        <ErrorState
+          message="Could not load this trace."
+          onRetry={() => void traceSpans.refetch()}
+        />
+      </div>
     )
   }
 
   return (
-    <TraceWaterfall
-      onSelectSpan={onSelectSpan}
-      spans={traceSpans.data}
-      {...(selectedSpanId ? { selectedSpanId } : {})}
-    />
+    <>
+      <div className="flex-1 overflow-auto p-6">
+        <TraceWaterfall
+          onSelectSpan={onSelectSpan}
+          selectedSpanId={selectedSpanId}
+          spans={traceSpans.data}
+        />
+      </div>
+
+      {selectedSpan ? <SpanDetailPanel span={selectedSpan} /> : null}
+    </>
   )
 }
 
@@ -340,14 +412,8 @@ export function TraceDashboard(): ReactElement {
   const [errorOnly, setErrorOnly] = useState(false)
   const [search, setSearch] = useState('')
 
-  const {
-    handleBack,
-    handleClose,
-    selectedSpanId,
-    selectedTraceId,
-    setSelectedSpanId,
-    setSelectedTraceId
-  } = useTraceSelection()
+  const { handleBack, handleClose, handleOpenTrace, handleSelectSpan, view } =
+    useTraceSelection()
 
   const traces = useQuery({
     queryFn: () =>
@@ -360,22 +426,10 @@ export function TraceDashboard(): ReactElement {
     refetchInterval: dashboardRefetchIntervalMs
   })
 
-  const traceSpans = useQuery({
-    enabled: Boolean(selectedTraceId),
-    queryFn: () => {
-      if (!selectedTraceId) {
-        throw new Error('Trace id is required')
-      }
+  const selectedTraceId = view.kind === 'list' ? undefined : view.traceId
 
-      return apiClient.getTraceSpans(selectedTraceId)
-    },
-    queryKey: queryKeys.traceSpans(selectedTraceId ?? ''),
-    refetchInterval: dashboardRefetchIntervalMs
-  })
-
-  const selectedSpan = traceSpans.data?.find(
-    (span) => span.id === selectedSpanId
-  )
+  // The traces list, not the spans query — the header keeps naming the trace
+  // while its spans are still loading, or failing to.
   const selectedTrace = traces.data?.find(
     (trace) => trace.traceId === selectedTraceId
   )
@@ -394,26 +448,20 @@ export function TraceDashboard(): ReactElement {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        {selectedTraceId ? (
-          <>
-            <div className="flex-1 overflow-auto p-6">
-              <TraceSpansPanel
-                onSelectSpan={setSelectedSpanId}
-                selectedSpanId={selectedSpanId}
-                traceSpans={traceSpans}
-              />
-            </div>
-
-            {selectedSpan ? <SpanDetailPanel span={selectedSpan} /> : null}
-          </>
-        ) : (
+        {view.kind === 'list' ? (
           <div className="flex-1 overflow-auto">
             <TraceListPanel
               hasActiveFilters={errorOnly || search !== ''}
-              onSelect={setSelectedTraceId}
+              onSelect={handleOpenTrace}
               traces={traces}
             />
           </div>
+        ) : (
+          <TraceSpansPanel
+            onSelectSpan={handleSelectSpan}
+            selectedSpanId={view.kind === 'span' ? view.spanId : undefined}
+            traceId={view.traceId}
+          />
         )}
       </div>
     </div>
