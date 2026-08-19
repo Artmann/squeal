@@ -71,7 +71,6 @@ function makeGatedSecretStorage() {
         }),
       encrypt: (value: string) =>
         Effect.succeed(`${testEncryptionPrefix}${value}`),
-      mode: Effect.sync(() => 'keychain' as const),
       probe: Effect.sync(() => 'available' as const),
       setMode: () => Effect.void
     })

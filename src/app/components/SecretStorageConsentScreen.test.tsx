@@ -159,6 +159,40 @@ describe('SecretStorageConsentScreen', () => {
     ).toBeInTheDocument()
   })
 
+  // Permission granted and a message means the keychain took the decision and
+  // then refused to seal. Recording the mode is what unmounts this screen, so
+  // an alert rendered here would be gone before it could be read — and "Try
+  // again" would offer to redo a grant that worked.
+  it('carries a partial success out of the screen it is about to leave', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.grantSecretStorage).mockResolvedValue({
+      message:
+        'Squeal has permission to use the macOS Keychain, but it refused to encrypt.',
+      mode: 'keychain',
+      storageName
+    })
+
+    renderScreen()
+
+    await user.click(screen.getByRole('button', { name: 'Turn on encryption' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Encryption is on, but some passwords are not')
+      ).toBeInTheDocument()
+    })
+
+    expect(
+      screen.getByText(
+        'Squeal has permission to use the macOS Keychain, but it refused to encrypt.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Try again' })
+    ).not.toBeInTheDocument()
+  })
+
   it('asks for confirmation before skipping', async () => {
     const user = userEvent.setup()
 

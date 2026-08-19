@@ -421,8 +421,10 @@ export type HealthResponse = Schema.Schema.Type<typeof HealthResponse>
 const SecretStorageMode = Schema.Literal('keychain', 'plaintext', 'undecided')
 export type SecretStorageMode = Schema.Schema.Type<typeof SecretStorageMode>
 
-// `message` is set only when a grant was refused, so the consent screen can say
-// what happened and what to do about it. `storageName` is the platform's name
+// `message` is set when a grant was refused, and also when it was granted but
+// the keychain then refused to seal — the mode alone cannot tell that second
+// case from a clean success, so a renderer that is about to announce one has to
+// check the message first. `storageName` is the platform's name
 // for its keychain, filled in by the main process so every string the renderer
 // shows about it has a single source.
 export const SecretStorageResponse = Schema.Struct({
