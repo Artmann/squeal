@@ -6,6 +6,13 @@ import path from 'node:path'
 import started from 'electron-squirrel-startup'
 import { log } from 'tiny-typescript-logger'
 
+import {
+  closeMainWindow,
+  focusMainWindow,
+  getMainWindow,
+  minimizeMainWindow,
+  toggleMainWindowMaximized
+} from './main/window'
 import { makeMainRuntime, type MainRuntime } from './server/runtime'
 
 if (!app.isPackaged) {
@@ -17,19 +24,15 @@ let apiToken = ''
 ipcMain.handle('get-api-token', () => apiToken)
 
 ipcMain.handle('window-minimize', () => {
-  mainWindow?.minimize()
+  minimizeMainWindow()
 })
 
 ipcMain.handle('window-maximize', () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize()
-  } else {
-    mainWindow?.maximize()
-  }
+  toggleMainWindowMaximized()
 })
 
 ipcMain.handle('window-close', () => {
-  mainWindow?.close()
+  closeMainWindow()
 })
 
 ipcMain.handle('open-file-dialog', async () => {
@@ -62,8 +65,6 @@ if (!hasSingleInstanceLock) {
   app.quit()
 }
 
-export let mainWindow: BrowserWindow
-
 let runtime: MainRuntime | undefined
 let quitting = false
 let disposed = false
@@ -73,7 +74,7 @@ let disposed = false
 const disposeTimeoutMs = 3_000
 
 const createWindow = async () => {
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     frame: false,
     height: 880,
     titleBarStyle: 'hidden',
@@ -93,13 +94,13 @@ const createWindow = async () => {
     ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin
     : 'file://'
 
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  window.webContents.on('will-navigate', (event, url) => {
     if (!url.startsWith(allowedOrigin)) {
       event.preventDefault()
     }
   })
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) {
       void shell.openExternal(url)
     }
@@ -108,9 +109,9 @@ const createWindow = async () => {
   })
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+    window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
   } else {
-    mainWindow.loadFile(
+    window.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
     )
   }
@@ -208,15 +209,7 @@ app.on('ready', async () => {
 })
 
 app.on('second-instance', () => {
-  if (mainWindow === undefined) {
-    return
-  }
-
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore()
-  }
-
-  mainWindow.focus()
+  focusMainWindow()
 })
 
 // The first real shutdown path this app has had: disposing the runtime
@@ -263,7 +256,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  // Asked through the same lookup as everywhere else, so there is one answer to
+  // "is there a window?" rather than two spellings of it that can drift.
+  if (!getMainWindow()) {
     createWindow()
   }
 })
