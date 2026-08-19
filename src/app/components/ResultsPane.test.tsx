@@ -1,5 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ReactElement, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { QueryDto } from '@/glue/api/schemas'
@@ -30,6 +31,48 @@ const successfulQuery = query({
     truncated: false
   }
 })
+
+// Switching tabs in the app changes which worksheet the pane is showing
+// without unmounting it, so the harness does the same.
+function SwitchablePane(): ReactElement {
+  const [worksheetId, setWorksheetId] = useState('ws-1')
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          setWorksheetId((current) => (current === 'ws-1' ? 'ws-2' : 'ws-1'))
+        }
+      >
+        Switch worksheet
+      </button>
+
+      <ResultsPane
+        databaseName="Pagila"
+        isQueryRunning={false}
+        query={undefined}
+        worksheetId={worksheetId}
+      />
+    </>
+  )
+}
+
+function paneHeight(): string | undefined {
+  return screen.getByText('No results yet').closest('section')?.style.height
+}
+
+// Shift with an arrow is the large step: 40px, and the results handle grows
+// upwards, so ArrowUp makes the pane taller.
+async function resize(
+  user: ReturnType<typeof userEvent.setup>,
+  keys: string
+): Promise<void> {
+  await user.click(
+    screen.getByRole('separator', { name: 'Resize results panel' })
+  )
+  await user.keyboard(keys)
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -154,6 +197,45 @@ describe('ResultsPane', () => {
     expect(screen.getByText('No results yet').closest('section')).toHaveStyle({
       height: '480px'
     })
+  })
+
+  // The issue: one worksheet's results pane was every worksheet's.
+  it('keeps a height of its own for each worksheet', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<SwitchablePane />, {
+      queries: [],
+      tabs: { openWorksheetIds: ['ws-1', 'ws-2'] }
+    })
+
+    await resize(user, '{Shift>}{ArrowUp}{/Shift}')
+
+    expect(paneHeight()).toEqual('360px')
+
+    await user.click(screen.getByRole('button', { name: 'Switch worksheet' }))
+    await resize(user, '{ArrowDown}{ArrowDown}')
+
+    expect(paneHeight()).toEqual('340px')
+
+    await user.click(screen.getByRole('button', { name: 'Switch worksheet' }))
+
+    expect(paneHeight()).toEqual('360px')
+  })
+
+  // Nobody has resized this one yet, and snapping back to the app default
+  // would read as the panel jumping every time a new tab is opened.
+  it('starts a worksheet nobody has resized at the last height used', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<SwitchablePane />, {
+      queries: [],
+      tabs: { openWorksheetIds: ['ws-1', 'ws-2'] }
+    })
+
+    await resize(user, '{Shift>}{ArrowUp}{/Shift}')
+    await user.click(screen.getByRole('button', { name: 'Switch worksheet' }))
+
+    expect(paneHeight()).toEqual('360px')
   })
 
   it('falls back to the default height for an out-of-range stored value', () => {

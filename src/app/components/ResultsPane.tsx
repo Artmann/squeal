@@ -2,7 +2,7 @@ import { ReactElement, useEffect, useState } from 'react'
 
 import type { QueryDto } from '@/glue/api/schemas'
 
-import { usePersistedSize } from '../hooks/use-persisted-size'
+import { usePersistedSizes } from '../hooks/use-persisted-sizes'
 import { useWorksheetMessages } from '../hooks/use-worksheet-messages'
 import { cn } from '../lib/utils'
 import { useAppSelector } from '../store'
@@ -17,6 +17,10 @@ type ResultsTab = 'messages' | 'results'
 const defaultHeight = 320
 const maximumHeight = 620
 const minimumHeight = 120
+
+// Enough that a session's worth of worksheets all keep their height, small
+// enough that the stored record cannot grow without end.
+const maximumRememberedHeights = 50
 
 interface ResultsPaneProps {
   databaseName: string | undefined
@@ -45,12 +49,19 @@ export function ResultsPane({
   const openWorksheetIds = useAppSelector(selectOpenWorksheetIds)
   const messages = useWorksheetMessages(worksheetId)
 
-  const [height, setHeight] = usePersistedSize({
+  // Each worksheet keeps its own height, and the record is bounded by a cap on
+  // how many it holds rather than by the open tabs: closing a worksheet and
+  // opening it again is ordinary, and losing its height there would make this
+  // hold only for as long as the tab does.
+  const { setSize, sizeFor } = usePersistedSizes({
     defaultSize: defaultHeight,
     maximum: maximumHeight,
+    maximumKeys: maximumRememberedHeights,
     minimum: minimumHeight,
     storageKey: 'ui:resultsHeight'
   })
+
+  const height = sizeFor(worksheetId)
 
   // Which tab is showing is remembered per worksheet, so switching tabs does
   // not snap everyone back to Results.
@@ -87,13 +98,17 @@ export function ResultsPane({
 
   return (
     <>
+      {/* With no worksheet open there is no key to store the height under, so
+          the drag moves the fallback — which is the height every worksheet
+          nobody has resized starts at, and what a single shared height did for
+          all of them. */}
       <ResizeHandle
         ariaLabel="Resize results panel"
         className="h-[7px] -my-[3px]"
         growsToward="start"
         orientation="row"
         size={height}
-        onResize={setHeight}
+        onResize={(size) => setSize(worksheetId, size)}
       />
 
       <section
