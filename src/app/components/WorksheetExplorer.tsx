@@ -5,25 +5,22 @@ import { FileBracesIcon, Pencil, PlusIcon, Trash2 } from 'lucide-react'
 import { ReactElement, ReactNode, useCallback } from 'react'
 import { toast } from 'sonner'
 
-import { useCollections } from '../collections-context'
 import { useDatabases, useWorksheets } from '../hooks/queries'
-import {
-  useCreateWorksheet,
-  useDeleteWorksheet,
-  useReorderWorksheets
-} from '../hooks/mutations'
+import { useDeleteWorksheet, useReorderWorksheets } from '../hooks/mutations'
 import {
   staticListStrategy,
   useListReorder,
   type DropIndicator
 } from '../hooks/use-list-reorder'
+import {
+  useCreateAndOpenWorksheet,
+  useOpenWorksheet
+} from '../hooks/use-worksheet-commands'
 import { useWorksheetRename } from '../hooks/use-worksheet-rename'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import { worksheetSearchQueryUpdated } from '../store/editor-slice'
-import { selectActiveWorksheetId, tabsActions } from '../store/tabs-slice'
-import { getNextUntitledName } from '../worksheet-naming'
-import { pickDatabaseForNewWorksheet } from '../worksheet-selection'
+import { selectActiveWorksheetId } from '../store/tabs-slice'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -69,79 +66,6 @@ function useConfirmedWorksheetDeletion(): (worksheet: WorksheetDto) => void {
   )
 }
 
-/**
- * What the user can do to a worksheet from the explorer: open one (which also
- * marks it most-recently-used) and create a new one. Both need the same tab
- * dispatch and touch, so they live together rather than in the component body.
- */
-function useWorksheetActions(
-  worksheets: WorksheetDto[],
-  startEditing: (worksheet: WorksheetDto) => void
-) {
-  const dispatch = useAppDispatch()
-  const createWorksheet = useCreateWorksheet()
-  const activeWorksheetId = useAppSelector(selectActiveWorksheetId)
-  const { worksheets: worksheetsCollection } = useCollections()
-
-  const touchWorksheet = useCallback(
-    (worksheetId: string) => {
-      const transaction = worksheetsCollection.update(worksheetId, (draft) => {
-        draft.lastOpenedAt = Date.now()
-      })
-
-      void transaction.isPersisted.promise.catch((): void => undefined)
-    },
-    [worksheetsCollection]
-  )
-
-  const handleSelectWorksheet = useCallback(
-    (worksheetId: string) => {
-      dispatch(tabsActions.tabOpened(worksheetId))
-      touchWorksheet(worksheetId)
-    },
-    [dispatch, touchWorksheet]
-  )
-
-  const handleNewWorksheet = useCallback(() => {
-    const databaseId = pickDatabaseForNewWorksheet(
-      worksheets,
-      activeWorksheetId
-    )
-    const name = getNextUntitledName(worksheets)
-
-    createWorksheet.mutate(
-      {
-        // `databaseId` is optional rather than nullable, so an unset one has to
-        // be left out instead of sent as null.
-        ...(databaseId === undefined ? {} : { databaseId }),
-        name
-      },
-      {
-        onSuccess: (worksheet) => {
-          dispatch(tabsActions.tabOpened(worksheet.id))
-          touchWorksheet(worksheet.id)
-          startEditing(worksheet)
-        },
-        onError: (error) => {
-          const message =
-            error instanceof Error ? error.message : 'Unknown error'
-
-          toast.error('Failed to create worksheet', { description: message })
-        }
-      }
-    )
-  }, [
-    activeWorksheetId,
-    createWorksheet,
-    dispatch,
-    startEditing,
-    touchWorksheet,
-    worksheets
-  ])
-
-  return { handleNewWorksheet, handleSelectWorksheet }
-}
-
 export function WorksheetExplorer(): ReactElement {
   const dispatch = useAppDispatch()
   const databases = useDatabases()
@@ -161,10 +85,10 @@ export function WorksheetExplorer(): ReactElement {
     startEditing
   } = useWorksheetRename(worksheets.data, 'explorer')
 
-  const { handleNewWorksheet, handleSelectWorksheet } = useWorksheetActions(
-    worksheets.data,
-    startEditing
-  )
+  const handleNewWorksheet = useCreateAndOpenWorksheet({
+    onCreated: startEditing
+  })
+  const handleSelectWorksheet = useOpenWorksheet()
 
   const handleDeleteWorksheet = useConfirmedWorksheetDeletion()
 

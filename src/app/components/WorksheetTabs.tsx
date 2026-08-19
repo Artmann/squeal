@@ -4,15 +4,14 @@ import { CSS } from '@dnd-kit/utilities'
 import { Pencil, PlusIcon, XIcon } from 'lucide-react'
 import { ReactElement, useCallback, useEffect, useRef } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { toast } from 'sonner'
 
-import { useCreateWorksheet } from '../hooks/mutations'
 import { useWorksheets } from '../hooks/queries'
 import {
   staticListStrategy,
   useListReorder,
   type DropIndicator
 } from '../hooks/use-list-reorder'
+import { useCreateAndOpenWorksheet } from '../hooks/use-worksheet-commands'
 import {
   useWorksheetRename,
   type WorksheetRenameControls
@@ -24,8 +23,6 @@ import {
   selectOpenWorksheetIds,
   tabsActions
 } from '../store/tabs-slice'
-import { getNextUntitledName } from '../worksheet-naming'
-import { pickDatabaseForNewWorksheet } from '../worksheet-selection'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -93,42 +90,6 @@ function useActiveTabScroll(
   }, [activeWorksheetId])
 
   return registerElement
-}
-
-/** Creates a worksheet on the current connection and opens it in a tab. */
-function useNewWorksheet(
-  activeWorksheetId: string | undefined,
-  worksheets: WorksheetDto[]
-): () => void {
-  const dispatch = useAppDispatch()
-  const createWorksheet = useCreateWorksheet()
-
-  return useCallback(() => {
-    const databaseId = pickDatabaseForNewWorksheet(
-      worksheets,
-      activeWorksheetId
-    )
-
-    createWorksheet.mutate(
-      {
-        // `databaseId` is optional rather than nullable, so an unset one has to
-        // be left out instead of sent as null.
-        ...(databaseId === undefined ? {} : { databaseId }),
-        name: getNextUntitledName(worksheets)
-      },
-      {
-        onError: (error: unknown) => {
-          const message =
-            error instanceof Error ? error.message : 'Unknown error'
-
-          toast.error('Failed to create worksheet', { description: message })
-        },
-        onSuccess: (worksheet) => {
-          dispatch(tabsActions.tabOpened(worksheet.id))
-        }
-      }
-    )
-  }, [activeWorksheetId, createWorksheet, dispatch, worksheets])
 }
 
 interface TabHotkeysOptions {
@@ -231,7 +192,7 @@ export function WorksheetTabs(): ReactElement {
   const openTabIds = openTabs.map((worksheet) => worksheet.id)
 
   const registerTabElement = useActiveTabScroll(activeWorksheetId)
-  const handleNewWorksheet = useNewWorksheet(activeWorksheetId, worksheets.data)
+  const handleNewWorksheet = useCreateAndOpenWorksheet()
 
   const handleActivate = useCallback(
     (worksheetId: string) => {

@@ -31,8 +31,8 @@ import {
   type DropIndicator
 } from '../hooks/use-list-reorder'
 import { useStartQuery } from '../hooks/use-start-query'
+import { useOpenWorksheet } from '../hooks/use-worksheet-commands'
 import { databaseSearchQueryUpdated } from '../store/editor-slice'
-import { tabsActions } from '../store/tabs-slice'
 import { uiActions } from '../store/ui-slice'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
@@ -232,9 +232,8 @@ function useQueryTableWorksheet(
   hasMultipleSchemas: boolean
 ): (table: TableInfo) => void {
   const createWorksheet = useCreateWorksheet()
-  const dispatch = useAppDispatch()
+  const openWorksheet = useOpenWorksheet()
   const startQuery = useStartQuery()
-  const { worksheets: worksheetsCollection } = useCollections()
 
   return useCallback(
     (table: TableInfo) => {
@@ -248,18 +247,7 @@ function useQueryTableWorksheet(
         },
         {
           onSuccess: (worksheet) => {
-            dispatch(tabsActions.tabOpened(worksheet.id))
-
-            if (worksheetsCollection.status === 'ready') {
-              const transaction = worksheetsCollection.update(
-                worksheet.id,
-                (draft) => {
-                  draft.lastOpenedAt = Date.now()
-                }
-              )
-
-              void transaction.isPersisted.promise.catch((): void => undefined)
-            }
+            openWorksheet(worksheet.id)
 
             // The tab is already open, so the results land in front of the
             // user. `notifyOnError` covers the case where they look away.
@@ -279,14 +267,7 @@ function useQueryTableWorksheet(
         }
       )
     },
-    [
-      createWorksheet,
-      database,
-      dispatch,
-      hasMultipleSchemas,
-      startQuery,
-      worksheetsCollection
-    ]
+    [createWorksheet, database, hasMultipleSchemas, openWorksheet, startQuery]
   )
 }
 

@@ -181,6 +181,107 @@ describe('WorksheetTabs', () => {
     })
   })
 
+  // The naming rule is unit-tested on its own; what is untested is that the
+  // tab strip still asks for it rather than hardcoding the first name.
+  it('numbers a new worksheet past the untitled ones already there', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.createWorksheet).mockResolvedValue(
+      worksheet('ws-new', 'Untitled 2')
+    )
+
+    renderWithProviders(<WorksheetTabs />, {
+      tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
+      worksheets: [worksheet('ws-1', 'Untitled')]
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New worksheet' }))
+
+    await waitFor(() => {
+      expect(apiClient.createWorksheet).toHaveBeenCalledWith({
+        name: 'Untitled 2'
+      })
+    })
+  })
+
+  // The list the name is counted from has to be the one the first click just
+  // added to. Reading it at render time instead names both new worksheets
+  // "Untitled 2", which is the exact collision the numbering exists to avoid.
+  it('numbers the second new worksheet past the first', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.createWorksheet)
+      .mockResolvedValueOnce(worksheet('ws-new', 'Untitled 2'))
+      .mockResolvedValueOnce(worksheet('ws-newer', 'Untitled 3'))
+
+    renderWithProviders(<WorksheetTabs />, {
+      tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
+      worksheets: [worksheet('ws-1', 'Untitled')]
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New worksheet' }))
+
+    expect(await screen.findByRole('tab', { name: 'Untitled 2' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'New worksheet' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.createWorksheet).mock.calls).toEqual([
+        [{ name: 'Untitled 2' }],
+        [{ name: 'Untitled 3' }]
+      ])
+    })
+  })
+
+  // Clicking "+" and getting nothing is the failure the user is most likely to
+  // hit twice, so it has to say why rather than looking like a dead button.
+  it('says why when the worksheet could not be created', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.createWorksheet).mockRejectedValue(
+      new Error('Database is locked')
+    )
+
+    renderWithProviders(<WorksheetTabs />, {
+      tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
+      worksheets: [revenue]
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New worksheet' }))
+
+    expect(await screen.findByText('Failed to create worksheet')).toBeVisible()
+    expect(await screen.findByText('Database is locked')).toBeVisible()
+  })
+
+  // `lastOpenedAt` is the only input the startup pick and the next new
+  // worksheet's database pick have for "where the user was". A worksheet
+  // created here used to stay null until someone clicked it in the sidebar,
+  // which made it invisible to both.
+  it('records the last-opened time for a worksheet created from the tab strip', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(apiClient.createWorksheet).mockResolvedValue(
+      worksheet('ws-new', 'Untitled')
+    )
+    vi.mocked(apiClient.updateWorksheet).mockResolvedValue({
+      ...worksheet('ws-new', 'Untitled'),
+      lastOpenedAt: 1704070800000
+    })
+
+    renderWithProviders(<WorksheetTabs />, {
+      tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
+      worksheets: [revenue]
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New worksheet' }))
+
+    await waitFor(() => {
+      expect(apiClient.updateWorksheet).toHaveBeenCalledWith('ws-new', {
+        lastOpenedAt: expect.any(Number)
+      })
+    })
+  })
+
   it('renders only the new-tab button when nothing is open', () => {
     renderWithProviders(<WorksheetTabs />, {
       tabs: { openWorksheetIds: [] },
