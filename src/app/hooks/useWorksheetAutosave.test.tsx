@@ -1,5 +1,6 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import { ReactElement, useState } from 'react'
+import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { WorksheetDto } from '@/glue/worksheets'
@@ -53,6 +54,16 @@ function AutosaveProbe(): ReactElement {
         edit
       </button>
 
+      {/* Different content from `edit`: an update that changes nothing is not
+          a save, so two clicks of the same button cannot put two saves in
+          flight. */}
+      <button
+        onClick={() => queueSave(`edited ${worksheetId} again`)}
+        type="button"
+      >
+        edit again
+      </button>
+
       <button
         onClick={flushSave}
         type="button"
@@ -86,7 +97,7 @@ function click(name: string): void {
   fireEvent.click(screen.getByRole('button', { name }))
 }
 
-async function renderProbe() {
+async function renderProbe(): Promise<ReturnType<typeof renderWithProviders>> {
   const rendered = renderWithProviders(<AutosaveProbe />, {
     worksheets: [first, second]
   })
@@ -107,11 +118,18 @@ interface Settler {
   worksheetId: string
 }
 
+interface DeferredSaves {
+  fail: (worksheetId: string, position?: number) => Promise<void>
+  succeed: (worksheetId: string, position?: number) => Promise<void>
+}
+
 /**
  * Saves that settle only when the test says so, which is the only way to place
- * a switch between a save being sent and its answer coming back.
+ * a switch — or a whole second save — between a save being sent and its answer
+ * coming back. `position` picks among the saves still in flight for that
+ * worksheet, oldest first, so a test can answer them out of order.
  */
-function deferredSaves() {
+function deferredSaves(): DeferredSaves {
   const settlers: Settler[] = []
 
   vi.mocked(apiClient.updateWorksheet).mockImplementation(
@@ -121,14 +139,15 @@ function deferredSaves() {
       })
   )
 
-  function take(worksheetId: string): Settler {
-    const settler = settlers.find(
+  function take(worksheetId: string, position: number): Settler {
+    const settler = settlers.filter(
       (entry) => !entry.settled && entry.worksheetId === worksheetId
-    )
+    )[position]
 
-    if (settler === undefined) {
-      throw new Error(`No save is in flight for ${worksheetId}.`)
-    }
+    invariant(
+      settler,
+      `No save is in flight for ${worksheetId} at position ${position}.`
+    )
 
     settler.settled = true
 
@@ -136,15 +155,15 @@ function deferredSaves() {
   }
 
   return {
-    async fail(worksheetId: string) {
-      const settler = take(worksheetId)
+    async fail(worksheetId: string, position = 0) {
+      const settler = take(worksheetId, position)
 
       await act(async () => {
         settler.reject(new Error('The connection was lost.'))
       })
     },
-    async succeed(worksheetId: string) {
-      const settler = take(worksheetId)
+    async succeed(worksheetId: string, position = 0) {
+      const settler = take(worksheetId, position)
 
       await act(async () => {
         settler.resolve({ ...first, id: worksheetId })
@@ -163,17 +182,17 @@ describe('useWorksheetAutosave', () => {
   })
 
   it('saves the edited content once the debounce elapses', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    await renderProbe()
+
+    vi.useFakeTimers()
 
     try {
-      await renderProbe()
-
       click('edit')
 
       expect(apiClient.updateWorksheet).not.toHaveBeenCalled()
 
       await act(async () => {
-        vi.advanceTimersByTime(300)
+        await vi.advanceTimersByTimeAsync(300)
       })
 
       expect(vi.mocked(apiClient.updateWorksheet).mock.calls).toEqual([
@@ -187,17 +206,17 @@ describe('useWorksheetAutosave', () => {
   // The debounce is the reason a keystroke does not cost a request, so the hook
   // must still coalesce rather than save once per edit.
   it('coalesces rapid edits into one save', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    await renderProbe()
+
+    vi.useFakeTimers()
 
     try {
-      await renderProbe()
-
       click('edit')
       click('edit')
       click('edit')
 
       await act(async () => {
-        vi.advanceTimersByTime(300)
+        await vi.advanceTimersByTimeAsync(300)
       })
 
       expect(vi.mocked(apiClient.updateWorksheet).mock.calls).toEqual([
@@ -213,27 +232,27 @@ describe('useWorksheetAutosave', () => {
   // window has to restart from the last keystroke, or a steady typist is saved
   // on a fixed 300ms drumbeat instead of when they pause.
   it('restarts the debounce window on every edit', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    await renderProbe()
+
+    vi.useFakeTimers()
 
     try {
-      await renderProbe()
-
       click('edit')
 
       await act(async () => {
-        vi.advanceTimersByTime(200)
+        await vi.advanceTimersByTimeAsync(200)
       })
 
       click('edit')
 
       await act(async () => {
-        vi.advanceTimersByTime(200)
+        await vi.advanceTimersByTimeAsync(200)
       })
 
       expect(apiClient.updateWorksheet).not.toHaveBeenCalled()
 
       await act(async () => {
-        vi.advanceTimersByTime(100)
+        await vi.advanceTimersByTimeAsync(100)
       })
 
       expect(vi.mocked(apiClient.updateWorksheet).mock.calls).toEqual([
@@ -249,14 +268,26 @@ describe('useWorksheetAutosave', () => {
   it('saves immediately when the caller flushes', async () => {
     await renderProbe()
 
-    click('edit')
-    click('flush')
+    // Frozen time is the assertion: a save that shows up here can only have
+    // come from the flush, because the debounce never elapses. Polling with
+    // `waitFor` would let the 300ms window close on its own and pass against a
+    // `flushSave` that did nothing at all.
+    vi.useFakeTimers()
 
-    await waitFor(() => {
+    try {
+      click('edit')
+      click('flush')
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+
       expect(vi.mocked(apiClient.updateWorksheet).mock.calls).toEqual([
         ['ws-1', { content: 'edited ws-1' }]
       ])
-    })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   // Nothing is open before the first worksheet is picked, and "no worksheet"
@@ -280,7 +311,7 @@ describe('useWorksheetAutosave', () => {
     expect(screen.getByText('save failed')).toBeInTheDocument()
   })
 
-  it('tells the user when a save fails', async () => {
+  it('raises a toast when a save fails', async () => {
     const saves = deferredSaves()
 
     await renderProbe()
@@ -334,9 +365,76 @@ describe('useWorksheetAutosave', () => {
     }).toEqual({ failure: 'no failure', worksheet: 'ws-2' })
   })
 
-  // The mirror case: a save that succeeds late clears the failure it belongs to
-  // and no other.
-  it('keeps the failure when an older worksheet saves successfully', async () => {
+  // The notice is about the save you just made. By the time you come back the
+  // content it carried is gone — a failed persist rolls the collection back to
+  // the server's copy, and nothing else keeps it — so a worksheet that still
+  // said "Save failed" would be pointing at text that matches what is stored.
+  it('forgets the failure once you come back to the worksheet', async () => {
+    const saves = deferredSaves()
+
+    await renderProbe()
+
+    click('edit')
+    click('flush')
+
+    await saves.fail('ws-1')
+
+    expect(screen.getByText('save failed')).toBeInTheDocument()
+
+    click('switch')
+    click('switch')
+
+    expect({
+      failure: screen.getByText('no failure').textContent,
+      worksheet: screen.getByText('ws-1').textContent
+    }).toEqual({ failure: 'no failure', worksheet: 'ws-1' })
+  })
+
+  // Two saves for one worksheet really do run at the same time: the second is
+  // sent while the first is still open. If the first then fails, the content it
+  // carried has already been stored by the second, and saying "Save failed"
+  // would be a warning about nothing.
+  it('does not re-raise a failure a newer save has already cleared', async () => {
+    const saves = deferredSaves()
+
+    await renderProbe()
+
+    click('edit')
+    click('flush')
+
+    click('edit again')
+    click('flush')
+
+    await saves.succeed('ws-1', 1)
+    await saves.fail('ws-1', 0)
+
+    expect(screen.getByText('no failure')).toBeInTheDocument()
+  })
+
+  // The mirror of the case above, and the reason the answer to a save is
+  // ignored by age rather than by outcome: an older save landing successfully
+  // says nothing about the newer one that failed after it.
+  it('keeps the failure when an older save for the same worksheet lands', async () => {
+    const saves = deferredSaves()
+
+    await renderProbe()
+
+    click('edit')
+    click('flush')
+
+    click('edit again')
+    click('flush')
+
+    await saves.fail('ws-1', 1)
+    await saves.succeed('ws-1', 0)
+
+    expect(screen.getByText('save failed')).toBeInTheDocument()
+  })
+
+  // The status bar describes the worksheet on screen, so it says nothing about
+  // one you have left. The toast is not tied to a worksheet, and a save that
+  // did not happen is worth knowing about wherever you are.
+  it('still raises a toast for a save that failed after you moved on', async () => {
     const saves = deferredSaves()
 
     await renderProbe()
@@ -344,14 +442,55 @@ describe('useWorksheetAutosave', () => {
     click('edit')
     click('switch')
 
+    await saves.fail('ws-1')
+
+    expect(
+      await screen.findByText('Failed to save worksheet')
+    ).toBeInTheDocument()
+  })
+
+  // Deleting a worksheet takes its row out of the collection and moves the app
+  // to another one, both inside the debounce window. Updating a key that is
+  // gone throws, and it throws out of the effect cleanup that flushes on the
+  // way out — which unmounts the whole workspace.
+  it('drops a pending save for a worksheet that has been deleted', async () => {
+    const rendered = await renderProbe()
+
+    click('edit')
+
+    act(() => {
+      rendered.collections.worksheets.utils.writeDelete(first.id)
+    })
+
+    click('switch')
+
+    expect({
+      calls: vi.mocked(apiClient.updateWorksheet).mock.calls,
+      worksheet: screen.getByText('ws-2').textContent
+    }).toEqual({ calls: [], worksheet: 'ws-2' })
+  })
+
+  // The mirror case: a save that succeeds clears the failure it belongs to and
+  // no other. Age alone cannot decide this one — the successful save is the
+  // newer of the two, and it still has nothing to say about the worksheet you
+  // are looking at.
+  it('keeps the failure when a different worksheet saves successfully', async () => {
+    const saves = deferredSaves()
+
+    await renderProbe()
+
     click('edit')
     click('flush')
 
-    await saves.fail('ws-2')
+    click('switch')
+    click('edit')
+    click('switch')
+
+    await saves.fail('ws-1')
 
     expect(screen.getByText('save failed')).toBeInTheDocument()
 
-    await saves.succeed('ws-1')
+    await saves.succeed('ws-2')
 
     expect(screen.getByText('save failed')).toBeInTheDocument()
   })
