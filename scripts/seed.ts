@@ -1,11 +1,15 @@
 import { createClient } from '@libsql/client'
-import { execSync } from 'child_process'
 import { existsSync, statSync, unlinkSync } from 'fs'
 import { readdir, readFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import { Client } from 'pg'
 
+import {
+  mysqlSeedArguments,
+  mysqlSeedCommand,
+  pipeFileToCommand
+} from './mysql-seed'
 import { postgresUrl, sqlitePath } from './seed-config'
 
 async function runSeedFiles(
@@ -63,10 +67,7 @@ async function seedMysql() {
     join(__dirname, '..', 'seed-mysql'),
     'MySQL',
     async (filePath) => {
-      execSync(
-        `cat "${filePath}" | docker exec -i squeal-mysql mysql -uroot -pmysql`,
-        { stdio: 'inherit' }
-      )
+      await pipeFileToCommand(mysqlSeedCommand, mysqlSeedArguments, filePath)
     }
   )
 
