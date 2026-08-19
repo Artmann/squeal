@@ -6,19 +6,28 @@ const maxBufferedSpans = 1000
 
 type SendSpans = (spans: SpanRecord[]) => Promise<unknown>
 
-let buffer: SpanRecord[] = []
-let failureStreak = 0
+// Never reassigned: the flush below hands its batch back into this same array
+// on failure, so a second array would strand whichever one the exporter was
+// not holding.
+const buffer: SpanRecord[] = []
+
 let flushInFlight = false
 let flushTimer: ReturnType<typeof setInterval> | undefined
+let hasReportedOutage = false
 let sendSpans: SendSpans | undefined
+
+// A dead server must not grow renderer memory without bound. The only place a
+// span is ever dropped, so the drop-oldest policy is stated once.
+function trimToCapacity(): void {
+  if (buffer.length > maxBufferedSpans) {
+    buffer.splice(0, buffer.length - maxBufferedSpans)
+  }
+}
 
 export function enqueueSpan(record: SpanRecord): void {
   buffer.push(record)
 
-  // A dead server must not grow renderer memory without bound.
-  if (buffer.length > maxBufferedSpans) {
-    buffer.splice(0, buffer.length - maxBufferedSpans)
-  }
+  trimToCapacity()
 }
 
 export async function flushSpans(): Promise<void> {
@@ -30,23 +39,33 @@ export async function flushSpans(): Promise<void> {
 
   try {
     while (buffer.length > 0) {
-      const batch = buffer.slice(0, flushBatchSize)
+      // Taken out of the buffer rather than copied from it. enqueueSpan runs
+      // while the POST below is awaited -- any user action ends a traced span
+      // -- so a batch identified by its position would be a different hundred
+      // spans by the time the request resolved, and dropping that many from
+      // the head would discard spans that were never sent.
+      const batch = buffer.splice(0, flushBatchSize)
 
       try {
         await sendSpans(batch)
       } catch (error) {
-        failureStreak += 1
+        // Back onto the head before the trim, so drop-oldest still drops the
+        // oldest spans overall rather than the ones just handed back.
+        buffer.unshift(...batch)
+
+        trimToCapacity()
 
         // Log once per outage instead of every two seconds.
-        if (failureStreak === 1) {
+        if (!hasReportedOutage) {
+          hasReportedOutage = true
+
           console.warn('Could not export trace spans; will retry.', error)
         }
 
         return
       }
 
-      failureStreak = 0
-      buffer = buffer.slice(batch.length)
+      hasReportedOutage = false
     }
   } finally {
     flushInFlight = false
