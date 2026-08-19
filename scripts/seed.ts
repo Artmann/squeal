@@ -6,6 +6,7 @@ import { pathToFileURL } from 'url'
 import { Client } from 'pg'
 
 import {
+  mysqlContainer,
   mysqlSeedArguments,
   mysqlSeedCommand,
   pipeFileToCommand
@@ -61,7 +62,7 @@ async function seedPostgres() {
 }
 
 async function seedMysql() {
-  console.log('Connected to MySQL')
+  console.log(`Seeding MySQL through the ${mysqlContainer} container`)
 
   await runSeedFiles(
     join(__dirname, '..', 'seed-mysql'),
@@ -160,7 +161,14 @@ async function seed() {
 
     console.log('All databases seeded successfully!')
   } catch (error) {
-    console.error('Error seeding database:', error)
+    // The message, not the error: every failure this script can produce now
+    // says which file and which command in one line, and dumping the object
+    // buries that under a stack trace — plus, for a failed write to the child,
+    // a circular `error` property.
+    console.error(error instanceof Error ? error.message : error)
+    console.error(
+      'Postgres and MySQL run in the containers docker-compose.yml declares. Start them with `docker compose up -d`, give MySQL a moment to finish initialising, then run `yarn seed` again.'
+    )
 
     process.exit(1)
   }
