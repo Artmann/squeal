@@ -192,7 +192,7 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
 
   const { cancel: handleCancelQuery, isCanceling } = useCancelQuery(query)
 
-  const { flushSave, queueSave, saveState } =
+  const { flushSave, hasSaveFailed, queueSave } =
     useWorksheetAutosave(openWorksheetId)
 
   const handleUpdateContent = useCallback(
@@ -230,10 +230,10 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     handleCancelQuery,
     handleRunQuery,
     handleUpdateContent,
+    hasSaveFailed,
     isCanceling,
     isQueryRunning: isQueryInFlight(query),
     query,
-    saveState,
     setCursorOffset,
     statements
   }
@@ -321,10 +321,10 @@ function Workspace(): ReactElement {
     handleCancelQuery,
     handleRunQuery,
     handleUpdateContent,
+    hasSaveFailed,
     isCanceling,
     isQueryRunning,
     query,
-    saveState,
     setCursorOffset,
     statements
   } = useWorksheetSession(openWorksheetId)
@@ -372,8 +372,8 @@ function Workspace(): ReactElement {
         <StatusBar
           cursorPosition={cursorPosition}
           database={currentDatabase}
+          hasSaveFailed={hasSaveFailed}
           query={query}
-          saveState={saveState}
         />
       </div>
     </div>
