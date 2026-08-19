@@ -6,6 +6,14 @@
 @import './styles/themes/squeal-light.css';
 @import './styles/themes/squeal-dark.css';
 
+/* Tailwind's `dark:` variant defaults to `@media (prefers-color-scheme: dark)`,
+   which is the operating system's answer rather than this app's. The app sets
+   `data-mode` on the root element itself — `useTheme.ts` resolves `'system'`
+   against the OS and writes the result there, and every theme variable keys off
+   it — so without this line a user who overrides a dark desktop to Light gets
+   light themes and dark `dark:` utilities at the same time. */
+@custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
+
 * {
   box-sizing: border-box;
 }

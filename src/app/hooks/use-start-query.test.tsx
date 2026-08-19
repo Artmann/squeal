@@ -50,7 +50,6 @@ describe('useStartQuery', () => {
         id: 'q-1',
         queriedAt: 1,
         result: null,
-        truncated: false,
         worksheetId: 'ws-1'
       }
     })

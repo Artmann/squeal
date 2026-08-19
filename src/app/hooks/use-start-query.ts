@@ -38,7 +38,6 @@ function createOptimisticQuery(input: StartQueryInput): QueryDto {
     id: v7(),
     queriedAt: Date.now(),
     result: null,
-    truncated: false,
     worksheetId: input.worksheetId ?? ''
   }
 }
