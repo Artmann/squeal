@@ -1,7 +1,7 @@
 // Assembles the full backend into one layer and hands Electron a
 // ManagedRuntime that owns it: building the runtime initializes the app
 // database, runs the boot effects, starts the HTTP server, and forks the
-// retention fibers; disposing it tears all of that down in reverse.
+// retention fiber; disposing it tears all of that down in reverse.
 import { ConfigProvider, Layer, ManagedRuntime, Redacted } from 'effect'
 
 import { boot } from './boot'

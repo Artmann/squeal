@@ -220,7 +220,7 @@ app.on('second-instance', () => {
 })
 
 // The first real shutdown path this app has had: disposing the runtime
-// closes the HTTP server, interrupts the retention fibers and any running
+// closes the HTTP server, interrupts the retention fiber and any running
 // queries (best-effort canceling their server-side statements), and releases
 // the app database.
 app.on('before-quit', (event) => {
