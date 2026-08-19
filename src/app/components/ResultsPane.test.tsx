@@ -17,7 +17,6 @@ function query(overrides: Partial<QueryDto> = {}): QueryDto {
     id: 'q-1',
     queriedAt: 1000,
     result: null,
-    truncated: false,
     worksheetId: 'ws-1',
     ...overrides
   }

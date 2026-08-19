@@ -476,7 +476,6 @@ describe('DatabaseExplorer', () => {
           id: 'q-1',
           queriedAt: 1704067200000,
           result: null,
-          truncated: false,
           worksheetId: 'ws-users'
         }
       })

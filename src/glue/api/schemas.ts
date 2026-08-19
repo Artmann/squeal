@@ -260,7 +260,6 @@ const QueryDto = Schema.Struct({
   id: Schema.String,
   queriedAt: Schema.Number,
   result: Schema.NullOr(QueryResultDto),
-  truncated: Schema.Boolean,
   worksheetId: Schema.String
 })
 export type QueryDto = Schema.Schema.Type<typeof QueryDto>
