@@ -94,6 +94,18 @@ const idleStatus: UpdateStatus = {
   version: null
 }
 
+// What a downloaded 1.3.0 projects to, and so what a claim on it hands back.
+// Written out rather than compared against `status()`: an assertion between two
+// calls of the same implementation is satisfied by whatever the two agree on,
+// which is every answer it could give.
+const readyStatus: UpdateStatus = {
+  ...idleStatus,
+  lastCheckedAt: 1_000,
+  releaseNotesUrl: 'https://github.com/Artmann/squeal/releases/tag/v1.3.0',
+  state: 'ready',
+  version: '1.3.0'
+}
+
 describe('parseVersion', () => {
   it('reads the version release-please produces', () => {
     expect(parseVersion('v1.3.0')).toEqual('1.3.0')
@@ -292,6 +304,93 @@ describe('createUpdater', () => {
     ])
   })
 
+  // The status bar shows nothing while a check runs, which is the behaviour
+  // this keeps: an update the last check found is knowledge, and a check in
+  // flight is what the updater is doing. Whether the two should be shown
+  // together is a question about the indicator, not about this value.
+  it('leaves the available update behind while it checks again', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.found('1.3.0', updateMessages.linux)
+    subject.updater.check()
+
+    expect(subject.updater.status()).toEqual({
+      ...idleStatus,
+      lastCheckedAt: 1_000,
+      state: 'checking'
+    })
+  })
+
+  // A release can be pulled between two checks, and the second check is the
+  // one that still holds.
+  it('clears an update a later check no longer finds', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.found('1.3.0', updateMessages.linux)
+    subject.updater.check()
+    subject.emit.notFound()
+
+    expect(subject.updater.status()).toEqual({
+      ...idleStatus,
+      lastCheckedAt: 1_000
+    })
+  })
+
+  // The message named the check that failed. Carried into the next one it
+  // describes an attempt that is still in flight, and `GET /updates` serves it
+  // verbatim.
+  it('leaves the failure behind when it checks again', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.failed(new Error('offline'))
+    subject.updater.check()
+
+    expect(subject.updater.status()).toEqual({
+      ...idleStatus,
+      lastCheckedAt: 1_000,
+      state: 'checking'
+    })
+  })
+
+  it('leaves the failure behind when the download starts', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.failed(new Error('offline'))
+    subject.updater.check()
+    subject.emit.downloading()
+
+    expect(subject.updater.status()).toEqual({
+      ...idleStatus,
+      lastCheckedAt: 1_000,
+      state: 'downloading'
+    })
+  })
+
+  // The sequence packaged Linux sits in: an update it cannot install, then a
+  // later check that fails. What the failed check knows is that it failed —
+  // the version and the notes URL belong to a check that is no longer the
+  // latest word, and an error offering a release to download is a claim this
+  // one cannot make.
+  it('leaves the available update behind when a later check fails', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.found('1.3.0', updateMessages.linux)
+    subject.updater.check()
+    subject.emit.failed(new Error('the feed went away'))
+
+    expect(subject.updater.status()).toEqual({
+      ...idleStatus,
+      lastCheckedAt: 1_000,
+      message: updateMessages.checkFailed,
+      state: 'error'
+    })
+  })
+
   it('retries after a failure', () => {
     const subject = makeSubject()
 
@@ -337,7 +436,7 @@ describe('createUpdater', () => {
     subject.updater.check()
     subject.emit.downloaded('1.3.0')
 
-    expect(subject.updater.beginInstall()).toEqual(subject.updater.status())
+    expect(subject.updater.beginInstall()).toEqual(readyStatus)
   })
 
   it('hands nothing to the backend until the claim is completed', () => {
@@ -375,7 +474,7 @@ describe('createUpdater', () => {
     subject.updater.completeInstall()
 
     expect({ claims, installs: subject.state.installs }).toEqual({
-      claims: [subject.updater.status(), null, null],
+      claims: [readyStatus, null, null],
       installs: 1
     })
   })
@@ -397,6 +496,28 @@ describe('createUpdater', () => {
     }).toEqual({ claim: null, installs: 0, state: 'available' })
   })
 
+  // The claim answers for the whole status, not for the knowledge behind it.
+  // Those came apart when the two were split: a download running over an
+  // already-ready update leaves `knowledge` at `ready` while the updater is
+  // plainly busy, and a guard reading only `knowledge` would hand out a claim
+  // and answer it with a `downloading` status — a 200 saying "restart to
+  // update" for an install that is being swapped under it. No backend emits
+  // that pair today; this module exists because it holds state for an event
+  // source it cannot ask, so the guard covers the state rather than the paths
+  // known to reach it.
+  it('refuses a claim while a download is running', () => {
+    const subject = makeSubject()
+
+    subject.updater.check()
+    subject.emit.downloaded('1.3.0')
+    subject.emit.downloading()
+
+    expect({
+      claim: subject.updater.beginInstall(),
+      installs: subject.state.installs
+    }).toEqual({ claim: null, installs: 0 })
+  })
+
   it('does not let a later check reopen the claim', () => {
     const subject = makeSubject()
 
@@ -408,7 +529,13 @@ describe('createUpdater', () => {
     // can still arrive — a second downloaded must not license a second swap.
     subject.emit.downloaded('1.4.0')
 
-    expect(subject.updater.beginInstall()).toEqual(null)
+    // The version comes along too. The claim is what is refused; the update on
+    // disk is now 1.4.0, and reporting the one it replaced would offer a
+    // restart into a version that is no longer there.
+    expect({
+      claim: subject.updater.beginInstall(),
+      version: subject.updater.status().version
+    }).toEqual({ claim: null, version: '1.4.0' })
   })
 
   it('does not let a later download reopen the claim', () => {
