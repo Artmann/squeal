@@ -32,7 +32,7 @@ vi.mock('@/main/tracing/span-writer', async (importOriginal) => {
   return {
     ...actual,
     writeSpans: (...args: Parameters<typeof actual.writeSpans>) => {
-      writeSpansSpy(args[0])
+      writeSpansSpy(args[1])
 
       return actual.writeSpans(...args)
     }

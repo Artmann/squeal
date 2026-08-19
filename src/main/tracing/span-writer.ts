@@ -1,10 +1,10 @@
-import { database } from '@/database'
+import type { database } from '@/database'
 import { spansTable } from '@/database/schema'
 import { SpanRecord } from '@/glue/tracing/spans'
 
 export async function writeSpans(
-  records: SpanRecord[],
-  client: typeof database = database
+  client: typeof database,
+  records: SpanRecord[]
 ): Promise<number> {
   if (records.length === 0) {
     return 0

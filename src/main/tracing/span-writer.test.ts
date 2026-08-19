@@ -1,12 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-// Above the imports below it, not merely near them: the `@/database` mock
-// registers as this module is evaluated, and anything evaluated first misses
-// it. See the note in the helper.
-import { getTestDatabase, resetTestDatabase } from '@/test/api-test-helper'
-
+import type { database } from '@/database'
 import { spansTable } from '@/database/schema'
 import { SpanRecord } from '@/glue/tracing/spans'
+import { createInMemoryDatabase } from '@/test/in-memory-database'
 import { writeSpans } from './span-writer'
 
 const record: SpanRecord = {
@@ -24,17 +21,17 @@ const record: SpanRecord = {
   traceId: '4bf92f3577b34da6a3ce929d0e0e4736'
 }
 
+let client: typeof database
+
 describe('writeSpans', () => {
   beforeEach(async () => {
-    await resetTestDatabase()
+    client = await createInMemoryDatabase()
   })
 
   it('serializes attributes and events as JSON', async () => {
-    await writeSpans([record])
+    await writeSpans(client, [record])
 
-    const database = getTestDatabase()
-
-    expect(await database.select().from(spansTable)).toEqual([
+    expect(await client.select().from(spansTable)).toEqual([
       {
         attributes: '{"http.method":"GET"}',
         durationMs: 12.5,
@@ -53,21 +50,36 @@ describe('writeSpans', () => {
   })
 
   it('ignores spans whose id already exists', async () => {
-    await writeSpans([record])
-    await writeSpans([{ ...record, name: 'changed' }])
+    await writeSpans(client, [record])
+    await writeSpans(client, [{ ...record, name: 'changed' }])
 
-    const database = getTestDatabase()
-    const rows = await database.select().from(spansTable)
+    const rows = await client.select().from(spansTable)
 
     expect(rows.length).toEqual(1)
     expect(rows[0]?.name).toEqual('GET /databases')
   })
 
   it('does nothing for an empty batch', async () => {
-    await writeSpans([])
+    await writeSpans(client, [])
 
-    const database = getTestDatabase()
+    expect(await client.select().from(spansTable)).toEqual([])
+  })
 
-    expect(await database.select().from(spansTable)).toEqual([])
+  // The writer already took a client, but defaulted to the singleton when it
+  // was left out, so nothing stopped a caller from writing somewhere else by
+  // saying nothing. There is no longer anything to leave out.
+  it('writes to the database it is given and no other', async () => {
+    const other = await createInMemoryDatabase()
+
+    await writeSpans(client, [record])
+
+    // Both halves, because either alone is satisfied by a writer that writes
+    // nowhere at all: "the other one is empty" is a property of a database
+    // nothing has touched, and "this one has the row" says nothing about where
+    // else the row also went.
+    expect({
+      given: (await client.select().from(spansTable)).map((row) => row.id),
+      other: (await other.select().from(spansTable)).map((row) => row.id)
+    }).toEqual({ given: [record.id], other: [] })
   })
 })

@@ -1,7 +1,7 @@
 import { isNull } from 'drizzle-orm'
 import { log } from 'tiny-typescript-logger'
 
-import { database } from '@/database'
+import type { database } from '@/database'
 import { queriesTable } from '@/database/schema'
 
 export const interruptedQueryMessage =
@@ -11,8 +11,10 @@ export const interruptedQueryMessage =
 // unfinished at boot was cut off by a crash or quit and can never complete.
 // Marking them failed stops the renderer from showing an eternal spinner and
 // polling for a result that will never arrive.
-export async function markInterruptedQueries(): Promise<number> {
-  const interrupted = await database
+export async function markInterruptedQueries(
+  client: typeof database
+): Promise<number> {
+  const interrupted = await client
     .update(queriesTable)
     .set({ error: interruptedQueryMessage, finishedAt: Date.now() })
     .where(isNull(queriesTable.finishedAt))

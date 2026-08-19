@@ -1,25 +1,25 @@
 import { sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-// Above the imports below it, not merely near them: the `@/database` mock
-// registers as this module is evaluated, and anything evaluated first misses
-// it. See the note in the helper.
-import { getTestDatabase, resetTestDatabase } from '@/test/api-test-helper'
-
+import type { database } from '@/database'
+import { createInMemoryDatabase } from '@/test/in-memory-database'
 import {
   interruptedQueryMessage,
   markInterruptedQueries
 } from './reconcile-queries'
 
-async function insertQuery(options: {
-  error?: string
-  finishedAt?: number
-  id: string
-  result?: string
-}): Promise<void> {
-  const database = getTestDatabase()
+let client: typeof database
 
-  await database.run(sql`
+async function insertQuery(
+  target: typeof database,
+  options: {
+    error?: string
+    finishedAt?: number
+    id: string
+    result?: string
+  }
+): Promise<void> {
+  await target.run(sql`
     INSERT INTO queries (
       id, content, databaseId, error, finishedAt, queriedAt, result, worksheetId
     )
@@ -38,18 +38,17 @@ async function insertQuery(options: {
 
 describe('markInterruptedQueries', () => {
   beforeEach(async () => {
-    await resetTestDatabase()
+    client = await createInMemoryDatabase()
   })
 
   it('marks unfinished queries as interrupted', async () => {
-    await insertQuery({ id: 'orphaned' })
+    await insertQuery(client, { id: 'orphaned' })
 
-    const count = await markInterruptedQueries()
+    const count = await markInterruptedQueries(client)
 
     expect(count).toEqual(1)
 
-    const database = getTestDatabase()
-    const rows = await database.all<{
+    const rows = await client.all<{
       error: string | null
       finishedAt: number | null
     }>(sql`SELECT error, finishedAt FROM queries WHERE id = 'orphaned'`)
@@ -59,23 +58,22 @@ describe('markInterruptedQueries', () => {
   })
 
   it('leaves finished queries untouched', async () => {
-    await insertQuery({
+    await insertQuery(client, {
       finishedAt: 1704067200000,
       id: 'completed',
       result: '{"fields":[],"rowCount":0,"rows":[],"truncated":false}'
     })
-    await insertQuery({
+    await insertQuery(client, {
       error: 'Boom',
       finishedAt: 1704067200000,
       id: 'failed'
     })
 
-    const count = await markInterruptedQueries()
+    const count = await markInterruptedQueries(client)
 
     expect(count).toEqual(0)
 
-    const database = getTestDatabase()
-    const rows = await database.all<{
+    const rows = await client.all<{
       error: string | null
       finishedAt: number | null
       id: string
@@ -88,8 +86,29 @@ describe('markInterruptedQueries', () => {
   })
 
   it('does nothing when there are no queries', async () => {
-    const count = await markInterruptedQueries()
+    const count = await markInterruptedQueries(client)
 
     expect(count).toEqual(0)
+  })
+
+  // Boot marks the previous process's leftovers against the client the runtime
+  // just built. Reaching a module singleton instead would mark rows in whatever
+  // database that happened to be.
+  it('marks the database it is given and no other', async () => {
+    const other = await createInMemoryDatabase()
+
+    await insertQuery(client, { id: 'orphaned' })
+    await insertQuery(other, { id: 'orphaned' })
+
+    const count = await markInterruptedQueries(client)
+
+    const rows = await other.all<{ error: string | null }>(
+      sql`SELECT error FROM queries`
+    )
+
+    expect({ count, other: rows }).toEqual({
+      count: 1,
+      other: [{ error: null }]
+    })
   })
 })

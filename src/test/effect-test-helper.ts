@@ -5,10 +5,8 @@ import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 // Subpath import on purpose: the package barrel pulls in cluster modules
 // whose optional peers are not installed.
 import * as NodeHttpServer from '@effect/platform-node/NodeHttpServer'
-import { drizzle } from 'drizzle-orm/libsql'
 import { Effect, Layer, Redacted } from 'effect'
 
-import { createTables } from '@/database/tables'
 import type { SchemaInfo, QueryResult } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
 import { UpdateNotReadyError } from '@/glue/api/errors'
@@ -34,6 +32,8 @@ import { TraceStore } from '@/server/services/trace-store'
 import { Updater } from '@/server/services/updater'
 import { WorksheetService } from '@/server/services/worksheet-service'
 import type { UpdateStatus } from '@/main/updates/updater'
+
+import { createInMemoryDatabase } from './in-memory-database'
 
 export const testEncryptionPrefix = 'enc:v1:test:'
 
@@ -148,13 +148,9 @@ function makeTestUpdater(status: UpdateStatus = idleUpdateStatus) {
 export function makeTestAppDatabase(): Layer.Layer<AppDatabase> {
   return Layer.effect(
     AppDatabase,
-    Effect.promise(async () => {
-      const client = drizzle(':memory:')
-
-      await createTables(client)
-
-      return AppDatabase.make(makeAppDatabaseService(client))
-    })
+    Effect.promise(async () =>
+      AppDatabase.make(makeAppDatabaseService(await createInMemoryDatabase()))
+    )
   )
 }
 

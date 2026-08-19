@@ -52,7 +52,7 @@ export class TraceStore extends Effect.Service<TraceStore>()('TraceStore', {
     })
 
     const ingestSpans = Effect.fn(function* (spans: SpanRecord[]) {
-      return yield* appDatabase.execute((client) => writeSpans(spans, client))
+      return yield* appDatabase.execute((client) => writeSpans(client, spans))
     })
 
     const listTraces = Effect.fn(function* (params: ListTracesUrlParams) {

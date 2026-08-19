@@ -1,18 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import { getTestDatabase, resetTestDatabase } from '@/test/api-test-helper'
+import { createInMemoryDatabase } from '@/test/in-memory-database'
 
 import { spansTable } from './schema'
 
 type SpanRow = typeof spansTable.$inferInsert
 
 describe('spans table', () => {
-  beforeEach(async () => {
-    await resetTestDatabase()
-  })
-
   it('stores and returns span rows', async () => {
-    const database = getTestDatabase()
+    const database = await createInMemoryDatabase()
 
     const span: SpanRow = {
       attributes: '{"http.method":"GET"}',
@@ -37,7 +33,7 @@ describe('spans table', () => {
   })
 
   it('defaults status to unset', async () => {
-    const database = getTestDatabase()
+    const database = await createInMemoryDatabase()
 
     await database.insert(spansTable).values({
       attributes: '{}',
