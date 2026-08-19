@@ -6,7 +6,7 @@
     "vite.preload.config.ts",
     "vite.renderer.config.mjs"
   ],
-  "ignoreDependencies": ["png-to-ico", "tailwindcss"],
+  "ignoreDependencies": ["png-to-ico"],
   "ignoreExports": [
     {
       "file": "src/app/tracing/exporter.ts",
