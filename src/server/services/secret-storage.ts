@@ -7,7 +7,6 @@ import { Effect } from 'effect'
 
 import type { SecretStorageMode } from '@/glue/api/schemas'
 import {
-  getSecretStorageMode,
   probeEncryption,
   safeStorageSecretStorage,
   setSecretStorageMode
@@ -30,7 +29,6 @@ export class SecretStorage extends Effect.Service<SecretStorage>()(
         }),
       encrypt: (value: string) =>
         Effect.sync(() => safeStorageSecretStorage.encrypt(value)),
-      mode: Effect.sync(() => getSecretStorageMode()),
       probe: Effect.sync(() => probeEncryption()),
       setMode: (next: SecretStorageMode) =>
         Effect.sync(() => setSecretStorageMode(next))

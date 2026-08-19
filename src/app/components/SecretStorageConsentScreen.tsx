@@ -1,11 +1,27 @@
 import { Loader2Icon, LockIcon, TriangleAlertIcon } from 'lucide-react'
 import { ReactElement, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+
+import type { SecretStorageResponse } from '@/glue/api/schemas'
 
 import { useGrantSecretStorage, useSkipSecretStorage } from '../hooks/mutations'
 import { TitleBar } from './TitleBar'
 import { Button } from './ui/button'
 
 type ConsentStep = 'ask' | 'confirmSkip'
+
+// Recording the granted mode is what unmounts this screen, so a partial success
+// has nowhere to be rendered here — it goes to a toast, which outlives the
+// unmount and lands over the app the user is about to see.
+function reportGrant(response: SecretStorageResponse): void {
+  if (response.mode !== 'keychain' || response.message === null) {
+    return
+  }
+
+  toast.warning('Encryption is on, but some passwords are not', {
+    description: response.message
+  })
+}
 
 // Shown before anything else when no decision has been made about the OS
 // keychain, because until then Squeal has nowhere safe to put a connection
@@ -27,8 +43,13 @@ export function SecretStorageConsentScreen({
   const grantButton = useRef<HTMLButtonElement>(null)
 
   // A refused prompt comes back as a successful response carrying a message, not
-  // as a rejection — the request itself worked.
-  const grantMessage = grant.data?.message ?? null
+  // as a rejection — the request itself worked. A message alongside `keychain`
+  // is the other thing entirely: permission was granted and some passwords
+  // could not be encrypted, which is not something to offer "Try again" for.
+  const grantMessage =
+    grant.data !== undefined && grant.data.mode !== 'keychain'
+      ? grant.data.message
+      : null
   const isBusy = grant.isPending || skip.isPending
 
   // Disabling a focused button drops focus to the body, so hand it back when the
@@ -73,7 +94,9 @@ export function SecretStorageConsentScreen({
             <Button
               autoFocus
               disabled={isBusy}
-              onClick={() => grant.mutate()}
+              onClick={() =>
+                grant.mutate(undefined, { onSuccess: reportGrant })
+              }
               ref={grantButton}
               size="lg"
             >

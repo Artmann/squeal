@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { eq } from 'drizzle-orm'
-import { Effect } from 'effect'
+import { Effect, Layer, Logger } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { databasesTable, settingsTable } from '@/database/schema'
@@ -15,13 +15,24 @@ import {
 
 const storageName = safeStorageName(process.platform)
 
+interface RunOptions extends TestApiOptions {
+  // Provided outside the API layer on purpose: the route handler runs on a
+  // fiber the served layer forked, so a logger provided inside the request
+  // effect would never reach it.
+  logging?: Layer.Layer<never>
+}
+
 function run<A, E>(
   effect: Effect.Effect<A, E, AppDatabase | HttpClient.HttpClient>,
-  options: TestApiOptions = {}
+  options: RunOptions = {}
 ): Promise<A> {
-  const { layer } = makeTestApi(options)
+  const { logging = Layer.empty, ...apiOptions } = options
 
-  return Effect.runPromise(Effect.provide(effect, layer))
+  const { layer } = makeTestApi(apiOptions)
+
+  return Effect.runPromise(
+    Effect.provide(Effect.provide(effect, layer), logging)
+  )
 }
 
 interface SeedDatabaseOptions {
@@ -42,6 +53,21 @@ function seedDatabase(options: SeedDatabaseOptions) {
       })
     )
   })
+}
+
+// Re-encryption reports what it could not seal through the log and nowhere
+// else, so that is where the test has to look.
+function captureLogs() {
+  const messages: string[] = []
+
+  const layer = Logger.replace(
+    Logger.defaultLogger,
+    Logger.make(({ logLevel, message }) => {
+      messages.push(`${logLevel.label} ${String(message)}`)
+    })
+  )
+
+  return { layer, messages }
 }
 
 function readStoredMode() {
@@ -216,6 +242,52 @@ describe('secret storage routes', () => {
       })
       expect(storedMode).toEqual(null)
       expect(connectionInfo).toEqual(['{"host":"localhost"}'])
+    })
+
+    // The keychain answers the probe and then stops sealing — a locked login
+    // keyring, or a login item revoked between the two calls. `encrypt` cannot
+    // fail, so the rows come back as the plaintext they went in as, and saying
+    // nothing about it would leave the renderer announcing that the passwords
+    // are now encrypted.
+    it('tells the user which rows it could not encrypt when the keychain breaks', async () => {
+      const logs = captureLogs()
+
+      const { connectionInfo, response, storedMode } = await run(
+        Effect.gen(function* () {
+          const client = yield* makeAuthorizedClient
+
+          yield* seedDatabase({ connectionInfo: '{"host":"localhost"}' })
+
+          const response = yield* client.secretStorage.grant()
+
+          return {
+            connectionInfo: yield* readConnectionInfo(),
+            response,
+            storedMode: yield* readStoredMode()
+          }
+        }),
+        { logging: logs.layer, secretStorageSealing: 'failed' }
+      )
+
+      // The decision still stands: the user granted permission, and the next
+      // save will try the keychain again.
+      expect({
+        connectionInfo,
+        logs: logs.messages,
+        response,
+        storedMode
+      }).toEqual({
+        connectionInfo: ['{"host":"localhost"}'],
+        logs: [
+          'WARN 1 database connection(s) remain unencrypted because OS keychain encryption is unavailable.'
+        ],
+        response: {
+          message: secretStorageMessages.sealingFailed(1, storageName),
+          mode: 'keychain',
+          storageName
+        },
+        storedMode: 'keychain'
+      })
     })
 
     it('explains a system with no keyring', async () => {

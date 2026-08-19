@@ -24,5 +24,11 @@ export const secretStorageMessages = {
   keychainUnavailable: (storageName: string): string =>
     `Squeal could not get access to ${storageName}. If your system asked for permission, choose Allow and try again — or skip and save your passwords unencrypted.`,
   noKeyring:
-    'This system has no keyring for Squeal to store an encryption key in. Install and unlock GNOME Keyring or KWallet and try again — or skip and save your passwords unencrypted.'
+    'This system has no keyring for Squeal to store an encryption key in. Install and unlock GNOME Keyring or KWallet and try again — or skip and save your passwords unencrypted.',
+  // Permission was granted and then the keychain refused to seal anything, so
+  // the mode says `keychain` while the passwords on disk are still plaintext.
+  // Nothing else in the response can tell the two apart, which is why this is
+  // said rather than inferred.
+  sealingFailed: (count: number, storageName: string): string =>
+    `Squeal has permission to use ${storageName}, but it refused to encrypt, so ${count} saved ${count === 1 ? 'connection is' : 'connections are'} still stored unencrypted. Once ${storageName} is working again, open each connection and save it to encrypt it.`
 }

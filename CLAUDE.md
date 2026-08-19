@@ -234,11 +234,29 @@ since Chromium's `IsEncryptionAvailable()` fetches the key from the Keychain. So
   connection's Authentication section. Granting re-encrypts every stored
   password, so it is a complete reversal. The other direction is deliberately
   not offered.
-- **Known gap**: in `keychain` mode, if the keychain later breaks, `encrypt`
-  still falls back to plaintext with a one-time `log.warn` and the mode-driven
-  notice shows nothing, so the user gets no warning before that save. Surfacing
-  the warn latch through `SecretStorageResponse` would close it without probing
-  anything.
+- **Encryption state**: everything the process knows about its own encryption is
+  one value in `secret-storage.ts` — `{ mode: 'keychain', sealing }` or
+  `{ mode: 'plaintext' | 'undecided', warnedAboutPlaintext }`. The union is what
+  keeps a "the keychain is broken" flag from outliving the mode it was learned
+  about: applying a mode replaces the whole value. It is process-local and never
+  persisted, because a `'failed'` written to disk would outlive the restart that
+  fixed the keychain. `sealing` starts at `working` on every mode change, which
+  is optimism at boot (the stored mode probed nothing) and safe only because
+  nothing reports `working` — a warning needs a seal attempt that failed.
+- **A keychain that breaks after permission is granted** — a locked login
+  keyring answers `isEncryptionAvailable()` and then throws — is caught inside
+  `encrypt`, which returns the plaintext it was handed rather than letting a
+  defect turn an otherwise fine save into a 500. It warns on the transition into
+  failure rather than latching, so a keychain that breaks, is repaired, and
+  breaks again says so both times. `POST /secret-storage/grant` reports the same
+  thing to the user: it counts the rows re-encryption left as plaintext and
+  returns `mode: 'keychain'` with a `message`, which both callers check before
+  announcing a success.
+- **Known gap**: an ordinary save (`POST`/`PUT /databases`) that hits a broken
+  keychain still stores the password as plaintext with only a `log.warn` — the
+  response says nothing, so the user is told about it on the next grant and not
+  before. Carrying the sealing state on `DatabaseDto` would close it without
+  probing anything.
 
 ## Updates
 

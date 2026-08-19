@@ -154,6 +154,17 @@ function UnencryptedPasswordNotice(): ReactElement | null {
       const response = await grant.mutateAsync()
 
       if (response.mode === 'keychain') {
+        // Permission granted and a message means the keychain took the
+        // decision and then refused to seal, so the passwords are still
+        // plaintext. Announcing a success on the mode alone said the opposite.
+        if (response.message !== null) {
+          toast.warning('Encryption is on, but some passwords are not', {
+            description: response.message
+          })
+
+          return
+        }
+
         toast.success('Encryption is on', {
           description: `Your saved passwords are now encrypted with ${response.storageName}.`
         })

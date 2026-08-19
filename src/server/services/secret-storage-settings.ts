@@ -98,9 +98,12 @@ export class SecretStorageSettings extends Effect.Service<SecretStorageSettings>
 
           const encrypted = yield* secrets.encrypt(record.connectionInfo)
 
-          // encrypt() returns its input when it cannot seal, which is how a
-          // keychain that broke after permission was granted shows up here.
-          if (encrypted === record.connectionInfo) {
+          // `encrypt` cannot fail — a keychain that broke after permission was
+          // granted hands back the plaintext it was given. Testing what came
+          // back keeps the verdict per row and decided from this row's own
+          // result, where asking the process for its encryption state would
+          // read a value a concurrent save can flip between the two steps.
+          if (!isEncrypted(encrypted)) {
             plaintextCount += 1
 
             continue
@@ -127,6 +130,8 @@ export class SecretStorageSettings extends Effect.Service<SecretStorageSettings>
             `${plaintextCount} database connection(s) remain unencrypted because OS keychain encryption is unavailable.`
           )
         }
+
+        return plaintextCount
       })
 
       const grant = Effect.fn('SecretStorageSettings.grant')(function* () {
@@ -149,9 +154,20 @@ export class SecretStorageSettings extends Effect.Service<SecretStorageSettings>
         // the rows leaves the decision recorded and the next boot finishes.
         yield* secrets.setMode('keychain')
         yield* persist('keychain')
-        yield* reencryptStoredSecrets()
 
-        return { message: null, mode: 'keychain' as const, storageName }
+        const plaintextCount = yield* reencryptStoredSecrets()
+
+        // A keychain can answer the probe and then refuse to seal, which leaves
+        // permission granted and the passwords on disk exactly as they were.
+        // The mode alone cannot tell that from a clean success, so it is said.
+        return {
+          message:
+            plaintextCount > 0
+              ? secretStorageMessages.sealingFailed(plaintextCount, storageName)
+              : null,
+          mode: 'keychain' as const,
+          storageName
+        }
       })
 
       // Runs at boot, before anything can ask for a secret.

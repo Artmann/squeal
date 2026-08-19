@@ -13,7 +13,10 @@ import type { SchemaInfo, QueryResult } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
 import { UpdateNotReadyError } from '@/glue/api/errors'
 import type { DatabaseConnection, SecretStorageMode } from '@/glue/api/schemas'
-import type { KeychainProbeResult } from '@/main/databases/secret-storage'
+import type {
+  EncryptionState,
+  KeychainProbeResult
+} from '@/main/databases/secret-storage'
 import { updateMessages } from '@/main/updates/updater'
 import { ServerConfig } from '@/server/config'
 import { ApiToken } from '@/server/http/api-token'
@@ -39,11 +42,32 @@ export const testEncryptionPrefix = 'enc:v1:test:'
 //
 // encrypt and decrypt deliberately ignore the mode: whether the gate holds is a
 // property of the real module and is covered by
-// src/main/databases/secret-storage.test.ts. What matters here is that the mode
-// round-trips through setMode, and that it lives in this closure rather than in
-// the real module's process-global.
-function makeTestSecretStorage(probeResult: KeychainProbeResult = 'available') {
-  let mode: SecretStorageMode = 'keychain'
+// src/main/databases/secret-storage.test.ts. What matters here is that the
+// encryption state round-trips through setMode, and that it lives in this
+// closure rather than in the real module's process-global.
+//
+// `sealing` is what a caller sets to get a keychain that answers every save
+// with the plaintext it was handed — the shape of one that broke after
+// permission was granted, and the only way to reach the code that copes.
+//
+// It deliberately survives `setMode`, where the real module resets sealing to
+// `working` on every mode change: a test says "this keychain is broken" once
+// and means it for the whole request, including the `setMode('keychain')` that
+// granting does on the way in.
+interface TestSecretStorageOptions {
+  probeResult?: KeychainProbeResult
+  sealing?: 'failed' | 'working'
+}
+
+function makeTestSecretStorage(options: TestSecretStorageOptions = {}) {
+  const { probeResult = 'available', sealing = 'working' } = options
+
+  const stateForMode = (mode: SecretStorageMode): EncryptionState =>
+    mode === 'keychain'
+      ? { mode, sealing }
+      : { mode, warnedAboutPlaintext: false }
+
+  let state: EncryptionState = stateForMode('keychain')
 
   const layer = Layer.succeed(
     SecretStorage,
@@ -55,12 +79,15 @@ function makeTestSecretStorage(probeResult: KeychainProbeResult = 'available') {
             : value
         ),
       encrypt: (value: string) =>
-        Effect.succeed(`${testEncryptionPrefix}${value}`),
-      mode: Effect.sync(() => mode),
+        Effect.succeed(
+          state.mode === 'keychain' && state.sealing === 'working'
+            ? `${testEncryptionPrefix}${value}`
+            : value
+        ),
       probe: Effect.sync(() => probeResult),
       setMode: (next: SecretStorageMode) =>
         Effect.sync(() => {
-          mode = next
+          state = stateForMode(next)
         })
     })
   )
@@ -207,12 +234,18 @@ export interface TestApiOptions {
   publicTraceReads?: boolean
   // What the keychain answers when the user asks for encryption.
   secretStorageProbe?: KeychainProbeResult
+  // 'failed' gives a keychain that grants permission and then refuses to
+  // seal anything, which is how one that broke afterwards behaves.
+  secretStorageSealing?: 'failed' | 'working'
   updateStatus?: UpdateStatus
 }
 
 export function makeTestApi(options: TestApiOptions = {}) {
   const adapterFactory = makeTestAdapterFactory(options.adapter)
-  const secretStorage = makeTestSecretStorage(options.secretStorageProbe)
+  const secretStorage = makeTestSecretStorage({
+    probeResult: options.secretStorageProbe,
+    sealing: options.secretStorageSealing
+  })
   const updater = makeTestUpdater(options.updateStatus)
 
   const services = Layer.mergeAll(

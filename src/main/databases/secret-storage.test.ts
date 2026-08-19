@@ -1,4 +1,9 @@
+import { log } from 'tiny-typescript-logger'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('tiny-typescript-logger', () => ({
+  log: { warn: vi.fn() }
+}))
 
 const {
   mockDecryptString,
@@ -22,6 +27,7 @@ vi.mock('electron', () => ({
 }))
 
 import {
+  getEncryptionState,
   isEncrypted,
   probeEncryption,
   safeStorageSecretStorage,
@@ -29,6 +35,10 @@ import {
 } from './secret-storage'
 
 const realPlatform = process.platform
+
+function warnings(): string[] {
+  return vi.mocked(log.warn).mock.calls.map(([message]) => message)
+}
 
 function stubPlatform(platform: string): void {
   Object.defineProperty(process, 'platform', {
@@ -186,6 +196,207 @@ describe('secretStorage', () => {
 
       expect(probeEncryption()).toEqual('available')
       expect(mockGetSelectedStorageBackend).not.toHaveBeenCalled()
+    })
+  })
+
+  // Three module-level variables used to hold this, so nothing reset the
+  // "already warned" latches when the mode changed and the one fact the app
+  // learned about a broken keychain went into a boolean nobody read.
+  describe('encryptionState', () => {
+    it('has no decision and nothing to say before the user answers', () => {
+      setSecretStorageMode('undecided')
+
+      expect(getEncryptionState()).toEqual({
+        mode: 'undecided',
+        warnedAboutPlaintext: false
+      })
+    })
+
+    // Granting is a fresh start: whatever this process learned while it was
+    // storing plaintext was learned about the mode being replaced.
+    it('trusts the keychain the moment permission is granted', () => {
+      setSecretStorageMode('plaintext')
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      setSecretStorageMode('keychain')
+
+      expect(getEncryptionState()).toEqual({
+        mode: 'keychain',
+        sealing: 'working'
+      })
+    })
+
+    it('stays working once a secret has actually been sealed', () => {
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      expect(getEncryptionState()).toEqual({
+        mode: 'keychain',
+        sealing: 'working'
+      })
+    })
+
+    it('records a keychain that has stopped offering encryption', () => {
+      mockIsEncryptionAvailable.mockReturnValue(false)
+
+      expect(safeStorageSecretStorage.encrypt('{"password":"x"}')).toEqual(
+        '{"password":"x"}'
+      )
+      expect(getEncryptionState()).toEqual({
+        mode: 'keychain',
+        sealing: 'failed'
+      })
+    })
+
+    // `encryptString` throwing is the likelier shape of a keychain that broke
+    // after permission was granted — a locked login keyring answers the
+    // availability check and then refuses to seal. It used to escape as a
+    // defect, which the caller sees as a 500 on an otherwise fine save.
+    it('records a keychain that throws on the way out', () => {
+      mockEncryptString.mockImplementation(() => {
+        throw new Error('The login keyring is locked.')
+      })
+
+      expect(safeStorageSecretStorage.encrypt('{"password":"x"}')).toEqual(
+        '{"password":"x"}'
+      )
+      expect(getEncryptionState()).toEqual({
+        mode: 'keychain',
+        sealing: 'failed'
+      })
+    })
+
+    it('clears the failure once the keychain seals again', () => {
+      mockIsEncryptionAvailable.mockReturnValue(false)
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      mockIsEncryptionAvailable.mockReturnValue(true)
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      expect(getEncryptionState()).toEqual({
+        mode: 'keychain',
+        sealing: 'working'
+      })
+    })
+
+    it('forgets a failure when the mode is applied again', () => {
+      mockIsEncryptionAvailable.mockReturnValue(false)
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      setSecretStorageMode('keychain')
+
+      expect(getEncryptionState()).toEqual({
+        mode: 'keychain',
+        sealing: 'working'
+      })
+    })
+
+    it('records that plaintext has been stored and warned about', () => {
+      setSecretStorageMode('plaintext')
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      expect(getEncryptionState()).toEqual({
+        mode: 'plaintext',
+        warnedAboutPlaintext: true
+      })
+    })
+  })
+
+  describe('warnings', () => {
+    // One line per break, not one per save: a user with ten connections would
+    // otherwise get ten identical warnings.
+    it('warns once while the keychain stays broken', () => {
+      mockIsEncryptionAvailable.mockReturnValue(false)
+
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+      safeStorageSecretStorage.encrypt('{"password":"y"}')
+
+      expect(warnings()).toEqual([
+        'OS keychain encryption is unavailable — storing connection secrets as plaintext.'
+      ])
+    })
+
+    // The whole point of a transition rather than a latch. A keychain that
+    // breaks, is fixed, and breaks again is two separate things worth saying;
+    // the old permanent latch said the second one to nobody.
+    it('warns again after the keychain recovers and breaks a second time', () => {
+      mockIsEncryptionAvailable.mockReturnValue(false)
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      mockIsEncryptionAvailable.mockReturnValue(true)
+      safeStorageSecretStorage.encrypt('{"password":"y"}')
+
+      mockIsEncryptionAvailable.mockReturnValue(false)
+      safeStorageSecretStorage.encrypt('{"password":"z"}')
+
+      expect(warnings()).toEqual([
+        'OS keychain encryption is unavailable — storing connection secrets as plaintext.',
+        'OS keychain encryption is unavailable — storing connection secrets as plaintext.'
+      ])
+    })
+
+    // What the keychain said is the only clue to what broke — a locked login
+    // keyring and a revoked login item both stop sealing, and the reported
+    // error is what tells them apart in a bug report.
+    it('repeats what the keychain said when sealing threw', () => {
+      mockEncryptString.mockImplementation(() => {
+        throw new Error('The login keyring is locked.')
+      })
+
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      expect(warnings()).toEqual([
+        'OS keychain encryption is unavailable — storing connection secrets as plaintext. The keychain reported: Error: The login keyring is locked.'
+      ])
+    })
+
+    // `throw undefined` is legal and reads as "the keychain said nothing",
+    // which is a different fact from "the keychain answered that encryption is
+    // unavailable" — and the two used to produce the same warning.
+    it('says the keychain reported nothing when it threw nothing', () => {
+      mockEncryptString.mockImplementation(() => {
+        throw undefined
+      })
+
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      expect(warnings()).toEqual([
+        'OS keychain encryption is unavailable — storing connection secrets as plaintext. The keychain reported: undefined'
+      ])
+    })
+
+    it('says nothing while the keychain is sealing', () => {
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      expect(warnings()).toEqual([])
+    })
+
+    it.each(['plaintext', 'undecided'] as const)(
+      'warns once about storing plaintext in %s mode',
+      (mode) => {
+        setSecretStorageMode(mode)
+
+        safeStorageSecretStorage.encrypt('{"password":"x"}')
+        safeStorageSecretStorage.encrypt('{"password":"y"}')
+
+        expect(warnings()).toEqual([
+          'Squeal does not have permission to use the OS keychain — storing connection secrets as plaintext.'
+        ])
+      }
+    )
+
+    // Nothing used to reset the latch, so a session that answered the consent
+    // screen twice fell silent after the first answer.
+    it('warns about plaintext again after the mode is applied again', () => {
+      setSecretStorageMode('plaintext')
+      safeStorageSecretStorage.encrypt('{"password":"x"}')
+
+      setSecretStorageMode('plaintext')
+      safeStorageSecretStorage.encrypt('{"password":"y"}')
+
+      expect(warnings()).toEqual([
+        'Squeal does not have permission to use the OS keychain — storing connection secrets as plaintext.',
+        'Squeal does not have permission to use the OS keychain — storing connection secrets as plaintext.'
+      ])
     })
   })
 

@@ -142,6 +142,42 @@ describe('DatabaseForm', () => {
     expect(request.url).toEqual('http://127.0.0.1:7847/secret-storage/grant')
   })
 
+  // Permission granted and nothing encrypted is the one outcome that used to
+  // read as a success: the mode is `keychain`, so the old check announced that
+  // every saved password was now encrypted while all of them were still
+  // plaintext.
+  it('says so when permission was granted but nothing could be encrypted', async () => {
+    const user = userEvent.setup()
+
+    secretStorageMode = 'plaintext'
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        message:
+          'Squeal has permission to use the macOS Keychain, but it refused to encrypt.',
+        mode: 'keychain',
+        storageName
+      })
+    )
+
+    renderDatabaseForm()
+
+    await user.click(screen.getByRole('button', { name: 'Turn on encryption' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Encryption is on, but some passwords are not')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          'Squeal has permission to use the macOS Keychain, but it refused to encrypt.'
+        )
+      ).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Encryption is on')).not.toBeInTheDocument()
+  })
+
   it('explains why turning encryption on did not work', async () => {
     const user = userEvent.setup()
 

@@ -8,9 +8,31 @@ export interface SecretStorage {
   encrypt(value: string): string
 }
 
+// Everything this process knows about its own encryption, in one value.
+//
+// `sealing` is representable only under `keychain` because that is the only
+// mode that tries to seal anything, and `warnedAboutPlaintext` only under the
+// two modes that never do — so there is no combination here that cannot
+// happen, and no latch that outlives the mode it was about.
+//
+// It is deliberately process-local and never persisted: a `'failed'` written to
+// disk would outlive the restart that fixed the keychain.
+export type EncryptionState =
+  | { readonly mode: 'keychain'; readonly sealing: 'failed' | 'working' }
+  | {
+      readonly mode: 'plaintext' | 'undecided'
+      readonly warnedAboutPlaintext: boolean
+    }
+
 export type KeychainProbeResult = 'available' | 'noKeyring' | 'unavailable'
 
 const encryptedPrefix = 'enc:v1:'
+
+const missingPermissionWarning =
+  'Squeal does not have permission to use the OS keychain — storing connection secrets as plaintext.'
+
+const unavailableEncryptionWarning =
+  'OS keychain encryption is unavailable — storing connection secrets as plaintext.'
 
 // This module is the only place in the app allowed to reach `safeStorage`, and
 // the mode is its permission to do so: outside `keychain`, nothing here touches
@@ -21,17 +43,27 @@ const encryptedPrefix = 'enc:v1:'
 // plain promise code alike, and `isEncryptionAvailable()` is called inside
 // `encrypt`, below the service boundary — a gate above it could not cover
 // either.
-let mode: SecretStorageMode = 'undecided'
+let state: EncryptionState = { mode: 'undecided', warnedAboutPlaintext: false }
 
-let warnedAboutMissingPermission = false
-let warnedAboutUnavailableEncryption = false
-
-export function getSecretStorageMode(): SecretStorageMode {
-  return mode
+export function getEncryptionState(): EncryptionState {
+  return state
 }
 
 export function setSecretStorageMode(next: SecretStorageMode): void {
-  mode = next
+  // Applying a mode is the reset. Whatever this process had learned — that the
+  // keychain was refusing to seal, that the plaintext warning had been given —
+  // was learned about the mode being replaced.
+  //
+  // `working` is the optimistic default rather than a third "not tried yet"
+  // value, and it is safe to be optimistic because nothing reports it: only
+  // `failed` is ever shown, and only a seal attempt can set it. Two of the
+  // three ways into keychain mode are evidence — a `probeEncryption()` that
+  // sealed a value, a database that already holds sealed rows — but the third
+  // is the mode read back from settings at boot, which has probed nothing.
+  state =
+    next === 'keychain'
+      ? { mode: 'keychain', sealing: 'working' }
+      : { mode: next, warnedAboutPlaintext: false }
 }
 
 export function isEncrypted(value: string): boolean {
@@ -78,6 +110,29 @@ export function probeEncryption(): KeychainProbeResult {
   }
 }
 
+// Warns on the transition into failure rather than latching, so a keychain that
+// breaks, is repaired, and breaks again says so both times. A latch said the
+// second one to nobody, and nothing reset it when the mode changed.
+// `reason` is already a string rather than the caught value, so "the keychain
+// answered that encryption is unavailable" and "the keychain threw `undefined`"
+// stay two different sentences.
+function recordSealingFailure(
+  value: string,
+  reason: string | undefined
+): string {
+  if (state.mode === 'keychain' && state.sealing !== 'failed') {
+    state = { mode: 'keychain', sealing: 'failed' }
+
+    log.warn(
+      reason === undefined
+        ? unavailableEncryptionWarning
+        : `${unavailableEncryptionWarning} The keychain reported: ${reason}`
+    )
+  }
+
+  return value
+}
+
 // Encrypts values with the OS keychain via Electron's safeStorage. Values are
 // stored as `enc:v1:<base64>`; anything without that prefix is treated as
 // plaintext and passed through, so rows written before the user granted
@@ -88,7 +143,7 @@ export const safeStorageSecretStorage: SecretStorage = {
       return value
     }
 
-    if (mode !== 'keychain') {
+    if (state.mode !== 'keychain') {
       // Only reachable with a database file copied from another machine, whose
       // rows are sealed with a key this one does not hold — so prompting would
       // buy nothing and would break the promise that the keychain stays
@@ -105,30 +160,32 @@ export const safeStorageSecretStorage: SecretStorage = {
   },
 
   encrypt(value: string): string {
-    if (mode !== 'keychain') {
-      if (!warnedAboutMissingPermission) {
-        warnedAboutMissingPermission = true
+    if (state.mode !== 'keychain') {
+      if (!state.warnedAboutPlaintext) {
+        state = { mode: state.mode, warnedAboutPlaintext: true }
 
-        log.warn(
-          'Squeal does not have permission to use the OS keychain — storing connection secrets as plaintext.'
-        )
+        log.warn(missingPermissionWarning)
       }
 
       return value
     }
 
-    if (!safeStorage.isEncryptionAvailable()) {
-      if (!warnedAboutUnavailableEncryption) {
-        warnedAboutUnavailableEncryption = true
-
-        log.warn(
-          'OS keychain encryption is unavailable — storing connection secrets as plaintext.'
-        )
+    // Sealing has to survive the keychain going wrong under it, not just
+    // answering `false`: a locked login keyring passes the availability check
+    // and then throws. Letting that escape turns an otherwise fine save into a
+    // 500, and the password never reaches the database at all.
+    try {
+      if (!safeStorage.isEncryptionAvailable()) {
+        return recordSealingFailure(value, undefined)
       }
 
-      return value
-    }
+      const sealed = safeStorage.encryptString(value).toString('base64')
 
-    return `${encryptedPrefix}${safeStorage.encryptString(value).toString('base64')}`
+      state = { mode: 'keychain', sealing: 'working' }
+
+      return `${encryptedPrefix}${sealed}`
+    } catch (error) {
+      return recordSealingFailure(value, String(error))
+    }
   }
 }
