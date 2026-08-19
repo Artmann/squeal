@@ -33,7 +33,7 @@ const defaultTimeoutMilliseconds = 600_000
  * reached by a real `yarn seed` on a machine where the containers are not up,
  * and none of them is legible in the error Node throws: a small file that the
  * command rejects reads `Command failed: docker exec -i squeal-mysql mysql
- * -uroot -pmysql`, and a large one reads `spawnSync docker EOF`.
+ * -uroot -pmysql`, and a large one reads `spawnSync docker EPIPE`.
  */
 function describeFailure(error: unknown, timeoutMilliseconds: number): string {
   const { code, status } = error as { code?: string; status?: number | null }
@@ -48,9 +48,13 @@ function describeFailure(error: unknown, timeoutMilliseconds: number): string {
 
   // The whole file goes to the child in one write, so a child that stops
   // reading fails the parent's write instead of the child. Node reports that as
-  // `EOF` and drops the exit status, and it happens whether the command failed
-  // or succeeded — so an incomplete load can arrive with status 0.
-  if (code === 'EOF') {
+  // `EPIPE` and drops the exit status, and it happens whether the command
+  // failed or succeeded — so an incomplete load arrives with `status: 0`, which
+  // is why this is asked before the status below and not after it.
+  //
+  // `EOF` sits beside it for Windows, where libuv translates the broken pipe to
+  // `UV_EOF` rather than `UV_EPIPE`.
+  if (code === 'EPIPE' || code === 'EOF') {
     return 'it stopped reading before the whole file was sent, so the load is incomplete. That usually means it rejected a statement, or the server is not accepting connections yet.'
   }
 
