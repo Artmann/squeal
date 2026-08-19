@@ -65,9 +65,18 @@ if (!hasSingleInstanceLock) {
   app.quit()
 }
 
-let runtime: MainRuntime | undefined
-let quitting = false
-let disposed = false
+// One value rather than a runtime beside two booleans. Three booleans gave
+// eight combinations for a four-state lifecycle, and the states that cannot
+// have a runtime could still name one — which is how `createWindow()` came to
+// run without consulting any of them. Here the runtime is present exactly where
+// it is usable, so the question has to be asked to reach it.
+type Lifecycle =
+  | { runtime: MainRuntime; status: 'booting' }
+  | { runtime: MainRuntime; status: 'quitting' }
+  | { runtime: MainRuntime; status: 'running' }
+  | { status: 'idle' }
+
+let lifecycle: Lifecycle = { status: 'idle' }
 
 // Long enough for a normal flush, short enough that a wedged dependency cannot
 // hold the app open.
@@ -148,7 +157,7 @@ function describeError(error: unknown): string {
 // not a boot failure, so it must not raise a dialog racing the before-quit
 // handler's own exit.
 function isShutdownInterruption(cause: Cause.Cause<unknown>): boolean {
-  return quitting || Cause.isInterruptedOnly(cause)
+  return lifecycle.status === 'quitting' || Cause.isInterruptedOnly(cause)
 }
 
 function reportBootFailure(error: unknown): void {
@@ -170,6 +179,66 @@ function reportBootFailure(error: unknown): void {
   )
 }
 
+/**
+ * Shut the backend down, then leave — within `disposeTimeoutMs` either way.
+ *
+ * Disposing closes the HTTP server, interrupts the retention fibers and any
+ * running queries, and releases the app database. None of that is allowed to
+ * hold the app open, so the exit happens on every path; what the two warnings
+ * add is a way to tell those paths apart afterwards, since all three reach the
+ * same `app.exit(0)` and a backend that wedges on every quit otherwise leaves
+ * no trace of having done so.
+ */
+async function shutDown(runtime: MainRuntime): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const reportFailure = (error: unknown) => {
+    log.warn(
+      `The backend errored while shutting down: ${describeError(error)}. Exiting anyway — whatever it still held is released by the process going away.`
+    )
+
+    return 'failed' as const
+  }
+
+  try {
+    const timeout = new Promise<'timedOut'>((resolve) => {
+      timer = setTimeout(() => {
+        resolve('timedOut')
+      }, disposeTimeoutMs)
+    })
+
+    // Handled on the disposal itself rather than after the race, because the
+    // race may already have been won by the timeout — and an unhandled
+    // rejection from a process on its way out prints, if at all, after the exit
+    // it belongs to.
+    //
+    // Called inside the `try` but still synchronously, before the first await:
+    // `quitAndInstall` primes an installer that only runs once this process is
+    // gone, so the teardown has to start before the `before-quit` handler that
+    // reached here returns. What the `try` adds is the exit on the last path
+    // that lacked one — a `dispose()` that throws where it should have rejected
+    // would otherwise skip the `finally`, and the quit it skips has already
+    // been prevented, so nothing would be left to release it.
+    const disposal = runtime
+      .dispose()
+      .then(() => 'disposed' as const, reportFailure)
+
+    if ((await Promise.race([disposal, timeout])) === 'timedOut') {
+      log.warn(
+        `The backend did not shut down within ${disposeTimeoutMs}ms. Exiting anyway — any queries still running were left for their own server to clean up.`
+      )
+    }
+  } catch (error) {
+    reportFailure(error)
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+    }
+
+    app.exit(0)
+  }
+}
+
 app.on('ready', async () => {
   // A losing second instance is already quitting; booting the backend here
   // would still write to the shared database before the process goes away.
@@ -181,12 +250,14 @@ app.on('ready', async () => {
 
   apiToken = randomBytes(32).toString('hex')
 
-  runtime = makeMainRuntime({
+  const runtime = makeMainRuntime({
     allowedOrigins: corsAllowedOrigins(),
     // Lets local agents read traces with plain curl during development.
     publicTraceReads: !app.isPackaged,
     token: apiToken
   })
+
+  lifecycle = { runtime, status: 'booting' }
 
   // Forces the runtime layer to build: the app database initializes,
   // interrupted queries are reconciled, the encryption migration runs
@@ -205,6 +276,17 @@ app.on('ready', async () => {
     return
   }
 
+  // The same question the failure arm asks through `isShutdownInterruption`,
+  // asked on this arm too. A quit that landed while the boot was in flight has
+  // already started disposing the runtime this window would talk to, and is
+  // seconds from `app.exit(0)`: what it opens is a window whose every request
+  // fails, for as long as it survives.
+  if (lifecycle.status !== 'booting') {
+    return
+  }
+
+  lifecycle = { runtime, status: 'running' }
+
   createWindow()
 })
 
@@ -216,8 +298,12 @@ app.on('second-instance', () => {
 // closes the HTTP server, interrupts the retention fiber and any running
 // queries (best-effort canceling their server-side statements), and releases
 // the app database.
+//
+// `idle` is the losing second instance and anything else that quits before
+// `ready`: it has nothing to shut down, and holding its quit would hold it
+// forever, since what releases the hold is the exit at the end of `shutDown`.
 app.on('before-quit', (event) => {
-  if (runtime === undefined || disposed) {
+  if (lifecycle.status === 'idle') {
     return
   }
 
@@ -227,26 +313,15 @@ app.on('before-quit', (event) => {
   // process mid-flush, defeating the whole point of this handler.
   event.preventDefault()
 
-  if (quitting) {
+  if (lifecycle.status === 'quitting') {
     return
   }
 
-  quitting = true
+  const { runtime } = lifecycle
 
-  let timer: ReturnType<typeof setTimeout> | undefined
+  lifecycle = { runtime, status: 'quitting' }
 
-  const timeout = new Promise((resolve) => {
-    timer = setTimeout(resolve, disposeTimeoutMs)
-  })
-
-  void Promise.race([runtime.dispose(), timeout]).finally(() => {
-    if (timer !== undefined) {
-      clearTimeout(timer)
-    }
-
-    disposed = true
-    app.exit(0)
-  })
+  void shutDown(runtime)
 })
 
 app.on('window-all-closed', () => {
@@ -256,6 +331,15 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
+  // The same refusal the boot path makes, on the other door into `createWindow`.
+  // A shutting-down app has no windows either, so a dock click here is
+  // indistinguishable from the last-window-closed app this exists to revive —
+  // except that what it would open talks to a runtime already inside
+  // `dispose()`, seconds from `app.exit(0)`.
+  if (lifecycle.status !== 'running') {
+    return
+  }
+
   // Asked through the same lookup as everywhere else, so there is one answer to
   // "is there a window?" rather than two spellings of it that can drift.
   if (!getMainWindow()) {
