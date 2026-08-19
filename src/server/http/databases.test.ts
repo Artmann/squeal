@@ -323,6 +323,40 @@ describe('database routes', () => {
     )
   })
 
+  // A secret this build cannot read is an expected state with a repair the user
+  // can carry out. Left to the internal-error backstop it answered a 500 whose
+  // body says "restart Squeal", which is neither true nor actionable.
+  it('answers a schema request for an unreadable secret with its own message', async () => {
+    const error = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        // The only row in a fresh test database, so no filter is needed.
+        yield* appDatabase.execute((db) =>
+          db.update(databasesTable).set({ connectionInfo: 'not-decryptable' })
+        )
+
+        return yield* client.databases
+          .schema({ path: { id: created.database.id } })
+          .pipe(Effect.flip)
+      })
+    )
+
+    expect(error).toEqual(
+      expect.objectContaining({
+        _tag: 'SchemaLoadFailedError',
+        databaseName: 'Pagila',
+        message:
+          'Stored connection info could not be read. Edit the connection and save it again.'
+      })
+    )
+  })
+
   it('reports unknown ids on reorder', async () => {
     const error = await run(
       Effect.gen(function* () {

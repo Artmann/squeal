@@ -4,6 +4,7 @@ import { Cause, Effect, Option } from 'effect'
 import type { DatabaseAdapter } from '@/databases/adapter'
 import { SquealApi } from '@/glue/api/api'
 import { DatabaseNotFoundError, SchemaLoadFailedError } from '@/glue/api/errors'
+import type { SecretDecryptError } from '@/server/errors'
 import { AdapterFactory } from '@/server/services/adapter-factory'
 import { DatabaseService } from '@/server/services/database-service'
 import { orDieInternal } from '../internal-errors'
@@ -50,7 +51,13 @@ export const DatabasesLive = HttpApiBuilder.group(
           const service = yield* DatabaseService
           const adapterFactory = yield* AdapterFactory
 
-          const record = yield* service.getWithSecrets(path.id)
+          // A secret this build cannot read is an expected state with a repair
+          // the user can carry out, not a bug — left to orDieInternal it becomes
+          // a 500 whose body says "restart Squeal", which is neither true nor
+          // something they can act on.
+          const record = yield* service
+            .getWithSecrets(path.id)
+            .pipe(Effect.catchTag('SecretDecryptError', schemaLoadFailed))
 
           if (Option.isNone(record)) {
             return yield* new DatabaseNotFoundError({
@@ -90,6 +97,17 @@ export const DatabasesLive = HttpApiBuilder.group(
         }).pipe(orDieInternal)
       )
 )
+
+function schemaLoadFailed(error: SecretDecryptError) {
+  return Effect.fail(
+    new SchemaLoadFailedError({
+      // getWithSecrets names the row it read; the fallback only covers a caller
+      // that did not, and reads as part of the sentence.
+      databaseName: error.databaseName ?? 'this connection',
+      message: error.message
+    })
+  )
+}
 
 function loadSchema(adapter: DatabaseAdapter, databaseName: string) {
   return Effect.tryPromise(() => adapter.getSchema()).pipe(

@@ -7,6 +7,7 @@ import {
   useMemo,
   useState
 } from 'react'
+import { toast } from 'sonner'
 import invariant from 'tiny-invariant'
 
 import { AppSidebar } from './components/AppSidebar'
@@ -27,6 +28,8 @@ import {
 import { useCancelQuery } from './hooks/mutations'
 import { useStartQuery } from './hooks/use-start-query'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
+import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
+import { secretStorageMessages } from '@/glue/secret-storage'
 import { useAppDispatch, useAppSelector } from './store'
 import { selectActiveWorksheetId } from './store/tabs-slice'
 import { uiActions } from './store/ui-slice'
@@ -117,6 +120,7 @@ function useLatestQuery(openWorksheetId: string | undefined) {
 
 function useRunQuery(
   activeStatement: Statement | null,
+  database: DatabaseDto | undefined,
   databaseId: string | null | undefined,
   worksheetId: string | undefined,
   flushSave: () => void
@@ -130,13 +134,37 @@ function useRunQuery(
       return
     }
 
+    // Refused here rather than left to fail: the run would be accepted, the row
+    // written, and the reason would only surface once the background fiber tried
+    // to open a connection it has no password for.
+    //
+    // `databaseId` is kept as its own argument because a worksheet can point at
+    // a database that no longer exists — then there is no DTO to check, and the
+    // backend is the one that says so.
+    if (database !== undefined && isConnectionUnreadable(database)) {
+      toast.error("Can't run this query", {
+        description: secretStorageMessages.cannotRunUnreadableConnection(
+          database.name
+        )
+      })
+
+      return
+    }
+
     // Running is a good moment to stop waiting out the debounce: the statement
     // is already taken from the editor, so this only makes the saved copy match
     // what just ran. Nothing waits on it — the query carries its own SQL.
     flushSave()
 
     startQuery({ content: activeStatement.text, databaseId, worksheetId })
-  }, [activeStatement, databaseId, flushSave, startQuery, worksheetId])
+  }, [
+    activeStatement,
+    database,
+    databaseId,
+    flushSave,
+    startQuery,
+    worksheetId
+  ])
 }
 
 /**
@@ -176,19 +204,20 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     [queueSave, recordEditedContent]
   )
 
-  const handleRunQuery = useRunQuery(
-    activeStatement,
-    currentWorksheet?.databaseId,
-    openWorksheetId,
-    flushSave
-  )
-
   const currentDatabase = useMemo(
     () =>
       databases.data.find(
         (database) => database.id === currentWorksheet?.databaseId
       ),
     [databases.data, currentWorksheet?.databaseId]
+  )
+
+  const handleRunQuery = useRunQuery(
+    activeStatement,
+    currentDatabase,
+    currentWorksheet?.databaseId,
+    openWorksheetId,
+    flushSave
   )
 
   return {
@@ -342,8 +371,7 @@ function Workspace(): ReactElement {
 
         <StatusBar
           cursorPosition={cursorPosition}
-          databaseId={currentWorksheet?.databaseId ?? undefined}
-          databaseName={currentDatabase?.name}
+          database={currentDatabase}
           query={query}
           saveState={saveState}
         />

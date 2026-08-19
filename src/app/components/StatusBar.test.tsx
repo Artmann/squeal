@@ -1,26 +1,46 @@
-import { screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { SchemaInfo } from '@/databases/adapter'
-import type { QueryDto, UpdateStatusResponse } from '@/glue/api/schemas'
+import type { QueryDto } from '@/glue/api/schemas'
+import { DatabaseDto } from '@/glue/databases'
 
 import { renderWithProviders } from '../test-utils'
 import { StatusBar } from './StatusBar'
 
-// `StatusBar` mounts `useServerVersion` and `UpdateIndicator`, and both fetch.
-// Seeded here so they read the cache instead: unseeded they are six real
-// requests to `127.0.0.1:7847`, which is the port `yarn start` binds — measured
-// by listening on it. They resolve to nothing this file asserts on, so all
-// three cases pass either way; what it costs is two `RequestError` stack traces
-// printed above the assertion diff whenever one of them does fail.
-const schema: SchemaInfo = { databaseName: 'pagila', tables: [] }
-const updateStatus: UpdateStatusResponse = {
-  currentVersion: '1.2.0',
-  lastCheckedAt: 1_700_000_000_000,
-  message: 'Updates are only available in a packaged build.',
-  releaseNotesUrl: null,
-  state: 'unsupported',
-  version: null
+vi.mock('../api-client', () => ({
+  apiClient: {
+    getDatabaseSchema: vi.fn(async () => ({
+      databaseName: 'pagila',
+      tables: []
+    })),
+    getDatabases: vi.fn(async () => []),
+    getQueries: vi.fn(async () => []),
+    getUpdateStatus: vi.fn(async () => ({
+      currentVersion: '1.4.2',
+      lastCheckedAt: null,
+      message: null,
+      releaseNotesUrl: null,
+      state: 'idle',
+      version: null
+    })),
+    getWorksheets: vi.fn(async () => [])
+  }
+}))
+
+import { apiClient } from '../api-client'
+
+const testDatabase: DatabaseDto = {
+  connectionInfo: {
+    database: 'pagila',
+    host: 'localhost',
+    port: 5432,
+    username: 'postgres'
+  },
+  createdAt: 1,
+  id: 'database-1',
+  name: 'Pagila',
+  sortOrder: null,
+  type: 'postgres'
 }
 
 /**
@@ -38,7 +58,7 @@ function count(value: number): string {
 function query(overrides: Partial<QueryDto> = {}): QueryDto {
   return {
     content: 'SELECT * FROM film',
-    databaseId: 'db-1',
+    databaseId: 'database-1',
     error: null,
     finishedAt: 3373,
     id: 'q-1',
@@ -54,35 +74,65 @@ function query(overrides: Partial<QueryDto> = {}): QueryDto {
   }
 }
 
-function renderStatusBar(current: QueryDto): void {
-  renderWithProviders(
+function renderStatusBar(
+  database: DatabaseDto | undefined,
+  current?: QueryDto
+) {
+  return renderWithProviders(
     <StatusBar
       cursorPosition={undefined}
-      databaseId="db-1"
-      databaseName="Pagila"
+      database={database}
       query={current}
-      saveState="saved"
+      saveState="idle"
     />,
-    { schemas: { 'db-1': schema }, updateStatus }
+    { databases: database ? [database] : [] }
   )
 }
 
-// The row count in the status bar is the only place a truncated result says so
-// once the results pane has scrolled away, and `+` is the whole of the saying.
-// Without it the reader is told the query returned exactly 100 rows when the
-// driver stopped counting at 100 — a number they may go on to trust.
-//
-// Truncation reaches here through `query.result.truncated`, which is now the
-// only place it is carried; the copy `QueryDto` used to hold beside the result
-// had no readers and is gone. These cases are what stop the remaining one from
-// being dropped or inverted unnoticed.
-//
-// Scoped to the row-count summary. The connection-health dot, its tooltips and
-// the save-state label share this component and are covered by nothing — each
-// can be replaced with a constant and every case below stays green.
 describe('StatusBar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('names the connection and reads its server version', async () => {
+    renderStatusBar(testDatabase)
+
+    expect(screen.getByText('Pagila')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('database-1')
+    })
+  })
+
+  it('says so when the worksheet has no connection', () => {
+    renderStatusBar(undefined)
+
+    expect(screen.getByText('No database')).toBeInTheDocument()
+    expect(apiClient.getDatabaseSchema).not.toHaveBeenCalled()
+  })
+
+  // The version rides along with the schema, and there is no schema to load for
+  // a connection whose stored secret cannot be read — asking spends a failing
+  // request on an answer the database list already gave.
+  it('asks for no schema when the stored details cannot be read', () => {
+    renderStatusBar({ ...testDatabase, connectionInfo: null })
+
+    expect(screen.getByText('Pagila')).toBeInTheDocument()
+    expect(apiClient.getDatabaseSchema).not.toHaveBeenCalled()
+  })
+
+  // The row count in the status bar is the only place a truncated result says
+  // so once the results pane has scrolled away, and `+` is the whole of the
+  // saying. Without it the reader is told the query returned exactly 100 rows
+  // when the driver stopped counting at 100 — a number they may go on to trust.
+  //
+  // Truncation reaches here through `query.result.truncated`, which is now the
+  // only place it is carried; the copy `QueryDto` used to hold beside the
+  // result had no readers and is gone. These cases are what stop the remaining
+  // one from being dropped or inverted unnoticed.
   it('marks a truncated row count so the number is not read as a total', () => {
     renderStatusBar(
+      testDatabase,
       query({
         result: {
           fields: [{ name: 'title' }],
@@ -99,7 +149,7 @@ describe('StatusBar', () => {
   })
 
   it('leaves a complete row count unmarked', () => {
-    renderStatusBar(query())
+    renderStatusBar(testDatabase, query())
 
     expect(screen.getByText(`${count(100)} rows in 2.37 s`)).toBeInTheDocument()
   })
@@ -114,6 +164,7 @@ describe('StatusBar', () => {
   // absence alone waves through.
   it('groups a large row count so the digits can be read', () => {
     renderStatusBar(
+      testDatabase,
       query({
         result: {
           fields: [{ name: 'title' }],

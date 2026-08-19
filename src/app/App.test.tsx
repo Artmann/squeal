@@ -178,6 +178,27 @@ describe('running a query', () => {
     })
   })
 
+  // The run used to be accepted and the reason only surfaced once the background
+  // fiber tried to open a connection it has no password for.
+  it('refuses to run against a connection whose details cannot be read', async () => {
+    renderWithProviders(<RunProbe />, {
+      databases: [{ ...testDatabase, connectionInfo: null }],
+      openWorksheetId: 'ws-1',
+      queries: [],
+      worksheets: [testWorksheet]
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'run' }))
+
+    expect(
+      await screen.findByText(
+        'Squeal can\'t read the saved details for "Pagila". Open the connection and re-enter them.'
+      )
+    ).toBeInTheDocument()
+
+    expect(apiClient.createQuery).not.toHaveBeenCalled()
+  })
+
   it('saves the pending edit when a query runs', async () => {
     // Fake timers hold the autosave debounce open, so a save showing up here can
     // only have come from the run itself. `waitFor` would defeat that by

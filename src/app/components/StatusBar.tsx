@@ -2,6 +2,7 @@ import { ActivityIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
 import type { QueryDto } from '@/glue/api/schemas'
+import type { DatabaseDto } from '@/glue/databases'
 
 import type { SaveState } from '../hooks/useWorksheetAutosave'
 import { useServerVersion } from '../hooks/queries'
@@ -14,8 +15,8 @@ type ConnectionHealth = 'failed' | 'succeeded' | 'unknown'
 
 interface StatusBarProps {
   cursorPosition: CursorPosition | undefined
-  databaseId: string | undefined
-  databaseName: string | undefined
+  /** The worksheet's connection, or undefined when it has none this app knows. */
+  database: DatabaseDto | undefined
   query: QueryDto | undefined
   saveState: SaveState
 }
@@ -66,13 +67,12 @@ function formatRunSummary(query: QueryDto | undefined): string | undefined {
 
 export function StatusBar({
   cursorPosition,
-  databaseId,
-  databaseName,
+  database,
   query,
   saveState
 }: StatusBarProps): ReactElement {
   const dispatch = useAppDispatch()
-  const serverVersion = useServerVersion(databaseId)
+  const serverVersion = useServerVersion(database)
 
   const health = getConnectionHealth(query)
   const runSummary = formatRunSummary(query)
@@ -89,7 +89,7 @@ export function StatusBar({
           style={{ backgroundColor: healthColors[health] }}
         />
 
-        {databaseName ?? 'No database'}
+        {database?.name ?? 'No database'}
       </span>
 
       {serverVersion !== undefined && (

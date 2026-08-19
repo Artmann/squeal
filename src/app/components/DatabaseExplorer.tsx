@@ -9,7 +9,8 @@ import {
   RefreshCwIcon,
   SearchIcon,
   Table2Icon,
-  Trash2
+  Trash2,
+  TriangleAlertIcon
 } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -51,14 +52,26 @@ import {
   ContextMenuTrigger
 } from './ui/context-menu'
 import type { SchemaInfo, TableInfo } from '@/databases/adapter'
-import { DatabaseDto } from '@/glue/databases'
+import { DatabaseDto, isConnectionUnreadable } from '@/glue/databases'
+import { secretStorageMessages } from '@/glue/secret-storage'
 import { DropIndicatorLine } from './DropIndicatorLine'
 
 interface RenderedDatabaseRow {
   database: DatabaseDto
   hasMultipleSchemas: boolean
+  /** The row's stored secret could not be read, so there is nothing to browse. */
+  isUnreadable: boolean
+  /** Why this database's schema could not be loaded, if it could not. */
+  schemaError?: string
   searchMatch?: DatabaseMatch
   tables: TableInfo[]
+}
+
+// Only what this module needs from a schema query, so the row builder stays a
+// pure function the tests can call directly.
+interface SchemaResult {
+  data: SchemaInfo | undefined
+  error: Error | null
 }
 
 // Builds the rows to render: while searching, only databases with a match
@@ -74,29 +87,36 @@ interface RenderedDatabaseRow {
 // resolving it here is what lets the list component take a plain array of
 // tables. `DatabaseRow` is still handed the match, but only to decide whether
 // the row is open.
+//
+// A row also carries why it has no tables when it has none. Both reasons look
+// identical in a tree — an empty subtree — and neither is: one needs the
+// password re-entered, the other names a server that did not answer.
 function computeRenderedRows(
   databases: DatabaseDto[],
-  schemas: (SchemaInfo | undefined)[],
+  schemaResults: (SchemaResult | undefined)[],
   searchQuery: string
 ): RenderedDatabaseRow[] {
   const isSearching = searchQuery.trim().length > 0
 
   const rows = databases.map((database, index) => {
+    const schema = schemaResults[index]?.data
+
     const searchMatch = isSearching
-      ? (computeDatabaseMatch(database, schemas[index], searchQuery) ??
-        undefined)
+      ? (computeDatabaseMatch(database, schema, searchQuery) ?? undefined)
       : undefined
 
     return {
       database,
-      hasMultipleSchemas: spansMultipleSchemas(schemas[index]),
+      hasMultipleSchemas: spansMultipleSchemas(schema),
+      isUnreadable: isConnectionUnreadable(database),
+      schemaError: schemaResults[index]?.error?.message,
       searchMatch,
       // Reading the schema here rather than in the expanded row gives up no
       // laziness: the caller fetches every schema unconditionally. If a
       // conditional prefetch is ever reintroduced, the tables have to be
       // threaded from wherever that fetch lands instead of being read again
       // further down.
-      tables: searchMatch?.tables ?? schemas[index]?.tables ?? []
+      tables: searchMatch?.tables ?? schema?.tables ?? []
     }
   })
 
@@ -291,13 +311,20 @@ export function DatabaseExplorer(): ReactElement {
   // Prefetch every schema in the background so search and expansion are instant,
   // and reuse those results as the source for what each row shows, matched or
   // not.
+  //
+  // A database whose secret cannot be read is asked for nothing: the request
+  // would fail for a reason already known from the list, and with retries it
+  // fails several times per row on every launch.
   const schemaResults = useDatabaseSchemas(
-    databases.data.map((database) => database.id)
+    databases.data.map((database) => ({
+      databaseId: database.id,
+      isEnabled: !isConnectionUnreadable(database)
+    }))
   )
 
   const renderedRows = computeRenderedRows(
     databases.data,
-    schemaResults.map((result) => result.data),
+    schemaResults,
     databaseSearchQuery
   )
 
@@ -369,6 +396,8 @@ export function DatabaseExplorer(): ReactElement {
                 expansion={expandedDatabases[row.database.id]}
                 hasMultipleSchemas={row.hasMultipleSchemas}
                 isSortingDisabled={isSortingDisabled}
+                isUnreadable={row.isUnreadable}
+                schemaError={row.schemaError}
                 searchMatch={row.searchMatch}
                 searchQuery={normalizedSearchQuery}
                 tables={row.tables}
@@ -462,9 +491,11 @@ interface DatabaseRowProps {
   expansion: DatabaseExpansion | undefined
   hasMultipleSchemas: boolean
   isSortingDisabled: boolean
+  isUnreadable: boolean
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
   onRefresh: (database: DatabaseDto) => void
+  schemaError?: string
   /** Only for deciding whether the row is open — what it shows is `tables`. */
   searchMatch?: DatabaseMatch
   /** Normalized, so trailing whitespace does not count as a new question. */
@@ -514,35 +545,74 @@ function isRowExpanded(
   return searchMatch?.expandDatabase === true ? true : expandedByUser
 }
 
+interface RowActivationOptions {
+  databaseId: string
+  isExpanded: boolean
+  isUnreadable: boolean
+  onEdit: (databaseId: string) => void
+  searchQuery: string
+}
+
+// What clicking a row does.
+//
+// Expanding is stamped with the query it answers, and derived from the resolved
+// state — what the user is actually looking at — so the write always matches
+// what they just clicked.
+//
+// An unreadable row has no tree to open, so its click goes where the only useful
+// action is: the form that repairs it. Toggling instead would answer a click
+// with nothing happening.
+function useRowActivation({
+  databaseId,
+  isExpanded,
+  isUnreadable,
+  onEdit,
+  searchQuery
+}: RowActivationOptions): () => void {
+  const dispatch = useAppDispatch()
+
+  return useCallback(() => {
+    if (isUnreadable) {
+      onEdit(databaseId)
+
+      return
+    }
+
+    dispatch(
+      setDatabaseExpanded({
+        databaseId,
+        isExpanded: !isExpanded,
+        query: searchQuery
+      })
+    )
+  }, [databaseId, dispatch, isExpanded, isUnreadable, onEdit, searchQuery])
+}
+
 function DatabaseRow({
   database,
   dropIndicator,
   expansion,
   hasMultipleSchemas,
   isSortingDisabled,
+  isUnreadable,
   onDelete,
   onEdit,
   onRefresh,
+  schemaError,
   searchMatch,
   searchQuery,
   tables
 }: DatabaseRowProps): ReactElement {
-  const dispatch = useAppDispatch()
+  const isDatabaseExpanded =
+    !isUnreadable && isRowExpanded(expansion, searchMatch, searchQuery)
 
-  const isDatabaseExpanded = isRowExpanded(expansion, searchMatch, searchQuery)
-
-  // Stamped with the query it answers, and derived from the resolved state —
-  // what the user is actually looking at — so the write always matches what
-  // they just clicked.
-  const handleToggle = useCallback(() => {
-    dispatch(
-      setDatabaseExpanded({
-        databaseId: database.id,
-        isExpanded: !isDatabaseExpanded,
-        query: searchQuery
-      })
-    )
-  }, [database.id, dispatch, isDatabaseExpanded, searchQuery])
+  const handleActivate = useRowActivation({
+    databaseId: database.id,
+    isExpanded: isDatabaseExpanded,
+    isUnreadable,
+    searchQuery,
+    onEdit
+  })
 
   const {
     attributes,
@@ -571,44 +641,144 @@ function DatabaseRow({
       <DatabaseRowHeader
         database={database}
         isExpanded={isDatabaseExpanded}
+        isUnreadable={isUnreadable}
+        schemaError={schemaError}
         // While filtering only dragging is off, so skip the sortable props
         // entirely — spreading them would mark the row aria-disabled even
         // though clicking still works.
         sortableProps={isSortingDisabled ? {} : { ...attributes, ...listeners }}
+        onActivate={handleActivate}
         onDelete={onDelete}
         onEdit={onEdit}
         onRefresh={onRefresh}
-        onToggle={handleToggle}
       />
 
       {isDatabaseExpanded && (
-        <DatabaseTableList
+        <DatabaseRowBody
           database={database}
           hasMultipleSchemas={hasMultipleSchemas}
+          schemaError={schemaError}
           tables={tables}
+          onRefresh={onRefresh}
         />
       )}
     </div>
   )
 }
 
+interface DatabaseRowBodyProps {
+  database: DatabaseDto
+  hasMultipleSchemas: boolean
+  onRefresh: (database: DatabaseDto) => void
+  schemaError?: string
+  tables: TableInfo[]
+}
+
+// What an open row holds: its tables, or why they are missing.
+function DatabaseRowBody({
+  database,
+  hasMultipleSchemas,
+  onRefresh,
+  schemaError,
+  tables
+}: DatabaseRowBodyProps): ReactElement {
+  if (schemaError !== undefined) {
+    return (
+      <DatabaseRowNotice
+        actionLabel="Retry"
+        message={schemaError}
+        onAction={() => onRefresh(database)}
+      />
+    )
+  }
+
+  return (
+    <DatabaseTableList
+      database={database}
+      hasMultipleSchemas={hasMultipleSchemas}
+      tables={tables}
+    />
+  )
+}
+
+interface DatabaseRowNoticeProps {
+  actionLabel: string
+  message: string
+  onAction: () => void
+}
+
+// Why an expanded row has no tables, in the place the tables would have been,
+// with the one action that changes it — rather than an empty subtree that looks
+// like a database with nothing in it. Only reached for a row the user opened, so
+// the sentence is never repeated down the whole list.
+function DatabaseRowNotice({
+  actionLabel,
+  message,
+  onAction
+}: DatabaseRowNoticeProps): ReactElement {
+  return (
+    <div className="pt-[1px] pr-[6px] pb-[3px] pl-[26px]">
+      <p className="text-[11.5px] leading-relaxed text-text2">{message}</p>
+
+      <button
+        className="text-[11.5px] text-accent hover:underline"
+        type="button"
+        onClick={onAction}
+      >
+        {actionLabel}
+      </button>
+    </div>
+  )
+}
+
+interface RowWarningIconProps {
+  className?: string
+  label: string
+}
+
+// The accessible name and the tooltip both live on the wrapper rather than on
+// the SVG: `title` is an HTML attribute, and browsers do not treat it as one
+// when it lands on an svg element.
+function RowWarningIcon({
+  className,
+  label
+}: RowWarningIconProps): ReactElement {
+  return (
+    <span
+      aria-label={label}
+      className={cn('flex flex-none items-center', className)}
+      role="img"
+      title={label}
+    >
+      <TriangleAlertIcon
+        aria-hidden
+        className="size-[10px] text-err"
+      />
+    </span>
+  )
+}
+
 interface DatabaseRowHeaderProps {
   database: DatabaseDto
   isExpanded: boolean
+  isUnreadable: boolean
+  onActivate: () => void
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
   onRefresh: (database: DatabaseDto) => void
-  onToggle: () => void
+  schemaError?: string
   sortableProps: Record<string, unknown>
 }
 
 function DatabaseRowHeader({
   database,
   isExpanded,
+  isUnreadable,
+  onActivate,
   onDelete,
   onEdit,
   onRefresh,
-  onToggle,
+  schemaError,
   sortableProps
 }: DatabaseRowHeaderProps): ReactElement {
   return (
@@ -616,23 +786,52 @@ function DatabaseRowHeader({
       <ContextMenuTrigger>
         <button
           {...sortableProps}
-          aria-expanded={isExpanded}
+          // Nothing expands, so the row does not claim to: aria-expanded on a
+          // control that opens nothing tells a screen reader to wait for a
+          // subtree that never arrives.
+          aria-expanded={isUnreadable ? undefined : isExpanded}
           className="flex h-[var(--item-h)] w-full cursor-default items-center gap-[6px] rounded-[6px] px-[6px] text-left text-text2 hover:bg-hover"
           type="button"
-          onClick={onToggle}
+          onClick={onActivate}
         >
-          <ChevronRight
-            className={cn(
-              'size-[10px] flex-none text-text3 transition-transform duration-150',
-              isExpanded ? 'rotate-90' : ''
-            )}
-          />
+          {isUnreadable ? (
+            <RowWarningIcon
+              label={secretStorageMessages.unreadableConnection}
+            />
+          ) : (
+            <ChevronRight
+              className={cn(
+                'size-[10px] flex-none text-text3 transition-transform duration-150',
+                isExpanded ? 'rotate-90' : ''
+              )}
+            />
+          )}
 
           <Database className="size-[13px] flex-none text-text3" />
 
           <span className="min-w-0 truncate text-[12.5px] text-text">
             {database.name}
           </span>
+
+          {/* The whole row already opens the repair form, so this is a label
+              rather than a control — a button inside a button. Kept to one line
+              and one short phrase: with several broken connections, a sentence
+              per row buries the list it is describing, and the marker's tooltip
+              is where the full explanation lives. */}
+          {isUnreadable && (
+            <span className="ml-auto flex-none text-[11px] text-accent">
+              Re-enter details
+            </span>
+          )}
+
+          {/* A readable connection whose schema would not load keeps its
+              chevron — there is still a subtree, carrying the reason. */}
+          {schemaError !== undefined && (
+            <RowWarningIcon
+              className="ml-auto"
+              label={schemaError}
+            />
+          )}
         </button>
       </ContextMenuTrigger>
 
