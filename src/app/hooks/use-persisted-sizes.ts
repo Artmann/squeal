@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { clamp, readStorageItem, writeStorageItem } from './panel-size-storage'
+
 export interface PersistedSizesOptions {
   defaultSize: number
   maximum: number
@@ -22,28 +24,6 @@ export interface PersistedSizes {
 interface Sizes {
   default: number
   sizes: Record<string, number>
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, value))
-}
-
-// Storage can be unavailable (or throw) in some Electron contexts, and a panel
-// size is never important enough to break rendering over.
-function readStorageItem(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function writeStorageItem(key: string, value: string): void {
-  try {
-    window.localStorage.setItem(key, value)
-  } catch {
-    // A size that fails to persist is still usable for this session.
-  }
 }
 
 // A stored size only survives when it is a finite number that lands inside the
@@ -117,7 +97,19 @@ function readStoredSizes(options: PersistedSizesOptions): Sizes {
     return empty
   }
 
-  const record = parsed as { default?: unknown; sizes?: unknown }
+  return readStoredRecord(
+    parsed as { default?: unknown; sizes?: unknown },
+    options
+  )
+}
+
+// The record shape, once `readStoredSizes` has established that it is one. Split
+// out because the two halves fail differently: everything above rejects the
+// stored value whole, everything here keeps what survives and drops the rest.
+function readStoredRecord(
+  record: { default?: unknown; sizes?: unknown },
+  options: PersistedSizesOptions
+): Sizes {
   const sizes: Record<string, number> = {}
 
   // An array survives `typeof === 'object'` and would hand back entries named
