@@ -25,10 +25,8 @@ async function handleRequest(
   // is decided in `SquealSpan`'s constructor, so a collector that skipped it
   // would not be measuring the thing under test.
   const tracer = makeSquealTracer({
-    persist: (records) => {
-      spans.push(...records)
-
-      return Promise.resolve(records.length)
+    emit: (record) => {
+      spans.push(record)
     }
   })
 

@@ -508,7 +508,7 @@ describe('apiClient', () => {
 
     it('records the status of a tagged error on the span', async () => {
       mockFetch.mockResolvedValueOnce(
-        respondWith(
+        jsonResponse(
           {
             _tag: 'DatabaseNotFoundError',
             databaseId: 'missing',
