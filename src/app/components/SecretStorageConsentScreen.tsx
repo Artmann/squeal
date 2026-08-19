@@ -1,5 +1,5 @@
 import { Loader2Icon, LockIcon, TriangleAlertIcon } from 'lucide-react'
-import { ReactElement, useEffect, useRef, useState } from 'react'
+import { ReactElement, RefObject, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { SecretStorageResponse } from '@/glue/api/schemas'
@@ -21,6 +21,69 @@ function reportGrant(response: SecretStorageResponse): void {
   toast.warning('Encryption is on, but some passwords are not', {
     description: response.message
   })
+}
+
+function GrantRefusal({ message }: { message: string }): ReactElement {
+  return (
+    <p
+      className="flex items-start gap-2 rounded-md border border-err-border bg-err-bg px-3 py-2 text-xs text-err motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+      role="alert"
+    >
+      <TriangleAlertIcon className="size-3 shrink-0 mt-[3px]" />
+      {message}
+    </p>
+  )
+}
+
+interface GrantButtonProps {
+  buttonRef: RefObject<HTMLButtonElement | null>
+  isBusy: boolean
+  isPending: boolean
+  refusal: string | null
+  storageName: string
+  onGrant: () => void
+}
+
+// The button and the line under it are one control: the spinner, the label and
+// the standing hint all answer the same question — what the OS prompt is doing
+// right now. Together they hold every branch this screen has that is not the
+// skip confirmation, which is what leaves the screen around them plain layout.
+function GrantButton({
+  buttonRef,
+  isBusy,
+  isPending,
+  refusal,
+  storageName,
+  onGrant
+}: GrantButtonProps): ReactElement {
+  return (
+    <>
+      <Button
+        autoFocus
+        disabled={isBusy}
+        onClick={onGrant}
+        ref={buttonRef}
+        size="lg"
+      >
+        {isPending && <Loader2Icon className="animate-spin" />}
+        {isPending
+          ? 'Waiting for permission…'
+          : refusal
+            ? 'Try again'
+            : 'Turn on encryption'}
+      </Button>
+
+      {isPending && (
+        <p
+          className="text-xs text-text2"
+          role="status"
+        >
+          Your system is asking whether Squeal may use {storageName}. Choose
+          Allow to continue — the prompt can open behind this window.
+        </p>
+      )}
+    </>
+  )
 }
 
 // Shown before anything else when no decision has been made about the OS
@@ -80,44 +143,19 @@ export function SecretStorageConsentScreen({
             </p>
           </div>
 
-          {grantMessage && (
-            <p
-              className="flex items-start gap-2 rounded-md border border-err-border bg-err-bg px-3 py-2 text-xs text-err motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
-              role="alert"
-            >
-              <TriangleAlertIcon className="size-3 shrink-0 mt-[3px]" />
-              {grantMessage}
-            </p>
-          )}
+          {grantMessage && <GrantRefusal message={grantMessage} />}
 
           <div className="flex flex-col gap-3 items-start">
-            <Button
-              autoFocus
-              disabled={isBusy}
-              onClick={() =>
+            <GrantButton
+              buttonRef={grantButton}
+              isBusy={isBusy}
+              isPending={grant.isPending}
+              refusal={grantMessage}
+              storageName={storageName}
+              onGrant={() =>
                 grant.mutate(undefined, { onSuccess: reportGrant })
               }
-              ref={grantButton}
-              size="lg"
-            >
-              {grant.isPending && <Loader2Icon className="animate-spin" />}
-              {grant.isPending
-                ? 'Waiting for permission…'
-                : grantMessage
-                  ? 'Try again'
-                  : 'Turn on encryption'}
-            </Button>
-
-            {grant.isPending && (
-              <p
-                className="text-xs text-text2"
-                role="status"
-              >
-                Your system is asking whether Squeal may use {storageName}.
-                Choose Allow to continue — the prompt can open behind this
-                window.
-              </p>
-            )}
+            />
 
             {step === 'ask' && (
               <Button
