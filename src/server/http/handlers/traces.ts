@@ -2,7 +2,7 @@ import { HttpApiBuilder } from '@effect/platform'
 import { Effect } from 'effect'
 
 import { SquealApi } from '@/glue/api/api'
-import { SpanRecord } from '@/glue/tracing/spans'
+import type { SpanRecord } from '@/glue/tracing/spans'
 import { TraceStore } from '@/server/services/trace-store'
 import { orDieInternal } from '../internal-errors'
 
@@ -33,10 +33,9 @@ export const TracesLive = HttpApiBuilder.group(
         Effect.gen(function* () {
           const store = yield* TraceStore
 
-          const spans: SpanRecord[] = payload.spans.map((span) => ({
-            ...span,
-            events: span.events.map((event) => ({ ...event }))
-          }))
+          // A copy only because `Schema.Array` hands back a readonly one; the
+          // payload is already `SpanRecord`, so there is nothing to convert.
+          const spans: SpanRecord[] = [...payload.spans]
 
           const insertedCount = yield* store.ingestSpans(spans)
 

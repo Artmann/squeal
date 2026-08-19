@@ -2,7 +2,8 @@
 // main-process imports — the renderer bundles it.
 import { Schema } from 'effect'
 
-import { isValidSpanId, isValidTraceId } from '../tracing/traceparent'
+import { SpanRecord } from '../tracing/spans'
+import { isValidTraceId } from '../tracing/traceparent'
 
 // --- Request ids ---------------------------------------------------------------
 // Validated but deliberately unbranded: ids round-trip through DTOs and the
@@ -357,51 +358,15 @@ export type ConnectionTestResponse = Schema.Schema.Type<
 // All-zero ids are rejected as well as malformed ones: they are unusable as a
 // lookup key, so accepting them would merge unrelated spans into one
 // unopenable trace.
-const SpanIdField = Schema.String.pipe(
-  Schema.filter(isValidSpanId, {
-    message: () => 'Expected a 16-character hexadecimal span id.'
-  })
-)
-
-const TraceIdField = Schema.String.pipe(
-  Schema.filter(isValidTraceId, {
-    message: () => 'Expected a 32-character hexadecimal trace id.'
-  })
-)
-
-const SpanAttributesDto = Schema.mutable(
-  Schema.Record({
-    key: Schema.String,
-    value: Schema.Union(Schema.Boolean, Schema.Number, Schema.String)
-  })
-)
-
-const SpanEventDto = Schema.Struct({
-  attributes: Schema.optional(SpanAttributesDto),
-  name: Schema.String,
-  time: Schema.Number
-})
-
-const SpanDto = Schema.Struct({
-  attributes: SpanAttributesDto,
-  durationMs: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0)),
-  events: Schema.mutable(Schema.Array(SpanEventDto)),
-  id: SpanIdField,
-  kind: Schema.Literal('client', 'internal', 'server'),
-  name: Schema.String.pipe(Schema.minLength(1)),
-  parentSpanId: Schema.NullOr(SpanIdField),
-  serviceName: Schema.Literal('main', 'renderer'),
-  startedAt: Schema.Number,
-  status: Schema.Literal('error', 'ok', 'unset'),
-  statusMessage: Schema.NullOr(Schema.String),
-  traceId: TraceIdField
-})
-export type SpanDto = Schema.Schema.Type<typeof SpanDto>
+// The same declaration under the name the renderer's trace UI imports it by.
+// The shape lives in `glue/tracing/spans.ts` because that is where the span is
+// built; this contract only carries it.
+export type SpanDto = SpanRecord
 
 const maxIngestBatchSize = 200
 
 export const IngestSpansRequest = Schema.Struct({
-  spans: Schema.Array(SpanDto).pipe(Schema.maxItems(maxIngestBatchSize))
+  spans: Schema.Array(SpanRecord).pipe(Schema.maxItems(maxIngestBatchSize))
 })
 
 const TraceSummaryDto = Schema.Struct({
@@ -585,7 +550,7 @@ export const GetTracesResponse = Schema.Struct({
 })
 
 export const GetTraceResponse = Schema.Struct({
-  spans: Schema.mutable(Schema.Array(SpanDto))
+  spans: Schema.mutable(Schema.Array(SpanRecord))
 })
 
 export const IngestSpansResponse = Schema.Struct({
