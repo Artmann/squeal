@@ -1,10 +1,9 @@
-import { createOptimisticAction } from '@tanstack/react-db'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { toast } from 'sonner'
 
 import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
-import { queryPollInterval } from './queries'
 import { queryKeys } from '../query-keys'
 import {
   CreateDatabaseRequest,
@@ -12,71 +11,60 @@ import {
   type QueryDto,
   UpdateDatabaseRequest
 } from '@/glue/api/schemas'
-import { canceledQueryMessage } from '@/glue/queries'
 
-const cancelPollAttempts = 20
-
-// The cancel endpoint only signals the running adapter; the backend finalizes
-// the row afterwards. Wait for that so the optimistic canceled state is not
-// dropped before the server row catches up.
-async function waitForQueryToFinish(
-  queryId: string
-): Promise<QueryDto | undefined> {
-  for (let attempt = 0; attempt < cancelPollAttempts; attempt++) {
-    const query = await apiClient.getQuery(queryId)
-
-    if (query.finishedAt) {
-      return query
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, queryPollInterval))
-  }
-
-  return undefined
+export interface CancelQuery {
+  cancel: () => void
+  isCanceling: boolean
 }
 
-export function useCancelQuery() {
-  const { queries } = useCollections()
-  const [isPending, setIsPending] = useState(false)
-
-  const cancelAction = useMemo(
-    () =>
-      createOptimisticAction<string>({
-        onMutate: (queryId) => {
-          queries.update(queryId, (draft) => {
-            draft.error = canceledQueryMessage
-            draft.finishedAt = Date.now()
-          })
-        },
-        mutationFn: async (queryId) => {
-          await apiClient.cancelQuery(queryId)
-
-          const finalQuery = await waitForQueryToFinish(queryId)
-
-          if (finalQuery && queries.status === 'ready') {
-            queries.utils.writeUpsert(finalQuery)
-          }
-        }
-      }),
-    [queries]
+/**
+ * Asks the backend to cancel `query`, and reports whether that request is
+ * still outstanding.
+ *
+ * Nothing here writes the query row. The cancel endpoint only signals the
+ * running adapter — the backend finalizes the row afterwards, and
+ * `useQueryResultSync` is the single owner of that transition. Writing a
+ * terminal state optimistically used to disable that poller in exactly the
+ * window it is needed, which is why cancel had to hand-roll a second one.
+ *
+ * `isCanceling` is derived from the row rather than from the request, so it
+ * clears the moment the real terminal row lands and cannot outlive the query
+ * it belongs to.
+ */
+export function useCancelQuery(query: QueryDto | undefined): CancelQuery {
+  const [cancelingQueryId, setCancelingQueryId] = useState<string | undefined>(
+    undefined
   )
 
-  const cancel = useCallback(
-    (queryId: string) => {
-      setIsPending(true)
+  const runningQueryId = query?.finishedAt === null ? query.id : undefined
+  const isCanceling =
+    runningQueryId !== undefined && cancelingQueryId === runningQueryId
 
-      const transaction = cancelAction(queryId)
+  const cancel = useCallback(() => {
+    // The button now stays on screen for as long as the query runs, so this is
+    // what stops a second click from sending a second request.
+    if (runningQueryId === undefined || isCanceling) {
+      return
+    }
 
-      void transaction.isPersisted.promise
-        .catch((): void => undefined)
-        .finally(() => {
-          setIsPending(false)
-        })
-    },
-    [cancelAction]
-  )
+    setCancelingQueryId(runningQueryId)
 
-  return { cancel, isPending }
+    void apiClient.cancelQuery(runningQueryId).catch((error: unknown) => {
+      const reason =
+        error instanceof Error ? error.message : 'The request failed.'
+
+      // A cancel that never reached the backend is not a cancel: the query is
+      // still running, and leaving the button on "Canceling…" would say
+      // otherwise.
+      setCancelingQueryId(undefined)
+
+      toast.error('Could not cancel the query', {
+        description: `${reason} The query is still running.`
+      })
+    })
+  }, [isCanceling, runningQueryId])
+
+  return { cancel, isCanceling }
 }
 
 export function useCreateWorksheet() {

@@ -8,7 +8,7 @@ import { type Statement } from '../sql-parser'
 
 interface WorksheetToolbarProps {
   activeStatement: Statement | null
-  isCancelPending: boolean
+  isCanceling: boolean
   isQueryRunning: boolean
   onCancelQuery: () => void
   onRunQuery: () => void
@@ -16,7 +16,7 @@ interface WorksheetToolbarProps {
 
 export function WorksheetToolbar({
   activeStatement,
-  isCancelPending,
+  isCanceling,
   isQueryRunning,
   onCancelQuery,
   onRunQuery
@@ -61,11 +61,11 @@ export function WorksheetToolbar({
       {isQueryRunning && (
         <Button
           className="cursor-pointer"
-          disabled={isCancelPending}
+          disabled={isCanceling}
           variant="outline"
           onClick={onCancelQuery}
         >
-          {isCancelPending ? 'Canceling…' : 'Cancel'}
+          {isCanceling ? 'Canceling…' : 'Cancel'}
         </Button>
       )}
 
