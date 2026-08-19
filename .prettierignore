@@ -2,5 +2,6 @@
 CHANGELOG.md
 build/
 coverage/
+design/
 dist/
 node_modules/
