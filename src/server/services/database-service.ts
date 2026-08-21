@@ -455,10 +455,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
           // a server they control, or strip its TLS, and have the app hand it
           // over during the handshake.
           if (
-            !targetsSameServer(
-              connectionInfo,
-              storedConnection.connectionInfo
-            )
+            !targetsSameServer(connectionInfo, storedConnection.connectionInfo)
           ) {
             return { _tag: 'differentServer' } as const
           }
