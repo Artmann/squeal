@@ -118,7 +118,8 @@ function createEditorState(options: RenderOptions): EditorState {
   return {
     databaseSearchQuery: options.editor?.databaseSearchQuery ?? '',
     worksheetRename: options.editor?.worksheetRename ?? null,
-    worksheetSearchQuery: options.editor?.worksheetSearchQuery ?? ''
+    worksheetSearchQuery: options.editor?.worksheetSearchQuery ?? '',
+    worksheetSelection: options.editor?.worksheetSelection ?? null
   }
 }
 

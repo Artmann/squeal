@@ -17,6 +17,7 @@ import {
   useOpenWorksheet
 } from '../hooks/use-worksheet-commands'
 import { useWorksheetRename } from '../hooks/use-worksheet-rename'
+import { useWorksheetSelection } from '../hooks/use-worksheet-selection'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import { worksheetSearchQueryUpdated } from '../store/editor-slice'
@@ -32,34 +33,76 @@ import { SearchInput } from './SearchInput'
 import { WorksheetNameInput } from './WorksheetNameInput'
 import { WorksheetDto } from '@/glue/worksheets'
 
+// One worksheet is named; several are counted. The count is what makes a
+// multi-row delete safe to confirm — "Delete 3 worksheets?" is the only place
+// the user learns the menu meant more than the row they right-clicked.
+function describeWorksheets(worksheets: WorksheetDto[]): string {
+  return worksheets.length === 1
+    ? `"${worksheets[0].name}"`
+    : `${worksheets.length} worksheets`
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error'
+}
+
 // Deleting takes the editor content with it, so it asks first via an action
 // toast — ignoring it is a safe no. Mirrors the database explorer.
-function useConfirmedWorksheetDeletion(): (worksheet: WorksheetDto) => void {
+function useConfirmedWorksheetDeletion(): (worksheets: WorksheetDto[]) => void {
   const deleteWorksheet = useDeleteWorksheet()
 
   return useCallback(
-    (worksheet: WorksheetDto) => {
-      toast(`Delete "${worksheet.name}"?`, {
+    (worksheets: WorksheetDto[]) => {
+      if (worksheets.length === 0) {
+        return
+      }
+
+      const described = describeWorksheets(worksheets)
+
+      toast(`Delete ${described}?`, {
         action: {
           label: 'Delete',
           onClick: () => {
-            deleteWorksheet.mutate(worksheet.id, {
-              onError: (error) => {
-                const message =
-                  error instanceof Error ? error.message : 'Unknown error'
+            // `allSettled`, so one row that will not go does not strand the
+            // others: every delete is attempted and the toast afterwards says
+            // how many made it. The selection needs no clearing — it is pruned
+            // to the rows that still exist on the next render.
+            const deletions = Promise.allSettled(
+              worksheets.map((worksheet) =>
+                deleteWorksheet.mutateAsync(worksheet.id)
+              )
+            )
 
-                toast.error('Failed to delete worksheet', {
-                  description: message
-                })
-              },
-              onSuccess: () => {
-                toast.success(`Deleted "${worksheet.name}"`)
+            void deletions.then((results) => {
+              const failures = results.filter(
+                (result) => result.status === 'rejected'
+              )
+
+              if (failures.length === 0) {
+                toast.success(`Deleted ${described}`)
+
+                return
               }
+
+              const description = errorMessage(failures[0].reason)
+
+              if (worksheets.length === 1) {
+                toast.error('Failed to delete worksheet', { description })
+
+                return
+              }
+
+              toast.error(
+                `Failed to delete ${failures.length} of ${worksheets.length} worksheets`,
+                { description }
+              )
             })
           }
         },
         description:
-          'This worksheet and its editor content will be removed. Query history is kept.'
+          worksheets.length === 1
+            ? 'This worksheet and its editor content will be removed. Query history is kept.'
+            : 'These worksheets and their editor content will be removed. Query history is kept.'
       })
     },
     [deleteWorksheet]
@@ -106,14 +149,64 @@ export function WorksheetExplorer(): ReactElement {
   const filteredWorksheetIds = filteredWorksheets.map(
     (worksheet) => worksheet.id
   )
+  const worksheetIds = worksheets.data.map((worksheet) => worksheet.id)
+
+  const selection = useWorksheetSelection(worksheetIds)
+
   // The reorder runs over the whole list; the filtered rows on screen are a
   // subsequence of it, and asking for the indicator by id is what lets those
   // two lists differ without any index having to line up.
-  const { dndContextProps, dropIndicatorFor } = useListReorder({
+  const { dndContextProps, dropIndicatorFor, isMoving } = useListReorder({
     axis: 'vertical',
-    ids: worksheets.data.map((worksheet) => worksheet.id),
-    onReorder: reorderWorksheets.mutate
+    ids: worksheetIds,
+    onReorder: reorderWorksheets.mutate,
+    selectedIds: selection.ids
   })
+
+  // Command- and shift-click pick rows out; a plain click is still what opens
+  // one. Modified clicks deliberately leave the open worksheet where it is —
+  // picking rows out to move them should not swap the editor under the user.
+  const handleRowClick = (
+    event: React.MouseEvent,
+    worksheetId: string
+  ): void => {
+    // ⌘ on macOS, Ctrl everywhere else.
+    if (event.metaKey || event.ctrlKey) {
+      selection.toggle(worksheetId)
+
+      return
+    }
+
+    if (event.shiftKey) {
+      selection.extend(worksheetId)
+
+      return
+    }
+
+    selection.replace(worksheetId)
+    handleSelectWorksheet(worksheetId)
+  }
+
+  // Right-clicking outside the selection makes that row the selection, the way
+  // a file manager does, so the menu can never act on rows the user is not
+  // pointing at.
+  const handleRowContextMenu = (worksheetId: string): void => {
+    if (!selection.isSelected(worksheetId)) {
+      selection.replace(worksheetId)
+    }
+  }
+
+  const selectedWorksheets = worksheets.data.filter((worksheet) =>
+    selection.isSelected(worksheet.id)
+  )
+
+  // A row inside a multi-row selection opens a menu about the whole selection;
+  // anything else is about itself, including the single row a selection has
+  // shrunk to.
+  const deleteTargetsFor = (worksheet: WorksheetDto): WorksheetDto[] =>
+    selectedWorksheets.length > 1 && selection.isSelected(worksheet.id)
+      ? selectedWorksheets
+      : [worksheet]
 
   // Worksheets show which database they run against, so the names are looked
   // up once per render instead of per row.
@@ -173,6 +266,7 @@ export function WorksheetExplorer(): ReactElement {
               <WorksheetRow
                 key={worksheet.id}
                 dropIndicator={dropIndicatorFor(worksheet.id)}
+                isMoving={isMoving(worksheet.id)}
                 isSortingDisabled={
                   isSortingDisabled || editingWorksheetId === worksheet.id
                 }
@@ -190,17 +284,20 @@ export function WorksheetExplorer(): ReactElement {
                   />
                 ) : (
                   <WorksheetListItem
-                    canDelete={worksheets.data.length > 1}
                     databaseName={
                       worksheet.databaseId
                         ? databaseNames.get(worksheet.databaseId)
                         : undefined
                     }
+                    deleteTargets={deleteTargetsFor(worksheet)}
                     isOpen={worksheet.id === openWorksheetId}
+                    isSelected={selection.isSelected(worksheet.id)}
+                    remainingWorksheetCount={worksheets.data.length}
                     worksheet={worksheet}
+                    onContextMenu={handleRowContextMenu}
                     onDelete={handleDeleteWorksheet}
                     onDoubleClick={startEditing}
-                    onSelect={handleSelectWorksheet}
+                    onSelect={handleRowClick}
                   />
                 )}
               </WorksheetRow>
@@ -215,6 +312,13 @@ export function WorksheetExplorer(): ReactElement {
 interface WorksheetRowProps {
   children: ReactNode
   dropIndicator: DropIndicator
+  /**
+   * Whether this row is travelling with the drag. Not `useSortable`'s
+   * `isDragging`, which only knows about the row under the cursor: a selection
+   * dragged as a group carries rows the cursor never touched, and dimming all
+   * of them is the only thing that says what is being carried.
+   */
+  isMoving: boolean
   isSortingDisabled: boolean
   worksheetId: string
 }
@@ -227,16 +331,19 @@ interface WorksheetRowProps {
 function WorksheetRow({
   children,
   dropIndicator,
+  isMoving,
   isSortingDisabled,
   worksheetId
 }: WorksheetRowProps): ReactElement {
-  const { isDragging, listeners, setNodeRef, transform, transition } =
-    useSortable({ disabled: isSortingDisabled, id: worksheetId })
+  const { listeners, setNodeRef, transform, transition } = useSortable({
+    disabled: isSortingDisabled,
+    id: worksheetId
+  })
 
   return (
     <div
       ref={setNodeRef}
-      className={cn('relative flex-none', isDragging && 'opacity-50')}
+      className={cn('relative flex-none', isMoving && 'opacity-50')}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       {...(isSortingDisabled ? {} : listeners)}
     >
@@ -253,36 +360,52 @@ function WorksheetRow({
 }
 
 interface WorksheetListItemProps {
-  // False for the last remaining worksheet: the app is built around always
-  // having one open, and the list endpoint would just recreate a default.
-  canDelete: boolean
   databaseName?: string
+  /** What this row's menu acts on: itself, or the selection it belongs to. */
+  deleteTargets: WorksheetDto[]
   isOpen: boolean
+  isSelected: boolean
+  /** How many worksheets there are, which is what caps a delete. */
+  remainingWorksheetCount: number
   worksheet: WorksheetDto
-  onDelete: (worksheet: WorksheetDto) => void
+  onContextMenu: (worksheetId: string) => void
+  onDelete: (worksheets: WorksheetDto[]) => void
   onDoubleClick: (worksheet: WorksheetDto) => void
-  onSelect: (worksheetId: string) => void
+  onSelect: (event: React.MouseEvent, worksheetId: string) => void
 }
 
 function WorksheetListItem({
-  canDelete,
   databaseName,
+  deleteTargets,
   isOpen,
+  isSelected,
+  remainingWorksheetCount,
   worksheet,
+  onContextMenu,
   onDelete,
   onDoubleClick,
   onSelect
 }: WorksheetListItemProps): ReactElement {
+  // The app is built around always having a worksheet open, and the list
+  // endpoint would just recreate a default one.
+  const canDelete = remainingWorksheetCount > deleteTargets.length
+
+  // Renaming several rows at once means nothing, so the menu drops the item
+  // rather than quietly renaming whichever one was right-clicked.
+  const isRenamable = deleteTargets.length === 1
+
   return (
     <ContextMenu>
       <ContextMenuTrigger>
         <button
           className={cn(
             'flex h-[var(--item-h)] w-full flex-none items-center gap-2 rounded-[6px] px-2 text-left hover:bg-hover',
-            isOpen ? 'bg-sel text-text' : 'text-text2'
+            isOpen || isSelected ? 'bg-sel text-text' : 'text-text2'
           )}
+          data-selected={isSelected}
           type="button"
-          onClick={() => onSelect(worksheet.id)}
+          onClick={(event) => onSelect(event, worksheet.id)}
+          onContextMenu={() => onContextMenu(worksheet.id)}
           onDoubleClick={() => onDoubleClick(worksheet)}
         >
           <FileBracesIcon
@@ -310,21 +433,25 @@ function WorksheetListItem({
         // the rename would end before a single key was pressed.
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        <ContextMenuItem
-          className="flex items-center gap-2 min-w-32 text-xs"
-          onClick={() => onDoubleClick(worksheet)}
-        >
-          <Pencil className="size-3" />
-          Rename
-        </ContextMenuItem>
+        {isRenamable && (
+          <ContextMenuItem
+            className="flex items-center gap-2 min-w-32 text-xs"
+            onClick={() => onDoubleClick(worksheet)}
+          >
+            <Pencil className="size-3" />
+            Rename
+          </ContextMenuItem>
+        )}
 
         <ContextMenuItem
           className="flex items-center gap-2 min-w-32 text-xs text-destructive focus:text-destructive"
           disabled={!canDelete}
-          onClick={() => onDelete(worksheet)}
+          onClick={() => onDelete(deleteTargets)}
         >
           <Trash2 className="size-3" />
-          Delete
+          {deleteTargets.length === 1
+            ? 'Delete'
+            : `Delete ${deleteTargets.length} worksheets`}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

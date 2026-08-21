@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
+import { type ListSelection } from '../list-selection'
+
 // Which surface opened the rename input. The session is shared, so this is how
 // the sidebar list and the tab strip each tell "I am the one being edited"
 // apart from "someone else is being edited" — the second of which still has to
@@ -12,18 +14,23 @@ export interface WorksheetRenameSession {
   worksheetId: string
 }
 
-// Which worksheet is open now lives in the tabs slice — `tabOpened` both opens
-// and activates, so there is no separate "selected" concept any more.
+// Which worksheet is open lives in the tabs slice — `tabOpened` both opens and
+// activates it. `worksheetSelection` is a different thing: the rows the sidebar
+// list acts on together, which is usually the open one and only differs once
+// the user command- or shift-clicks. `null` is the ordinary case of nothing
+// picked out.
 export interface EditorState {
   databaseSearchQuery: string
   worksheetRename: WorksheetRenameSession | null
   worksheetSearchQuery: string
+  worksheetSelection: ListSelection | null
 }
 
 const initialState: EditorState = {
   databaseSearchQuery: '',
   worksheetRename: null,
-  worksheetSearchQuery: ''
+  worksheetSearchQuery: '',
+  worksheetSelection: null
 }
 
 const editorSlice = createSlice({
@@ -57,6 +64,21 @@ const editorSlice = createSlice({
     },
     worksheetSearchQueryUpdated: (state, action: PayloadAction<string>) => {
       state.worksheetSearchQuery = action.payload
+
+      // Filtered rows cannot be dragged and hidden ones cannot be seen, so a
+      // selection that outlived the query would let the next delete act on
+      // rows the user is no longer looking at.
+      state.worksheetSelection = null
+    },
+    // The whole selection, computed by the surface that owns the list: the
+    // range a shift-click covers depends on the order the rows are in and on
+    // which one is open, neither of which is in this slice. `null` is nothing
+    // picked out.
+    worksheetSelectionChanged: (
+      state,
+      action: PayloadAction<ListSelection | null>
+    ) => {
+      state.worksheetSelection = action.payload
     }
   }
 })
@@ -66,7 +88,8 @@ export const {
   worksheetRenameDraftUpdated,
   worksheetRenameEnded,
   worksheetRenameStarted,
-  worksheetSearchQueryUpdated
+  worksheetSearchQueryUpdated,
+  worksheetSelectionChanged
 } = editorSlice.actions
 
 export default editorSlice.reducer

@@ -33,10 +33,15 @@ function dragEnd(activeId: string, overId: string | null): DragEndEvent {
   } as DragEndEvent
 }
 
-function renderListReorder(onReorder = vi.fn()) {
+function renderListReorder(onReorder = vi.fn(), selectedIds?: string[]) {
   const rendered = renderHook(
     (props: { ids: string[] }) =>
-      useListReorder({ axis: 'horizontal', ids: props.ids, onReorder }),
+      useListReorder({
+        axis: 'horizontal',
+        ids: props.ids,
+        onReorder,
+        selectedIds
+      }),
     { initialProps: { ids } }
   )
 
@@ -311,6 +316,130 @@ describe('useListReorder', () => {
       b: null,
       c: null,
       d: null
+    })
+  })
+
+  // Command- and shift-click in the worksheet list hand a whole group to the
+  // drag: grabbing any row in it moves all of them to the drop point.
+  describe('with several rows selected', () => {
+    it('moves the whole selection when the dragged row belongs to it', () => {
+      const { onReorder, result } = renderListReorder(vi.fn(), ['a', 'b'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+        result.current.dndContextProps.onDragEnd(dragEnd('a', 'd'))
+      })
+
+      expect(onReorder.mock.calls).toEqual([[['c', 'd', 'a', 'b']]])
+    })
+
+    // Grabbing a row outside the selection is a plain single-row drag, the way
+    // it is in a file manager — the selection is not what is under the cursor.
+    it('moves only the dragged row when it is not part of the selection', () => {
+      const { onReorder, result } = renderListReorder(vi.fn(), ['b', 'c'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+        result.current.dndContextProps.onDragEnd(dragEnd('a', 'c'))
+      })
+
+      expect(onReorder.mock.calls).toEqual([[['b', 'c', 'a', 'd']]])
+    })
+
+    // The rows travelling with the drag have no landing spot of their own, so
+    // a line on one of them would point at a drop that cannot happen.
+    it('shows no indicator on the rows travelling with the drag', () => {
+      const { result } = renderListReorder(vi.fn(), ['a', 'b'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+        result.current.dndContextProps.onDragOver(dragOver('b'))
+      })
+
+      expect(indicators(result.current.dropIndicatorFor)).toEqual({
+        a: null,
+        b: null,
+        c: null,
+        d: null
+      })
+    })
+
+    it('still marks a row outside the selection as the landing spot', () => {
+      const { result } = renderListReorder(vi.fn(), ['a', 'b'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+        result.current.dndContextProps.onDragOver(dragOver('c'))
+      })
+
+      expect(indicators(result.current.dropIndicatorFor)).toEqual({
+        a: null,
+        b: null,
+        c: 'after',
+        d: null
+      })
+    })
+
+    it('reorders nothing when the drop lands inside the selection', () => {
+      const { onReorder, result } = renderListReorder(vi.fn(), ['a', 'b'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+        result.current.dndContextProps.onDragEnd(dragEnd('a', 'b'))
+      })
+
+      expect(onReorder.mock.calls).toEqual([])
+    })
+  })
+
+  // Nothing renders a drag preview here, so dimming the rows that are
+  // travelling is the only thing that says what a group drag is carrying.
+  describe('isMoving', () => {
+    it('reports nothing as moving before a drag starts', () => {
+      const { result } = renderListReorder()
+
+      expect(ids.filter(result.current.isMoving)).toEqual([])
+    })
+
+    it('reports the dragged row as moving', () => {
+      const { result } = renderListReorder()
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('b'))
+      })
+
+      expect(ids.filter(result.current.isMoving)).toEqual(['b'])
+    })
+
+    it('reports the whole selection when the drag started on one of its rows', () => {
+      const { result } = renderListReorder(vi.fn(), ['a', 'c'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+      })
+
+      expect(ids.filter(result.current.isMoving)).toEqual(['a', 'c'])
+    })
+
+    it('reports only the dragged row when it is not part of the selection', () => {
+      const { result } = renderListReorder(vi.fn(), ['b', 'c'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+      })
+
+      expect(ids.filter(result.current.isMoving)).toEqual(['a'])
+    })
+
+    it('reports nothing as moving once the drag is over', () => {
+      const { result } = renderListReorder(vi.fn(), ['a', 'c'])
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart('a'))
+        result.current.dndContextProps.onDragEnd(dragEnd('a', 'd'))
+      })
+
+      expect(ids.filter(result.current.isMoving)).toEqual([])
     })
   })
 

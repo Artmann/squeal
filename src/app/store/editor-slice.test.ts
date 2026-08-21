@@ -6,13 +6,20 @@ import reducer, {
   worksheetRenameDraftUpdated,
   worksheetRenameEnded,
   worksheetRenameStarted,
-  worksheetSearchQueryUpdated
+  worksheetSearchQueryUpdated,
+  worksheetSelectionChanged
 } from './editor-slice'
 
 const initialState: EditorState = {
   databaseSearchQuery: '',
   worksheetRename: null,
-  worksheetSearchQuery: ''
+  worksheetSearchQuery: '',
+  worksheetSelection: null
+}
+
+const selecting: EditorState = {
+  ...initialState,
+  worksheetSelection: { anchorId: 'ws-1', ids: ['ws-1', 'ws-2'] }
 }
 
 const renaming: EditorState = {
@@ -119,7 +126,8 @@ describe('editorSlice', () => {
         {
           databaseSearchQuery: 'pagila',
           worksheetRename: renaming.worksheetRename,
-          worksheetSearchQuery: 'rev'
+          worksheetSearchQuery: 'rev',
+          worksheetSelection: null
         },
         worksheetRenameEnded()
       )
@@ -127,8 +135,40 @@ describe('editorSlice', () => {
       expect(state).toEqual({
         databaseSearchQuery: 'pagila',
         worksheetRename: null,
-        worksheetSearchQuery: 'rev'
+        worksheetSearchQuery: 'rev',
+        worksheetSelection: null
       })
+    })
+  })
+
+  describe('worksheetSelectionChanged', () => {
+    it('stores the rows the list acts on together', () => {
+      const state = reducer(
+        initialState,
+        worksheetSelectionChanged({ anchorId: 'ws-1', ids: ['ws-1', 'ws-2'] })
+      )
+
+      expect(state).toEqual(selecting)
+    })
+
+    // The selection is computed by the surface that owns the list, so its
+    // "nothing is picked out" travels through the same action rather than a
+    // second one that would have to be kept in step with it.
+    it('clears the selection when handed nothing', () => {
+      const state = reducer(selecting, worksheetSelectionChanged(null))
+
+      expect(state).toEqual(initialState)
+    })
+  })
+
+  describe('filtering', () => {
+    // A filtered list cannot be dragged and its hidden rows cannot be seen, so
+    // a selection surviving the change would act on rows the user is no longer
+    // looking at.
+    it('clears the selection when the worksheet filter changes', () => {
+      const state = reducer(selecting, worksheetSearchQueryUpdated('rev'))
+
+      expect(state).toEqual({ ...initialState, worksheetSearchQuery: 'rev' })
     })
   })
 })
