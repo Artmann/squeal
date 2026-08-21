@@ -172,7 +172,7 @@ describe('database routes', () => {
     expect(status).toEqual(400)
     expect(body).toEqual({
       _tag: 'DifferentServerError',
-      message: 'Enter the password to change the server or its SSL settings.'
+      message: 'Enter the password to change the host or port.'
     })
     expect(after).toEqual(before)
   })

@@ -175,15 +175,22 @@ from older databases. A new table or column goes in both
   password borrows the stored one (an update by its own id, a connection test by
   the `databaseId` it sends), and both go through
   `DatabaseService.resolveConnection`, which lends the secret only back to the
-  server it was saved for, reached the way it was saved to be reached: `host`,
-  `port`, `sslMode`, and `sslRootCert` must all match. Editing the username or
-  database name keeps borrowing; changing where the password goes or how it
-  travels answers `DifferentServerError` (400) on the update and a
+  server it was saved for: `host` and `port` must match. Everything else keeps
+  borrowing — the username, the database name, and both SSL fields; moving the
+  host or the port answers `DifferentServerError` (400) on the update and a
   `success: false` message on the test, and the user re-types the password. An
   empty stored password counts as no stored password, so a row repaired after an
   unreadable secret is never refused over a password it does not have. The
   update route used to merge the password in on its own, without any of that,
   which made a PATCH a two-step way around the connection test's refusal.
+- `sslMode` and `sslRootCert` were once part of that comparison, on the grounds
+  that they decide how the secret travels rather than where it goes. They were
+  taken out because the cost was a re-typed password on every SSL edit — in both
+  directions, tightening included — and the app never shows a stored password,
+  so "re-type it" meant going and finding it. The exposure left behind is a
+  downgrade that puts the secret in front of someone already on the network path
+  to a host the user chose, which is a much higher bar than being handed it
+  outright; redirecting it to another host is still refused.
 - Don't include the Claude footer in commits
 
 ## Secret storage
