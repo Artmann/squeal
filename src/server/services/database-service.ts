@@ -13,7 +13,6 @@ import type {
   DatabaseDto,
   DatabaseType,
   PublicConnectionInfo,
-  SslMode,
   UpdateDatabaseConnection,
   WorksheetDto
 } from '@/glue/api/schemas'
@@ -44,23 +43,12 @@ export type ResolvedConnection =
   | { readonly _tag: 'differentServer' }
   | { readonly _tag: 'passwordRequired' }
 
-// A ConnectionTarget with every optional field resolved to the one spelling
-// that means what it means, so two of these compare field by field.
-interface CanonicalTarget {
-  readonly host: string
-  readonly port: number | undefined
-  readonly sslMode: SslMode
-  readonly sslRootCert: string
-}
-
-// The fields that decide where a password goes and how it travels — the ones
-// targetsSameServerAndTransport compares. Both the requested and the stored
-// server connection info satisfy this shape.
+// The fields that decide where a password goes — the ones targetsSameServer
+// compares. Both the requested and the stored server connection info satisfy
+// this shape.
 interface ConnectionTarget {
   readonly host: string
   readonly port?: number | undefined
-  readonly sslMode?: SslMode | undefined
-  readonly sslRootCert?: string | undefined
 }
 
 export class DatabaseService extends Effect.Service<DatabaseService>()(
@@ -467,7 +455,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
           // a server they control, or strip its TLS, and have the app hand it
           // over during the handshake.
           if (
-            !targetsSameServerAndTransport(
+            !targetsSameServer(
               connectionInfo,
               storedConnection.connectionInfo
             )
@@ -500,8 +488,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
 
         if (resolved._tag === 'differentServer') {
           return yield* new DifferentServerError({
-            message:
-              'Enter the password to change the server or its SSL settings.'
+            message: 'Enter the password to change the host or port.'
           })
         }
 
@@ -577,53 +564,34 @@ function withDatabaseName(
     })
 }
 
-// The stored password may only be lent back to the server it was saved for,
-// reached the way it was saved to be reached. Host and port decide where the
-// secret is sent; sslMode and sslRootCert decide who else can read it on the
-// way and which certificate is trusted to receive it — `disable` puts it on the
-// wire in the clear (see createSslOptions), and a swapped root certificate is a
-// MITM behind a CA the user never chose. Nothing else is compared: editing the
-// username or database name still targets the same server over the same
-// transport, so requiring a re-typed password there would be friction without a
+// The stored password may only be lent back to the server it was saved for.
+// Host and port are where the secret is sent, and that is the whole rule:
+// without it an authenticated caller could aim a saved password at a server
+// they control and read it straight off the handshake. Nothing else is
+// compared — editing the username or the database name still targets the same
+// server, so requiring a re-typed password there would be friction without a
 // security gain.
 //
-// Any change to the two TLS fields refuses, rather than only a downgrade.
-// sslRootCert has no ordering to downgrade along, so a lattice would only ever
-// cover sslMode, and a half-covered rule is what let this bug exist in the
-// first place. Re-typing the password to tighten TLS is a small, rare cost, and
-// the rule fails closed.
-function targetsSameServerAndTransport(
+// sslMode and sslRootCert are deliberately not compared, though they were once.
+// They decide how the secret travels rather than where it goes, and weakening
+// them only exposes it to someone already sitting on the network path to a host
+// the user chose themselves — a far higher bar than being handed the secret
+// outright. Comparing them cost a re-typed password on every SSL edit, in both
+// directions, including ones that tighten TLS; and the user does not have the
+// password to hand, because the app never shows it. Before re-adding them:
+// moving the host is still refused, so this is not a way to redirect a secret.
+//
+// A stored blob is JSON.parsed, never schema-decoded, so a port the form once
+// wrote as null has to read the same as one that was never set. Without that,
+// an edit changing nothing would be refused.
+function targetsSameServer(
   requested: ConnectionTarget,
   stored: ConnectionTarget
 ): boolean {
-  const requestedTarget = toCanonicalTarget(requested)
-  const storedTarget = toCanonicalTarget(stored)
-
   return (
-    requestedTarget.host === storedTarget.host &&
-    requestedTarget.port === storedTarget.port &&
-    requestedTarget.sslMode === storedTarget.sslMode &&
-    requestedTarget.sslRootCert === storedTarget.sslRootCert
+    requested.host === stored.host &&
+    (requested.port ?? undefined) === (stored.port ?? undefined)
   )
-}
-
-// The same connection can be written several ways, and comparing the raw fields
-// would refuse edits that change nothing. This is where those spellings are
-// reconciled, so the comparison above is a plain equality check:
-//
-// - An absent sslMode opens the connection in the clear exactly like `disable`,
-//   and rows written before the field existed carry no key at all.
-// - The form submits an empty root certificate for "none", older rows leave the
-//   key off. Both mean nothing is pinned.
-// - A stored blob is JSON.parsed, never schema-decoded, so a port the form once
-//   wrote as null has to read the same as one that was never set.
-function toCanonicalTarget(target: ConnectionTarget): CanonicalTarget {
-  return {
-    host: target.host,
-    port: target.port ?? undefined,
-    sslMode: target.sslMode ?? 'disable',
-    sslRootCert: target.sslRootCert ?? ''
-  }
 }
 
 function toPublicConnectionInfo(

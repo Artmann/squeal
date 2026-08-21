@@ -34,8 +34,7 @@ export const ConnectionTestsLive = HttpApiBuilder.group(
 
         if (resolved._tag === 'differentServer') {
           return {
-            message:
-              'Enter the password to test a different server or SSL settings.',
+            message: 'Enter the password to test a different host or port.',
             success: false
           }
         }

@@ -246,7 +246,7 @@ describe('connection test route', () => {
     )
 
     expect(result).toEqual({
-      message: 'Enter the password to test a different server or SSL settings.',
+      message: 'Enter the password to test a different host or port.',
       success: false
     })
 
@@ -274,7 +274,7 @@ describe('connection test route', () => {
     )
 
     expect(result).toEqual({
-      message: 'Enter the password to test a different server or SSL settings.',
+      message: 'Enter the password to test a different host or port.',
       success: false
     })
   })
@@ -308,6 +308,40 @@ describe('connection test route', () => {
     expect(adapterState.lastConnectionInfo).toEqual({
       ...connectionInfo,
       database: 'other'
+    })
+  })
+
+  // Trying a new SSL setting against a saved connection is the whole point of
+  // the test button, and it used to be the one thing the button could not do:
+  // the borrow was refused, so the user had to go and find a password the app
+  // never shows them before they could find out whether the setting worked.
+  it('still borrows the stored password when the SSL mode changes', async () => {
+    const { adapterState, result } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        return yield* client.connectionTests.create({
+          payload: {
+            connectionInfo: {
+              ...connectionInfo,
+              password: '',
+              sslMode: 'verify-full'
+            },
+            databaseId: created.database.id,
+            type: 'postgres'
+          }
+        })
+      })
+    )
+
+    expect(result).toEqual({ success: true })
+    expect(adapterState.lastConnectionInfo).toEqual({
+      ...connectionInfo,
+      sslMode: 'verify-full'
     })
   })
 })

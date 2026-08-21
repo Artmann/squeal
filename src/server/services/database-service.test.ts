@@ -64,16 +64,16 @@ function failUpdatesTo(table: 'databases' | 'worksheets', when = '1 = 1') {
 
 const differentServerError = expect.objectContaining({
   _tag: 'DifferentServerError',
-  message: 'Enter the password to change the server or its SSL settings.'
+  message: 'Enter the password to change the host or port.'
 })
 
 function storedConnectionInfo(row: { connectionInfo: string }): unknown {
   return JSON.parse(row.connectionInfo.slice(testEncryptionPrefix.length))
 }
 
-// Every field that decides where the password goes, or how it travels, is
-// tested the same way: save a connection, edit one of those fields with the
-// blank password the renderer sends, and read the row before and after.
+// Every field an edit can move is tested the same way: save a connection, edit
+// one of them with the blank password the renderer sends, and read the row
+// before and after.
 function updateWithBlankPassword(
   saved: ServerConnectionInfo,
   changes: Partial<ServerConnectionInfo>
@@ -192,60 +192,94 @@ describe('DatabaseService', () => {
     expect(after).toEqual(before)
   })
 
-  // Turning TLS off keeps the destination but changes who can read the password
-  // on the way there, so it is a different server for lending purposes. Left
-  // unguarded, the same PATCH that may no longer move the host could still
-  // strip `sslMode` and put the stored secret on the wire in the clear.
-  it('refuses to lend the stored password when the SSL mode changes', async () => {
-    const { after, before, result } = await updateWithBlankPassword(
+  // The SSL fields say how the password travels, not where it goes, so changing
+  // them keeps the borrow. Refusing here cost a re-typed password on every SSL
+  // edit — one the user does not have, because the app never shows it — in
+  // exchange for a downgrade that still only exposes the secret to someone
+  // already on the network path to a host the user chose.
+  it('keeps the stored password when the SSL mode changes', async () => {
+    const { after, result } = await updateWithBlankPassword(
       { ...connectionInfo, sslMode: 'verify-full' },
       { sslMode: 'disable' }
     )
-
-    expect(result._tag).toEqual('Left')
-
-    if (result._tag === 'Left') {
-      expect(result.left).toEqual(differentServerError)
-    }
-
-    expect(after).toEqual(before)
-  })
-
-  // Swapping the pinned certificate is a MITM behind a CA the user never chose,
-  // which the mode alone does not catch.
-  it('refuses to lend the stored password when the SSL root certificate changes', async () => {
-    const { after, before, result } = await updateWithBlankPassword(
-      {
-        ...connectionInfo,
-        sslMode: 'verify-full',
-        sslRootCert: '/etc/ssl/pagila.pem'
-      },
-      { sslRootCert: '/tmp/attacker.pem' }
-    )
-
-    expect(result._tag).toEqual('Left')
-
-    if (result._tag === 'Left') {
-      expect(result.left).toEqual(differentServerError)
-    }
-
-    expect(after).toEqual(before)
-  })
-
-  // Rows written before the SSL fields existed carry neither key, and the form
-  // submits an empty root certificate for "none". Both mean the same transport
-  // as `disable`, so an untouched SSL section must not read as a change.
-  it('keeps the stored password when absent SSL fields come back empty', async () => {
-    const { after, result } = await updateWithBlankPassword(connectionInfo, {
-      sslRootCert: ''
-    })
 
     expect(result._tag).toEqual('Right')
     expect(storedConnectionInfo(after)).toEqual({
       database: 'pagila',
       host: 'localhost',
       password: 'secret',
-      sslRootCert: '',
+      sslMode: 'disable',
+      username: 'postgres'
+    })
+  })
+
+  // Pointing at a refreshed CA bundle is routine — an expired one, a moved file
+  // — and it is the same host over the same port either way.
+  it('keeps the stored password when the SSL root certificate changes', async () => {
+    const { after, result } = await updateWithBlankPassword(
+      {
+        ...connectionInfo,
+        sslMode: 'verify-full',
+        sslRootCert: '/etc/ssl/pagila.pem'
+      },
+      { sslRootCert: '/etc/ssl/pagila-2026.pem' }
+    )
+
+    expect(result._tag).toEqual('Right')
+    expect(storedConnectionInfo(after)).toEqual({
+      database: 'pagila',
+      host: 'localhost',
+      password: 'secret',
+      sslMode: 'verify-full',
+      sslRootCert: '/etc/ssl/pagila-2026.pem',
+      username: 'postgres'
+    })
+  })
+
+  // The port is the one field left with two spellings for the same thing, so
+  // this is what stops an edit that changes nothing from being refused.
+  it('keeps the stored password when a null port comes back absent', async () => {
+    const { after, result } = await run(
+      Effect.gen(function* () {
+        const service = yield* DatabaseService
+        const appDatabase = yield* AppDatabase
+
+        // Written the way an older build wrote it: the form once submitted null
+        // for an empty port, and a stored blob is JSON.parsed rather than
+        // schema-decoded, so the null is still there to be compared against.
+        const [created] = yield* appDatabase.execute((client) =>
+          client
+            .insert(databasesTable)
+            .values({
+              connectionInfo:
+                testEncryptionPrefix +
+                JSON.stringify({ ...connectionInfo, port: null }),
+              name: 'Pagila',
+              type: 'postgres'
+            })
+            .returning()
+        )
+
+        const result = yield* Effect.either(
+          service.update(created.id, 'Renamed', {
+            connectionInfo: { ...connectionInfo, password: '' },
+            type: 'postgres'
+          })
+        )
+
+        const [after] = yield* appDatabase.execute((client) =>
+          client.select().from(databasesTable)
+        )
+
+        return { after, result }
+      })
+    )
+
+    expect(result._tag).toEqual('Right')
+    expect(storedConnectionInfo(after)).toEqual({
+      database: 'pagila',
+      host: 'localhost',
+      password: 'secret',
       username: 'postgres'
     })
   })
