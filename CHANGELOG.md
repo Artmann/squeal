@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.5.0](https://github.com/Artmann/squeal/compare/v1.4.2...v1.5.0) (2026-08-21)
+
+
+### Features
+
+* **results:** give every worksheet its own results height ([8983045](https://github.com/Artmann/squeal/commit/8983045eac1ed28457ebbcc15ea2ce4bc29547ed)), closes [#46](https://github.com/Artmann/squeal/issues/46)
+
+
+### Bug Fixes
+
+* **auth:** ask one question about the bearer header, in one place ([dd11cca](https://github.com/Artmann/squeal/commit/dd11cca8b5552d333496512d767a4eade02b3866)), closes [#71](https://github.com/Artmann/squeal/issues/71)
+* **autosave:** tell the user which worksheet failed to save ([91d6c01](https://github.com/Artmann/squeal/commit/91d6c01129066c3ae938427a56fb6788cad98396))
+* **cancel:** keep a failed cancel from speaking for another query ([344f387](https://github.com/Artmann/squeal/commit/344f387d68b8740eccdbefef25a4561396d18476))
+* **databases:** make remove and reorder land as one write each ([54907c5](https://github.com/Artmann/squeal/commit/54907c5876d233eed8c24445ba287a6e22c1a0df)), closes [#70](https://github.com/Artmann/squeal/issues/70)
+* **databases:** say when a connection's stored secret cannot be read ([9ac2056](https://github.com/Artmann/squeal/commit/9ac205654558682a974fb08fd4ddf76a594db48a))
+* **databases:** stop asking for the password to change an SSL setting ([40878b4](https://github.com/Artmann/squeal/commit/40878b4620e4c58098d3d07a82f6e53b9f545ce2))
+* **main:** stop a window opening over a backend that is shutting down ([005c9ab](https://github.com/Artmann/squeal/commit/005c9ab393518732aaea6035004d7e7182642259)), closes [#58](https://github.com/Artmann/squeal/issues/58)
+* **postgres:** hold one lifecycle so a cancel is never dropped ([6d8824a](https://github.com/Artmann/squeal/commit/6d8824ac7326f52e64359c9ef36f8da63586df5d)), closes [#54](https://github.com/Artmann/squeal/issues/54)
+* **queries:** stop cancel writing a terminal row the backend has not produced ([4e4f2f3](https://github.com/Artmann/squeal/commit/4e4f2f3cdbd23b5dca175e28f7a6223305d722ac))
+* **seed:** match the code Node actually reports for a truncated write ([78c01e3](https://github.com/Artmann/squeal/commit/78c01e3c07cc0d4c832bbac1d5d6c971ba3eaf1a))
+* **seed:** name the directory a bad SQLITE_PATH points into ([27507fb](https://github.com/Artmann/squeal/commit/27507fb9bc11e41d37878e72d16fc73a2b6f5a9a)), closes [#169](https://github.com/Artmann/squeal/issues/169)
+* **seed:** read .env so a documented override is honoured ([e46e62f](https://github.com/Artmann/squeal/commit/e46e62f857cafece10dcd206e3c7605ed12bbd24)), closes [#72](https://github.com/Artmann/squeal/issues/72)
+* **seed:** say which file failed to load and why ([9a92204](https://github.com/Artmann/squeal/commit/9a92204fab308e27300dc880ce4954a9ece4005c))
+* **seed:** seed MySQL without shelling out to cat ([eee428b](https://github.com/Artmann/squeal/commit/eee428b035afa6bb74eef6552c0dc6d9d78a5f90)), closes [#73](https://github.com/Artmann/squeal/issues/73)
+* **shadcn:** point components.json at the stylesheet that exists ([2037507](https://github.com/Artmann/squeal/commit/2037507b9487c6542dfabf2e363c4ddaa1ddb89b))
+* **tests:** repair fixtures the merge batch left stale ([c4dea75](https://github.com/Artmann/squeal/commit/c4dea75c4c4d650d13e51dcac41289f633603b6d))
+* **theme:** point the dark variant at the app's own mode ([d612b70](https://github.com/Artmann/squeal/commit/d612b702c4c154523f7285088b49d23be587ac19)), closes [#100](https://github.com/Artmann/squeal/issues/100)
+* **traces:** make the dashboard's three screens one value ([614a408](https://github.com/Artmann/squeal/commit/614a4083298bf48a1b07c1a1291fb72f37db22ba)), closes [#67](https://github.com/Artmann/squeal/issues/67)
+* **tracing:** bound the map of running query traces ([931ae66](https://github.com/Artmann/squeal/commit/931ae6691489a0c29015f8e0d234e10a5d012d0e))
+* **tracing:** take the batch out of the buffer instead of copying it ([cb66667](https://github.com/Artmann/squeal/commit/cb66667a0280e9b48e02b5dd8ab14d7c14b1dfe9)), closes [#57](https://github.com/Artmann/squeal/issues/57)
+* **updates:** claim the install when the request asks, not when it fires ([f6e9306](https://github.com/Artmann/squeal/commit/f6e930642260ad4e3886bb79d5df0fddcb674a4f)), closes [#51](https://github.com/Artmann/squeal/issues/51)
+* **worksheets:** give "open a worksheet" one definition ([67191e9](https://github.com/Artmann/squeal/commit/67191e9a0c34b66400afaf31d637574b6a7d9844)), closes [#62](https://github.com/Artmann/squeal/issues/62)
+* **worksheets:** only accuse a save that really did not happen ([b3f1a3a](https://github.com/Artmann/squeal/commit/b3f1a3ae23c1f23587111adfcf565ff6f4e01481))
+* **worksheets:** rename from one session, not one per surface ([4a284f5](https://github.com/Artmann/squeal/commit/4a284f5199fa6e3644d0b3eb28af30487764fbd7)), closes [#95](https://github.com/Artmann/squeal/issues/95)
+
 ## [1.4.2](https://github.com/Artmann/squeal/compare/v1.4.1...v1.4.2) (2026-08-18)
 
 
