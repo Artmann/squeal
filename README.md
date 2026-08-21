@@ -6,6 +6,10 @@
 
 <h1 align="center">Squeal – A Delightful SQL Client</h1>
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="Squeal running a query against a PostgreSQL database, with worksheets in the sidebar and results in a table">
+</p>
+
 ## 🔌 Connect to Your Databases
 
 - Connect to PostgreSQL databases
