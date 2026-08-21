@@ -30,18 +30,16 @@ worksheet remembers which database it belongs to, and switching a query to a
 different one is a menu away. Passwords are encrypted with your operating
 system's keychain — the app asks first, and takes no for an answer.
 
-In short:
-
-- PostgreSQL, MySQL, and SQLite, with as many saved connections as you need
-- Worksheets that autosave, and run the single statement under your cursor
-- Syntax highlighting, keyword completion, and one-shortcut formatting
-- A results table with the row count, timing, and server version in the status
-  bar, and a Messages tab for whatever the database wanted to tell you
-- Cancel a query that is taking too long, on the server rather than in the UI
-- A schema and table browser that writes the `SELECT` for you
-- Light and dark themes
-- Passwords encrypted with the OS keychain, once you have said yes
-- Automatic updates on macOS and Windows
+- 🔌 PostgreSQL, MySQL, and SQLite, with as many saved connections as you need
+- 📝 Worksheets that autosave, and run the single statement under your cursor
+- ✨ Syntax highlighting, keyword completion, and one-shortcut formatting
+- 📊 A results table with the row count, timing, and server version in the
+  status bar, and a Messages tab for whatever the database wanted to tell you
+- 🛑 Cancel a query that is taking too long, on the server rather than in the UI
+- 🗂️ A schema and table browser that writes the `SELECT` for you
+- 🌗 Light and dark themes
+- 🔐 Passwords encrypted with the OS keychain, once you have said yes
+- 🚀 Automatic updates on macOS and Windows
 
 ## Getting Started
 
