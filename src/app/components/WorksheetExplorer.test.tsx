@@ -420,4 +420,257 @@ describe('WorksheetExplorer', () => {
       expect(await screen.findByDisplayValue('Second Worksheet')).toBeVisible()
     })
   })
+  describe('selecting several worksheets', () => {
+    // Explicit sort orders, so the rows sit in the order the tests name them:
+    // the list falls back to newest-first for worksheets without one.
+    const threeWorksheets: WorksheetDto[] = [
+      { ...testWorksheet, sortOrder: 0 },
+      { ...secondWorksheet, sortOrder: 1 },
+      { ...testWorksheet, id: 'ws-789', name: 'Third Worksheet', sortOrder: 2 }
+    ]
+
+    // What the sidebar acts on together, read off the rows rather than the
+    // store: the highlight is the only thing telling the user what a drag or a
+    // delete is about to take with it.
+    function selectedNames(): string[] {
+      return screen
+        .getAllByRole('button')
+        .filter((button) => button.dataset.selected === 'true')
+        .map((button) => button.textContent ?? '')
+    }
+
+    it('adds a row to the selection on a command-click, without opening it', () => {
+      const { store } = renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        openWorksheetId: 'ws-123',
+        worksheets: threeWorksheets
+      })
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Second Worksheet' }),
+        {
+          metaKey: true
+        }
+      )
+
+      // The open worksheet joins the selection it started: a command-click adds
+      // a row, so it cannot be the thing that drops the row you were on.
+      expect({
+        openWorksheetId: store.getState().tabs.activeWorksheetId,
+        selected: selectedNames()
+      }).toEqual({
+        openWorksheetId: 'ws-123',
+        selected: ['Test Worksheet', 'Second Worksheet']
+      })
+    })
+
+    // `mod` is ⌘ on macOS and Ctrl everywhere else, and the click handler is
+    // the one place in the sidebar that has to know both.
+    it('adds a row on a control-click too', () => {
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        openWorksheetId: 'ws-123',
+        worksheets: threeWorksheets
+      })
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Second Worksheet' }),
+        {
+          ctrlKey: true
+        }
+      )
+
+      expect(selectedNames()).toEqual(['Test Worksheet', 'Second Worksheet'])
+    })
+
+    it('takes a selected row back out on a second command-click', () => {
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        openWorksheetId: 'ws-123',
+        worksheets: threeWorksheets
+      })
+
+      const row = screen.getByRole('button', { name: 'Second Worksheet' })
+
+      fireEvent.click(row, { metaKey: true })
+      fireEvent.click(row, { metaKey: true })
+
+      expect(selectedNames()).toEqual(['Test Worksheet'])
+    })
+
+    it('selects the range from the open row on a shift-click', () => {
+      const { store } = renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        openWorksheetId: 'ws-123',
+        worksheets: threeWorksheets
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Third Worksheet' }), {
+        shiftKey: true
+      })
+
+      expect({
+        openWorksheetId: store.getState().tabs.activeWorksheetId,
+        selected: selectedNames()
+      }).toEqual({
+        openWorksheetId: 'ws-123',
+        selected: ['Test Worksheet', 'Second Worksheet', 'Third Worksheet']
+      })
+    })
+
+    it('drops the selection and opens the worksheet on a plain click', () => {
+      const { store } = renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        openWorksheetId: 'ws-123',
+        worksheets: threeWorksheets
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Third Worksheet' }), {
+        shiftKey: true
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Second Worksheet' }))
+
+      expect({
+        openWorksheetId: store.getState().tabs.activeWorksheetId,
+        selected: selectedNames()
+      }).toEqual({
+        openWorksheetId: 'ws-456',
+        selected: ['Second Worksheet']
+      })
+    })
+
+    describe('deleting the selection', () => {
+      const selectingTwo = {
+        worksheetSelection: { anchorId: 'ws-123', ids: ['ws-123', 'ws-456'] }
+      }
+
+      it('deletes every selected worksheet after one confirmation', async () => {
+        const user = userEvent.setup()
+
+        vi.mocked(apiClient.deleteWorksheet).mockResolvedValue(undefined)
+
+        renderWithProviders(<WorksheetExplorer />, {
+          databases: [],
+          editor: selectingTwo,
+          openWorksheetId: 'ws-123',
+          worksheets: threeWorksheets
+        })
+
+        fireEvent.contextMenu(screen.getByText('Second Worksheet'))
+
+        await user.click(
+          await screen.findByRole('menuitem', { name: 'Delete 2 worksheets' })
+        )
+
+        expect(await screen.findByText('Delete 2 worksheets?')).toBeVisible()
+        expect(apiClient.deleteWorksheet).not.toHaveBeenCalled()
+
+        await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+        await waitFor(() => {
+          expect(vi.mocked(apiClient.deleteWorksheet).mock.calls).toEqual([
+            ['ws-123'],
+            ['ws-456']
+          ])
+        })
+
+        expect(await screen.findByText('Deleted 2 worksheets')).toBeVisible()
+      })
+
+      // Renaming three worksheets at once means nothing, so the menu does not
+      // offer it rather than quietly renaming the one that was right-clicked.
+      it('offers no rename while several rows are selected', async () => {
+        renderWithProviders(<WorksheetExplorer />, {
+          databases: [],
+          editor: selectingTwo,
+          openWorksheetId: 'ws-123',
+          worksheets: threeWorksheets
+        })
+
+        fireEvent.contextMenu(screen.getByText('Second Worksheet'))
+
+        await screen.findByRole('menuitem', { name: 'Delete 2 worksheets' })
+
+        expect(
+          screen.queryByRole('menuitem', { name: 'Rename' })
+        ).not.toBeInTheDocument()
+      })
+
+      // Right-clicking outside the selection is how a file manager behaves:
+      // the row you pointed at becomes the selection, and the menu acts on it.
+      it('acts on the row alone when it is not part of the selection', async () => {
+        const user = userEvent.setup()
+
+        vi.mocked(apiClient.deleteWorksheet).mockResolvedValue(undefined)
+
+        renderWithProviders(<WorksheetExplorer />, {
+          databases: [],
+          editor: selectingTwo,
+          openWorksheetId: 'ws-123',
+          worksheets: threeWorksheets
+        })
+
+        fireEvent.contextMenu(screen.getByText('Third Worksheet'))
+
+        await user.click(
+          await screen.findByRole('menuitem', { name: 'Delete' })
+        )
+        await user.click(await screen.findByRole('button', { name: 'Delete' }))
+
+        await waitFor(() => {
+          expect(vi.mocked(apiClient.deleteWorksheet).mock.calls).toEqual([
+            ['ws-789']
+          ])
+        })
+      })
+
+      // Same rule as the single row: the app is built around always having a
+      // worksheet open, and the list endpoint would recreate a default one.
+      it('disables the delete that would empty the list', async () => {
+        renderWithProviders(<WorksheetExplorer />, {
+          databases: [],
+          editor: selectingTwo,
+          openWorksheetId: 'ws-123',
+          worksheets: [testWorksheet, secondWorksheet]
+        })
+
+        fireEvent.contextMenu(screen.getByText('Second Worksheet'))
+
+        expect(
+          await screen.findByRole('menuitem', { name: 'Delete 2 worksheets' })
+        ).toHaveAttribute('aria-disabled', 'true')
+      })
+
+      it('says how many of them failed when only some are deleted', async () => {
+        const user = userEvent.setup()
+
+        vi.mocked(apiClient.deleteWorksheet).mockImplementation(
+          async (worksheetId: string) => {
+            if (worksheetId === 'ws-456') {
+              throw new Error('Database is locked')
+            }
+          }
+        )
+
+        renderWithProviders(<WorksheetExplorer />, {
+          databases: [],
+          editor: selectingTwo,
+          openWorksheetId: 'ws-123',
+          worksheets: threeWorksheets
+        })
+
+        fireEvent.contextMenu(screen.getByText('Second Worksheet'))
+
+        await user.click(
+          await screen.findByRole('menuitem', { name: 'Delete 2 worksheets' })
+        )
+        await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+        expect(
+          await screen.findByText('Failed to delete 1 of 2 worksheets')
+        ).toBeVisible()
+        expect(await screen.findByText('Database is locked')).toBeVisible()
+      })
+    })
+  })
 })

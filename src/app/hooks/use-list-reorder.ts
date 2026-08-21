@@ -13,8 +13,10 @@ import {
   restrictToHorizontalAxis,
   restrictToVerticalAxis
 } from '@dnd-kit/modifiers'
-import { arrayMove, type SortingStrategy } from '@dnd-kit/sortable'
+import { type SortingStrategy } from '@dnd-kit/sortable'
 import { useCallback, useState } from 'react'
+
+import { moveIds } from '../list-move'
 
 // Named along the list rather than along a screen axis, so the same values
 // describe a sidebar row and a tab.
@@ -53,12 +55,33 @@ interface ListReorderDndContextProps {
 interface ListReorder {
   dndContextProps: ListReorderDndContextProps
   dropIndicatorFor: (id: string) => DropIndicator
+  /**
+   * Whether the row is travelling with the drag in flight. `useSortable` knows
+   * this for the row under the cursor only, and a group drag carries rows the
+   * cursor never touched.
+   */
+  isMoving: (id: string) => boolean
 }
 
 interface UseListReorderOptions {
   axis: 'horizontal' | 'vertical'
   ids: string[]
   onReorder: (orderedIds: string[]) => void
+  /**
+   * Rows the user has picked out, if the list offers that at all. Grabbing one
+   * of them drags the whole group; grabbing anything else is an ordinary
+   * single-row drag and leaves the selection where it is.
+   */
+  selectedIds?: string[]
+}
+
+// The rows this drag is carrying. A selection the dragged row is not part of
+// belongs to whatever else the list does with it, not to the drag.
+function movingIdsFor(
+  activeId: string,
+  selectedIds: string[] | undefined
+): string[] {
+  return selectedIds?.includes(activeId) ? selectedIds : [activeId]
 }
 
 /**
@@ -76,7 +99,7 @@ interface UseListReorderOptions {
  * only have to be some subsequence of `ids` — nothing has to line up by index.
  */
 export function useListReorder(options: UseListReorderOptions): ListReorder {
-  const { axis, ids, onReorder } = options
+  const { axis, ids, onReorder, selectedIds } = options
 
   const [drag, setDrag] = useState<Drag | null>(null)
 
@@ -98,19 +121,24 @@ export function useListReorder(options: UseListReorderOptions): ListReorder {
         return
       }
 
-      const activeIndex = ids.indexOf(String(active.id))
-      const overIndex = ids.indexOf(String(over.id))
+      const activeId = String(active.id)
+      const nextIds = moveIds(
+        ids,
+        movingIdsFor(activeId, selectedIds),
+        activeId,
+        String(over.id)
+      )
 
-      // Same reason as the indicator below: `arrayMove` reads -1 as a position
-      // and scrambles the order rather than refusing, so a row that has left
-      // the list mid-drag has to be caught here.
-      if (activeIndex === -1 || overIndex === -1) {
+      // `moveIds` hands back the list it was given, by reference, for every
+      // drop that means nothing: a row that left the list mid-drag, or a drop
+      // onto a row that is itself travelling. Neither is worth a write.
+      if (nextIds === ids) {
         return
       }
 
-      onReorder(arrayMove(ids, activeIndex, overIndex))
+      onReorder(nextIds)
     },
-    [ids, onReorder]
+    [ids, onReorder, selectedIds]
   )
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
@@ -130,10 +158,15 @@ export function useListReorder(options: UseListReorderOptions): ListReorder {
   // boundary. `ids` is a fresh array on most renders anyway.
   //
   // Dragging forwards lands after the hovered row, backwards before it,
-  // matching how `arrayMove` resolves the drop. Dropping a row on itself
-  // changes nothing, so it gets no line.
+  // matching how `moveIds` resolves the drop. A row that is travelling with
+  // the drag gets no line: dropping the group on one of its own rows changes
+  // nothing, so there is nothing to point at.
   const dropIndicatorFor = (id: string): DropIndicator => {
-    if (drag === null || drag.overId !== id || drag.activeId === id) {
+    if (drag === null || drag.overId !== id) {
+      return null
+    }
+
+    if (movingIdsFor(drag.activeId, selectedIds).includes(id)) {
       return null
     }
 
@@ -151,6 +184,9 @@ export function useListReorder(options: UseListReorderOptions): ListReorder {
     return activeIndex < overIndex ? 'after' : 'before'
   }
 
+  const isMoving = (id: string): boolean =>
+    drag !== null && movingIdsFor(drag.activeId, selectedIds).includes(id)
+
   return {
     dndContextProps: {
       collisionDetection: closestCenter,
@@ -161,6 +197,7 @@ export function useListReorder(options: UseListReorderOptions): ListReorder {
       onDragStart: handleDragStart,
       sensors
     },
-    dropIndicatorFor
+    dropIndicatorFor,
+    isMoving
   }
 }
