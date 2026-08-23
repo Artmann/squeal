@@ -9,7 +9,8 @@ function getUserDataPath(): string {
 
     return app.isPackaged ? app.getPath('userData') : process.cwd()
   } catch {
-    // Not running in Electron (e.g., drizzle-kit CLI)
+    // Not running in Electron — the backend test project runs this module
+    // in a plain node environment, where there is no `electron` to require.
     return process.cwd()
   }
 }
