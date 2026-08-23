@@ -94,11 +94,3 @@ distributable — their signature doesn't verify, and macOS calls a quarantined
 app with a bad signature _damaged_. To produce a real signed build locally, set
 `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`; notarization
 adds a few minutes to the build.
-
-## Database Migrations
-
-Generate migrations after schema changes:
-
-```bash
-npx drizzle-kit generate
-```
