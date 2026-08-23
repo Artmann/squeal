@@ -139,9 +139,11 @@ disposes on `before-quit`.
 - `yarn test` - Vitest, split into a `backend` project (node environment) and a
   `renderer` project (jsdom)
 
-Schema changes do **not** go through `drizzle-kit generate` — it is interactive,
-and nothing applies the `drizzle/` folder at runtime. `src/database/index.ts`
-runs `createTables` from `src/database/tables.ts` (hand-written
+Schema changes do **not** go through a migration tool. There is no generated
+migration in the tree and nothing that would apply one; `drizzle-kit` and the
+`drizzle/` folder it wrote were deleted, and `migration-tooling.test.ts` fails
+if either comes back without something to run it. `src/database/index.ts` runs
+`createTables` from `src/database/tables.ts` (hand-written
 `CREATE TABLE IF NOT EXISTS` — the real DDL, and what in-memory test databases
 are built from) and then `reconcileColumns`, which ALTER-adds columns missing
 from older databases. A new table or column goes in both

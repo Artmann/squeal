@@ -4,6 +4,7 @@ import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  migrationArtifactPath,
   migrationPatterns,
   unappliedMigrationTooling
 } from './migration-tooling'
@@ -104,6 +105,26 @@ describe('migrationPatterns', () => {
     ).toEqual(true)
   })
 
+  it('reads a require of the migrator as one', () => {
+    expect(
+      migrationPatterns.migrator.test(
+        "const { migrate } = require('drizzle-orm/libsql/migrator')"
+      )
+    ).toEqual(true)
+  })
+
+  // An applier excuses every artifact in the tree, so a file that merely says
+  // the words must not count as one. The comment below is the shape that
+  // matters most: it is what this repository's own modules are likeliest to
+  // contain, and it once made this very guard inert.
+  it('reads prose naming the migrator as not an import of it', () => {
+    expect(
+      migrationPatterns.migrator.test(
+        '// Nothing here runs drizzle-orm/libsql/migrator; tables are created at boot.'
+      )
+    ).toEqual(false)
+  })
+
   it('reads an ordinary drizzle import as not one', () => {
     expect(
       migrationPatterns.migrator.test(
@@ -116,6 +137,32 @@ describe('migrationPatterns', () => {
     expect(
       migrationPatterns.migrator.test('const migrated = migrateRows(rows)')
     ).toEqual(false)
+  })
+})
+
+describe('migrationArtifactPath', () => {
+  it('names the folder a generated migration sits in', () => {
+    expect(migrationArtifactPath('drizzle/0000_graceful_whizzer.sql')).toEqual(
+      'drizzle'
+    )
+  })
+
+  it('names the generator config as its own artifact', () => {
+    expect(migrationArtifactPath('drizzle.config.ts')).toEqual(
+      'drizzle.config.ts'
+    )
+  })
+
+  // `out` in the config decides where the folder goes, and pointing it under
+  // `src` is ordinary. Reading only the top of the tree made that invisible.
+  it('names a folder the config pointed somewhere deeper', () => {
+    expect(
+      migrationArtifactPath('src/database/drizzle/0000_graceful_whizzer.sql')
+    ).toEqual('src/database/drizzle')
+  })
+
+  it('says nothing about an ordinary source file', () => {
+    expect(migrationArtifactPath('src/database/tables.ts')).toEqual(undefined)
   })
 })
 
@@ -139,12 +186,22 @@ describe('the migration tooling in this repository', () => {
   }
 
   // Committed rather than merely present, because what drifts is SQL that is in
-  // the tree for everyone; and found by name rather than from a list of the
-  // paths that happened to exist when this was written, because `drizzle-kit`
-  // writes wherever its config points it.
-  const artifacts = [...new Set(tracked().map((file) => file.split('/')[0]))]
-    .filter((entry) => migrationPatterns.artifact.test(entry))
-    .sort()
+  // the tree for everyone; and recognised by name at any depth rather than
+  // from a list of the paths that happened to exist when this was written,
+  // because `drizzle-kit` writes where its config points it. What that does
+  // and does not reach is `migrationArtifactPath`.
+  //
+  // One walk, shared with the non-vacuity check below. Two calls let this one
+  // be narrowed to nothing while the other went on proving the tree was read.
+  const trackedFiles = tracked()
+
+  const artifacts = [
+    ...new Set(
+      trackedFiles
+        .map(migrationArtifactPath)
+        .filter((entry) => entry !== undefined)
+    )
+  ].sort()
 
   const manifest = JSON.parse(
     readFileSync(join(repositoryRoot, 'package.json'), 'utf-8')
@@ -174,6 +231,18 @@ describe('the migration tooling in this repository', () => {
 
   const appliers = sourceFilesMatching(migrationPatterns.migrator)
 
+  // The empty answer below has two causes, and only one of them is this
+  // repository's: there is nothing to find. The other is an applier, which
+  // excuses every artifact in the tree without saying so. Nothing under `src`
+  // imports drizzle's migrator today, and that is asserted rather than
+  // assumed, because it is the half a stray line switches off.
+  it('has nothing applying a migration to excuse what it finds', () => {
+    expect(
+      appliers,
+      'Something under `src` now imports the drizzle migrator. If that is a real migration system then the check below is satisfied by it rather than by an empty tree, and should say so. If it is not one, the check below is switched off.'
+    ).toEqual([])
+  })
+
   it('is applied by something, or is not there', () => {
     expect(
       unappliedMigrationTooling({ appliers, artifacts, dependencies }),
@@ -194,21 +263,21 @@ describe('the migration tooling in this repository', () => {
       // This file quotes a migrator import as a fixture further up, so it has
       // to stay outside the scan. When it did not, it was itself the applier
       // that excused every artifact in the tree, and the guard passed on a
-      // repository with the whole `drizzle/` folder restored.
-      leavesItsOwnFixtureOut: !sourceFiles.includes(
-        'src/database/migration-tooling.test.ts'
+      // repository with the whole `drizzle/` folder restored. The property is
+      // asserted, not the one filename: narrowing the exclusion to this file
+      // alone leaves the next test that quotes an import free to do it again.
+      leavesEveryTestFileOut: sourceFiles.every(
+        (file) => !/\.test\.tsx?$/.test(file)
       ),
       // The artifact scan is a filter over the tracked tree, so this is the
-      // half of it that has to have found something: a top-level entry it could
-      // have named, had the name matched.
-      namesTheTopLevelTree: tracked().some(
-        (file) => file.split('/')[0] === 'package.json'
-      ),
+      // half of it that has to have found something: an entry it could have
+      // named, had the name matched.
+      namesTheTree: trackedFiles.some((file) => file === 'package.json'),
       parsesTheManifest: Object.keys(manifest.devDependencies).length > 0
     }).toEqual({
       findsSourceItIsLookingFor: true,
-      leavesItsOwnFixtureOut: true,
-      namesTheTopLevelTree: true,
+      leavesEveryTestFileOut: true,
+      namesTheTree: true,
       parsesTheManifest: true
     })
   })

@@ -22,7 +22,7 @@ export interface MigrationTooling {
  * find, neither mistake is observable through the guard itself.
  */
 export const migrationPatterns = {
-  /** A top-level entry that holds or configures generated migrations. */
+  /** A path component that holds or configures generated migrations. */
   artifact: /^drizzle/,
   /** A package that exists to generate them. */
   generator: /^drizzle-kit/,
@@ -30,8 +30,32 @@ export const migrationPatterns = {
    * An import of drizzle's migrator entry point, which is the only way to run
    * one. Deliberately not the word "migrate": a `migrateRows` helper would
    * otherwise pass itself off as a migration system.
+   *
+   * An import rather than the path anywhere in the file, because an applier is
+   * the half that excuses the other, so anything that reads as one switches
+   * the whole guard off. Prose naming the path — a comment explaining what
+   * an applier is, an error message telling someone to write one — would
+   * otherwise do exactly that.
    */
-  migrator: /drizzle-orm\/[^'"]+\/migrator/
+  migrator: /(?:from|require\()\s*['"]drizzle-orm\/[^'"]+\/migrator['"]/
+}
+
+/**
+ * The artifact a tracked path belongs to, or nothing when it belongs to none.
+ *
+ * At any depth rather than only at the top of the tree, because `drizzle-kit`
+ * writes where its config's `out` points it and that is often somewhere under
+ * `src`. A folder whose name says nothing about drizzle — `out: './migrations'`
+ * — is still invisible, and deliberately so: reading every `.sql` file in the
+ * repository to guess whether it was generated is worse than the gap. The
+ * pair is caught anyway, because nothing generates into that folder without a
+ * `drizzle.config.*` that this does name.
+ */
+export function migrationArtifactPath(file: string): string | undefined {
+  const parts = file.split('/')
+  const depth = parts.findIndex((part) => migrationPatterns.artifact.test(part))
+
+  return depth === -1 ? undefined : parts.slice(0, depth + 1).join('/')
 }
 
 /**
