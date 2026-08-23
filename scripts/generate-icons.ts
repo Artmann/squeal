@@ -1,5 +1,5 @@
 import { execSync } from 'child_process'
-import { existsSync, mkdirSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 import pngToIco from 'png-to-ico'
@@ -32,7 +32,7 @@ async function generateIco() {
   const icoBuffer = await pngToIco(pngPaths)
   const icoPath = join(iconsDirectory, 'icon.ico')
 
-  await Bun.write(icoPath, icoBuffer)
+  writeFileSync(icoPath, icoBuffer)
 
   console.log('  Created icon.ico')
 }

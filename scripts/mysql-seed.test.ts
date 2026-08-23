@@ -189,6 +189,11 @@ describe('pipeFileToCommand', () => {
       source
     ).catch((error: unknown) => error as Error)
 
+    // `.catch` widens the result to include the `void` the call resolves with,
+    // so this is what stands between a pipe that stopped rejecting and a
+    // TypeError on `undefined.cause` — which would report the wrong thing.
+    invariant(failure, 'Piping to a command that exits 3 should have rejected.')
+
     expect((failure.cause as { status: number }).status).toEqual(3)
   })
 })

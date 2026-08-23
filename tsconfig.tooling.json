@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "strict": true,
+    "types": ["node"]
+  },
+  "include": [
+    "drizzle.config.ts",
+    "forge.config.ts",
+    "forge.env.d.ts",
+    "scripts/**/*",
+    "vite.main.config.ts",
+    "vite.preload.config.ts",
+    "vitest.config.ts"
+  ]
+}
