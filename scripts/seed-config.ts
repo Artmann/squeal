@@ -3,9 +3,9 @@
 // seed drops schemas. Keeping the targets separately importable is what lets a
 // test check where they point without pointing anything anywhere.
 //
-// `dotenv/config` is the same spelling `src/database/index.ts` and
-// `drizzle.config.ts` already use. It leaves an already-set variable alone, so
-// a shell export and CI still win over a `.env` left in the tree.
+// `dotenv/config` is the same spelling `src/database/index.ts` already uses.
+// It leaves an already-set variable alone, so a shell export and CI still win
+// over a `.env` left in the tree.
 import 'dotenv/config'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
