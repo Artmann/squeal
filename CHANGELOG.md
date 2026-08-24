@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.0](https://github.com/Artmann/squeal/compare/v1.5.0...v1.6.0) (2026-08-24)
+
+
+### Features
+
+* **databases:** pick the SSL certificate with a file dialog ([a5ae995](https://github.com/Artmann/squeal/commit/a5ae9955efdf92f02b86fc5cc37681dfd0aa31b1))
+* **results:** find rows in a result without changing the query ([2016096](https://github.com/Artmann/squeal/commit/201609677bd3ee62bea3e3d52334a314658d71e4))
+* **worksheets:** select several rows and drag them together ([6558293](https://github.com/Artmann/squeal/commit/655829376ce3e07e345505970a3ad39f94ba00d9))
+
+
+### Bug Fixes
+
+* **databases:** settle the connection form inside its modal ([d20370f](https://github.com/Artmann/squeal/commit/d20370fb386db7e76ec45d131db93f8239051c86))
+
 ## [1.5.0](https://github.com/Artmann/squeal/compare/v1.4.2...v1.5.0) (2026-08-21)
 
 
