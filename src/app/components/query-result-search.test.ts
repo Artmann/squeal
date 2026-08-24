@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  applySearchToRows,
   buildResultSearchIndex,
   findMatchOffsets,
   normalizeSearchQuery,
+  type ResultSearchView,
   splitCellText
 } from './query-result-search'
 
@@ -206,5 +208,123 @@ describe('buildResultSearchIndex', () => {
       matches: [],
       needle: 'a3f9'
     })
+  })
+})
+
+describe('applySearchToRows', () => {
+  const view = (
+    overrides: Partial<ResultSearchView> = {}
+  ): ResultSearchView => ({
+    activeIndex: 0,
+    columnHasMatch: [true, false],
+    isFiltering: false,
+    // Rows 2 and 5 matched, in column 1 and column 0.
+    matches: [
+      { columnIndex: 1, rowIndex: 2 },
+      { columnIndex: 0, rowIndex: 5 }
+    ],
+    needle: 'mia',
+    query: 'mia',
+    ...overrides
+  })
+
+  it('leaves every row addressed by itself when there is no search', () => {
+    const applied = applySearchToRows(10, undefined)
+
+    expect({
+      activeRowIndex: applied.activeRowIndex,
+      activeVisibleIndex: applied.activeVisibleIndex,
+      isFiltering: applied.isFiltering,
+      needle: applied.needle,
+      third: applied.toSourceIndex(3),
+      visibleRowCount: applied.visibleRowCount
+    }).toEqual({
+      activeRowIndex: -1,
+      activeVisibleIndex: -1,
+      isFiltering: false,
+      needle: '',
+      third: 3,
+      visibleRowCount: 10
+    })
+  })
+
+  it('counts every row and addresses them directly while not filtering', () => {
+    const applied = applySearchToRows(10, view())
+
+    expect({
+      activeMatch: applied.activeMatch,
+      activeRowIndex: applied.activeRowIndex,
+      activeVisibleIndex: applied.activeVisibleIndex,
+      first: applied.toSourceIndex(0),
+      seventh: applied.toSourceIndex(7),
+      visibleRowCount: applied.visibleRowCount
+    }).toEqual({
+      activeMatch: { columnIndex: 1, rowIndex: 2 },
+      activeRowIndex: 2,
+      // Not filtering, so the virtualizer counts rows and the match's own row
+      // index is the position it wants.
+      activeVisibleIndex: 2,
+      first: 0,
+      seventh: 7,
+      visibleRowCount: 10
+    })
+  })
+
+  // The assertion the rendered table cannot make: while filtering, position 1
+  // is row 5, and every read of the row has to go through this.
+  it('counts matches and translates position to row while filtering', () => {
+    const applied = applySearchToRows(10, view({ isFiltering: true }))
+
+    expect({
+      first: applied.toSourceIndex(0),
+      second: applied.toSourceIndex(1),
+      visibleRowCount: applied.visibleRowCount
+    }).toEqual({ first: 2, second: 5, visibleRowCount: 2 })
+  })
+
+  it('puts the active match at its position in the filtered list', () => {
+    const applied = applySearchToRows(
+      10,
+      view({ activeIndex: 1, isFiltering: true })
+    )
+
+    expect({
+      activeRowIndex: applied.activeRowIndex,
+      activeVisibleIndex: applied.activeVisibleIndex
+    }).toEqual({ activeRowIndex: 5, activeVisibleIndex: 1 })
+  })
+
+  // An empty query with the toggle on must not hide every row: there is nothing
+  // to filter by yet.
+  it('does not filter on an empty needle even with the toggle on', () => {
+    const applied = applySearchToRows(
+      10,
+      view({ isFiltering: true, matches: [], needle: '', query: '' })
+    )
+
+    expect({
+      isFiltering: applied.isFiltering,
+      visibleRowCount: applied.visibleRowCount
+    }).toEqual({ isFiltering: false, visibleRowCount: 10 })
+  })
+
+  it('has no active match when the ordinal says there is none', () => {
+    const applied = applySearchToRows(10, view({ activeIndex: -1 }))
+
+    expect({
+      activeMatch: applied.activeMatch,
+      activeRowIndex: applied.activeRowIndex,
+      activeVisibleIndex: applied.activeVisibleIndex
+    }).toEqual({
+      activeMatch: undefined,
+      activeRowIndex: -1,
+      activeVisibleIndex: -1
+    })
+  })
+
+  it('falls back to the position itself for a match that is not there', () => {
+    const applied = applySearchToRows(10, view({ isFiltering: true }))
+
+    expect(applied.toSourceIndex(9)).toEqual(9)
   })
 })

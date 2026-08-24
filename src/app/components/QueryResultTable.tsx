@@ -4,7 +4,6 @@ import {
   Fragment,
   memo,
   ReactElement,
-  useEffect,
   useMemo,
   useRef
 } from 'react'
@@ -12,6 +11,7 @@ import {
 import { maxResultRows } from '@/databases/adapter'
 import type { QueryResultDto } from '@/glue/api/schemas'
 
+import { useScrollToMatch } from '../hooks/use-scroll-to-match'
 import { cn } from '../lib/utils'
 import {
   ContextMenu,
@@ -26,6 +26,7 @@ import {
 import {
   getResultColumns,
   getResultFieldNames,
+  type ResultColumn,
   rowNumberColumnWidth
 } from './query-result-columns'
 import {
@@ -34,6 +35,7 @@ import {
   formatRowAsJson
 } from './query-result-format'
 import {
+  applySearchToRows,
   type ResultRowMatch,
   type ResultSearchView,
   splitCellText
@@ -62,10 +64,6 @@ const headerHeight = 31
 // rows rather than blank space.
 const overscan = 12
 
-// A stable identity for "no search", so the absent-`search` case does not hand
-// the virtualizer and the effects a fresh array on every render.
-const noMatches: ResultRowMatch[] = []
-
 export const QueryResultTable = memo(function QueryResultTable({
   result,
   search
@@ -91,30 +89,15 @@ export const QueryResultTable = memo(function QueryResultTable({
     [columns]
   )
 
-  const needle = search?.needle ?? ''
-  const matches = search?.matches ?? noMatches
-  const isFiltering = search?.isFiltering === true && needle !== ''
-
-  const activeMatch =
-    search === undefined || search.activeIndex < 0
-      ? undefined
-      : matches[search.activeIndex]
-
-  // The one place a virtualizer index becomes an index into `result.rows`.
-  // While filtering they are different things, and every read of the row, its
-  // number and its copy actions has to go through this -- a missed call site
-  // shows the wrong row's data with nothing to say so.
-  const toSourceIndex = (index: number): number => {
-    if (!isFiltering) {
-      return index
-    }
-
-    const match = matches[index]
-
-    return match === undefined ? index : match.rowIndex
-  }
-
-  const visibleRowCount = isFiltering ? matches.length : result.rows.length
+  const {
+    activeMatch,
+    activeRowIndex,
+    activeVisibleIndex,
+    isFiltering,
+    needle,
+    toSourceIndex,
+    visibleRowCount
+  } = applySearchToRows(result.rows.length, search)
 
   const virtualizer = useVirtualizer({
     count: visibleRowCount,
@@ -135,48 +118,15 @@ export const QueryResultTable = memo(function QueryResultTable({
       ? totalSize - (virtualRows[virtualRows.length - 1]?.end ?? 0)
       : 0
 
-  const activeRowIndex = activeMatch === undefined ? -1 : activeMatch.rowIndex
-
-  // While filtering, the virtualizer counts matches rather than rows, so the
-  // ordinal into `matches` already is the position it wants.
-  const activeVisibleIndex =
-    activeMatch === undefined
-      ? -1
-      : isFiltering
-        ? (search?.activeIndex ?? -1)
-        : activeMatch.rowIndex
-
-  useEffect(() => {
-    if (activeVisibleIndex < 0) {
-      return
-    }
-
-    // `auto` leaves the offset alone when the row is already comfortably in
-    // view, so stepping between two matches on screen does not jerk the grid.
-    virtualizer.scrollToIndex(activeVisibleIndex, { align: 'auto' })
-  }, [activeVisibleIndex, virtualizer])
-
-  const isActiveRowRendered = virtualRows.some(
-    (item) => toSourceIndex(item.index) === activeRowIndex
-  )
-
-  useEffect(() => {
-    if (activeRowIndex < 0 || !isActiveRowRendered) {
-      return
-    }
-
-    // Columns are not virtualized and the table is auto-layout, so the rendered
-    // width of a column is not the width that was pinned for it. Asking the
-    // browser to reveal the cell is the only reading of the layout that is
-    // actually true.
-    //
-    // Split from the vertical jump on purpose: `scrollToIndex` sets `scrollTop`
-    // synchronously, but the virtualizer re-windows on the scroll event that
-    // follows, so the target cell is not in the DOM during that pass.
-    scrollRef.current
-      ?.querySelector('[data-find-active]')
-      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-  }, [activeRowIndex, isActiveRowRendered])
+  useScrollToMatch({
+    activeRowIndex,
+    activeVisibleIndex,
+    isActiveRowRendered: virtualRows.some(
+      (item) => toSourceIndex(item.index) === activeRowIndex
+    ),
+    scrollRef,
+    scrollToIndex: virtualizer.scrollToIndex
+  })
 
   return (
     <div
@@ -203,31 +153,10 @@ export const QueryResultTable = memo(function QueryResultTable({
           ))}
         </colgroup>
 
-        <thead>
-          <tr>
-            <th className="sticky top-0 z-[5] h-[var(--head-h)] border-b border-border bg-panel2" />
-
-            {columns.map((column, columnIndex) => (
-              <th
-                className={cn(
-                  'sticky top-0 z-[5] h-[var(--head-h)] whitespace-nowrap border-b border-border bg-panel2 px-[14px] text-[12px] font-medium text-text2',
-                  // The header sits over its values, so it takes the column's
-                  // alignment rather than always hugging the left edge.
-                  column.align === 'right' ? 'text-right' : 'text-left',
-                  // Which columns the search landed in, answered at the top of
-                  // the column rather than only where the rows happen to be
-                  // scrolled to.
-                  search?.columnHasMatch[columnIndex] === true &&
-                    'text-find-strong'
-                )}
-                key={column.key}
-                scope="col"
-              >
-                {column.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
+        <QueryResultHead
+          columnHasMatch={search?.columnHasMatch}
+          columns={columns}
+        />
 
         <tbody>
           {paddingTop > 0 && (
@@ -241,109 +170,17 @@ export const QueryResultTable = memo(function QueryResultTable({
 
           {virtualRows.map((virtualRow) => {
             const rowIndex = toSourceIndex(virtualRow.index)
-            const row = result.rows[rowIndex]
 
             return (
-              <tr
-                className="group"
+              <QueryResultRow
+                activeMatch={activeMatch}
+                columnNames={columnNames}
+                columns={columns}
                 key={rowIndex}
-              >
-                <td className="h-[var(--row-h)] select-none border-b border-border2 px-[10px] text-right font-mono text-[11px] text-text3 group-hover:bg-hover">
-                  {rowIndex + 1}
-                </td>
-
-                {columns.map((column, columnIndex) => {
-                  // Known wrong for a result with two identically-named fields:
-                  // the driver's row is keyed by name, so both columns read the
-                  // first field's value. The columns are at least distinct
-                  // elements now; showing the right value needs an array row
-                  // mode in the adapter.
-                  const value = row?.[column.name]
-                  const text = formatCellValue(value)
-
-                  const isActiveCell =
-                    activeMatch !== undefined &&
-                    activeMatch.rowIndex === rowIndex &&
-                    activeMatch.columnIndex === columnIndex
-
-                  return (
-                    <ContextMenu key={`${rowIndex}-${column.key}`}>
-                      <ContextMenuTrigger asChild>
-                        <td
-                          className={cn(
-                            'h-[var(--row-h)] whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
-                            column.align === 'right'
-                              ? 'text-right'
-                              : 'text-left',
-                            value === null && 'text-text3 italic'
-                          )}
-                          data-find-active={isActiveCell ? '' : undefined}
-                        >
-                          {needle === '' ? (
-                            text
-                          ) : (
-                            <HighlightedCellText
-                              isActive={isActiveCell}
-                              needle={needle}
-                              text={text}
-                            />
-                          )}
-                        </td>
-                      </ContextMenuTrigger>
-
-                      <ContextMenuContent>
-                        <ContextMenuItem
-                          className="text-xs"
-                          onSelect={() => navigator.clipboard.writeText(text)}
-                        >
-                          Copy
-                        </ContextMenuItem>
-
-                        <ContextMenuItem
-                          className="text-xs"
-                          onSelect={() =>
-                            navigator.clipboard.writeText(column.name)
-                          }
-                        >
-                          Copy Column Name
-                        </ContextMenuItem>
-
-                        <ContextMenuSeparator />
-
-                        <ContextMenuSub>
-                          <ContextMenuSubTrigger className="text-xs">
-                            Copy Row
-                          </ContextMenuSubTrigger>
-
-                          <ContextMenuSubContent>
-                            <ContextMenuItem
-                              className="text-xs"
-                              onSelect={() =>
-                                navigator.clipboard.writeText(
-                                  formatRowAsCsv(row ?? {}, columnNames)
-                                )
-                              }
-                            >
-                              As CSV
-                            </ContextMenuItem>
-
-                            <ContextMenuItem
-                              className="text-xs"
-                              onSelect={() =>
-                                navigator.clipboard.writeText(
-                                  formatRowAsJson(row ?? {})
-                                )
-                              }
-                            >
-                              As JSON
-                            </ContextMenuItem>
-                          </ContextMenuSubContent>
-                        </ContextMenuSub>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  )
-                })}
-              </tr>
+                needle={needle}
+                row={result.rows[rowIndex]}
+                rowIndex={rowIndex}
+              />
             )
           })}
 
@@ -357,32 +194,220 @@ export const QueryResultTable = memo(function QueryResultTable({
           )}
 
           {isFiltering && visibleRowCount === 0 && (
-            <tr>
-              <td
-                className="px-[14px] py-4 text-[12.5px] text-text2"
-                colSpan={columns.length + 1}
-              >
-                No matches for “{search?.query}”
-                {result.truncated
-                  ? ` in the first ${Intl.NumberFormat().format(maxResultRows)} rows.`
-                  : '.'}
-                {/* Silence here would answer a question the search did not ask:
-                    a row absent from the first page is not a row absent from
-                    the table. */}
-                {result.truncated && (
-                  <span className="block pt-[6px] text-text3">
-                    Only part of the table was returned. Add a WHERE clause to
-                    search the rest.
-                  </span>
-                )}
-              </td>
-            </tr>
+            <NoMatchesRow
+              columnCount={columns.length + 1}
+              query={search?.query ?? ''}
+              truncated={result.truncated}
+            />
           )}
         </tbody>
       </table>
     </div>
   )
 })
+
+/**
+ * What the grid says when the filter is on and nothing matched.
+ *
+ * The truncation half is the point: a row absent from the first page is not a
+ * row absent from the table, and a bare "no matches" against a capped result
+ * answers a question the user did not ask.
+ */
+function NoMatchesRow({
+  columnCount,
+  query,
+  truncated
+}: {
+  columnCount: number
+  query: string
+  truncated: boolean
+}): ReactElement {
+  return (
+    <tr>
+      <td
+        className="px-[14px] py-4 text-[12.5px] text-text2"
+        colSpan={columnCount}
+      >
+        No matches for “{query}”
+        {truncated
+          ? ` in the first ${Intl.NumberFormat().format(maxResultRows)} rows.`
+          : '.'}
+        {truncated && (
+          <span className="block pt-[6px] text-text3">
+            Only part of the table was returned. Add a WHERE clause to search
+            the rest.
+          </span>
+        )}
+      </td>
+    </tr>
+  )
+}
+
+function QueryResultHead({
+  columnHasMatch,
+  columns
+}: {
+  columnHasMatch: boolean[] | undefined
+  columns: ResultColumn[]
+}): ReactElement {
+  return (
+    <thead>
+      <tr>
+        <th className="sticky top-0 z-[5] h-[var(--head-h)] border-b border-border bg-panel2" />
+
+        {columns.map((column, columnIndex) => (
+          <th
+            className={cn(
+              'sticky top-0 z-[5] h-[var(--head-h)] whitespace-nowrap border-b border-border bg-panel2 px-[14px] text-[12px] font-medium text-text2',
+              // The header sits over its values, so it takes the column's
+              // alignment rather than always hugging the left edge.
+              column.align === 'right' ? 'text-right' : 'text-left',
+              // Which columns the search landed in, answered at the top of the
+              // column rather than only where the rows happen to be scrolled
+              // to.
+              columnHasMatch?.[columnIndex] === true && 'text-find-strong'
+            )}
+            key={column.key}
+            scope="col"
+          >
+            {column.name}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  )
+}
+
+function QueryResultRow({
+  activeMatch,
+  columnNames,
+  columns,
+  needle,
+  row,
+  rowIndex
+}: {
+  activeMatch: ResultRowMatch | undefined
+  columnNames: string[]
+  columns: ResultColumn[]
+  needle: string
+  row: Record<string, unknown> | undefined
+  rowIndex: number
+}): ReactElement {
+  return (
+    <tr className="group">
+      <td className="h-[var(--row-h)] select-none border-b border-border2 px-[10px] text-right font-mono text-[11px] text-text3 group-hover:bg-hover">
+        {rowIndex + 1}
+      </td>
+
+      {columns.map((column, columnIndex) => (
+        <QueryResultCell
+          column={column}
+          columnNames={columnNames}
+          isActive={
+            activeMatch !== undefined &&
+            activeMatch.rowIndex === rowIndex &&
+            activeMatch.columnIndex === columnIndex
+          }
+          key={`${rowIndex}-${column.key}`}
+          needle={needle}
+          row={row}
+        />
+      ))}
+    </tr>
+  )
+}
+
+function QueryResultCell({
+  column,
+  columnNames,
+  isActive,
+  needle,
+  row
+}: {
+  column: ResultColumn
+  columnNames: string[]
+  isActive: boolean
+  needle: string
+  row: Record<string, unknown> | undefined
+}): ReactElement {
+  // Known wrong for a result with two identically-named fields: the driver's
+  // row is keyed by name, so both columns read the first field's value. The
+  // columns are at least distinct elements now; showing the right value needs
+  // an array row mode in the adapter.
+  const value = row?.[column.name]
+  const text = formatCellValue(value)
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <td
+          className={cn(
+            'h-[var(--row-h)] whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
+            column.align === 'right' ? 'text-right' : 'text-left',
+            value === null && 'text-text3 italic'
+          )}
+          data-find-active={isActive ? '' : undefined}
+        >
+          {needle === '' ? (
+            text
+          ) : (
+            <HighlightedCellText
+              isActive={isActive}
+              needle={needle}
+              text={text}
+            />
+          )}
+        </td>
+      </ContextMenuTrigger>
+
+      <ContextMenuContent>
+        <ContextMenuItem
+          className="text-xs"
+          onSelect={() => navigator.clipboard.writeText(text)}
+        >
+          Copy
+        </ContextMenuItem>
+
+        <ContextMenuItem
+          className="text-xs"
+          onSelect={() => navigator.clipboard.writeText(column.name)}
+        >
+          Copy Column Name
+        </ContextMenuItem>
+
+        <ContextMenuSeparator />
+
+        <ContextMenuSub>
+          <ContextMenuSubTrigger className="text-xs">
+            Copy Row
+          </ContextMenuSubTrigger>
+
+          <ContextMenuSubContent>
+            <ContextMenuItem
+              className="text-xs"
+              onSelect={() =>
+                navigator.clipboard.writeText(
+                  formatRowAsCsv(row ?? {}, columnNames)
+                )
+              }
+            >
+              As CSV
+            </ContextMenuItem>
+
+            <ContextMenuItem
+              className="text-xs"
+              onSelect={() =>
+                navigator.clipboard.writeText(formatRowAsJson(row ?? {}))
+              }
+            >
+              As JSON
+            </ContextMenuItem>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
 
 /**
  * Cell text with the matched runs marked. The segments always rejoin into the
