@@ -240,7 +240,9 @@ describe('DatabaseForm', () => {
 
       renderDatabaseForm()
 
-      await user.click(screen.getByRole('button', { name: /paste it/i }))
+      await user.click(
+        screen.getByRole('button', { name: 'Paste a connection string' })
+      )
       await user.type(
         screen.getByPlaceholderText(/postgresql:\/\//),
         'postgresql://alice:secret@db.example.com:6543/analytics'
@@ -252,6 +254,51 @@ describe('DatabaseForm', () => {
       expect(screen.getByLabelText('Database')).toHaveValue('analytics')
       expect(screen.getByLabelText('Username')).toHaveValue('alice')
       expect(screen.getByLabelText('Password')).toHaveValue('secret')
+    })
+
+    // The two halves of "does not interrupt the form": the trigger lives in
+    // the section header beside the type select, and the input it opens is
+    // outside the form entirely. Inline, the collapsed link sat between the
+    // separator and Name reading as a field of its own, and opening it pushed
+    // every field below it down.
+    it('keeps the trigger in the header and the input out of the form', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      const trigger = screen.getByRole('button', {
+        name: 'Paste a connection string'
+      })
+      const [typeSelect] = screen.getAllByRole('combobox')
+
+      // Same row as the type select, above the separator, not among the fields.
+      expect(trigger.closest('div')).toEqual(
+        typeSelect.closest('div[data-slot="form-item"]')?.parentElement
+      )
+
+      await user.click(trigger)
+
+      // Portaled, so no field can be displaced to make room for it.
+      expect(
+        screen.getByPlaceholderText(/postgresql:\/\//).closest('form')
+      ).toEqual(null)
+      expect(screen.getByLabelText('Name').closest('form')).not.toEqual(null)
+    })
+
+    // A file path has no connection string to paste.
+    it('offers no connection string for sqlite', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      const [typeSelect] = screen.getAllByRole('combobox')
+
+      await user.click(typeSelect)
+      await user.click(screen.getByRole('option', { name: 'SQLite' }))
+
+      expect(
+        screen.queryByRole('button', { name: 'Paste a connection string' })
+      ).not.toBeInTheDocument()
     })
   })
 

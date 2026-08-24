@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import {
   CheckCircle2Icon,
   ChevronRightIcon,
+  ClipboardPasteIcon,
   Loader2Icon,
   XCircleIcon
 } from 'lucide-react'
@@ -52,6 +53,7 @@ import {
   FormMessage
 } from './ui/form'
 import { Input } from './ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import {
   Select,
   SelectContent,
@@ -81,6 +83,15 @@ export interface DatabaseFormProps {
   defaultValues?: Partial<FormInput>
   onCancel?: () => void
   onSuccess?: (result: DatabaseFormResult) => void
+
+  /**
+   * `dialog` scrolls the fields and pins the actions to a footer bar, for a
+   * host that caps the form's height. `page` lets the whole form flow, for the
+   * getting-started screen, where it sits on the background with no card
+   * around it and a link below it — a bleeding, tinted footer there would be a
+   * bar floating on the page, and there is no height to scroll within anyway.
+   */
+  variant?: 'dialog' | 'page'
 }
 
 function stringOrEmpty(value: unknown): string {
@@ -209,8 +220,10 @@ export function DatabaseForm({
   databaseId,
   defaultValues,
   onCancel,
-  onSuccess
+  onSuccess,
+  variant = 'page'
 }: DatabaseFormProps): ReactElement {
+  const isDialog = variant === 'dialog'
   const isEditMode = Boolean(databaseId)
   const defaultType = (defaultValues?.type as DatabaseType) ?? 'postgres'
 
@@ -266,49 +279,72 @@ export function DatabaseForm({
 
   const isLoading = isSaving || isTestingConnection
 
+  // `min-h-0` is what lets the scroller below actually scroll: a flex item's
+  // default `min-height: auto` refuses to shrink below its content, so without
+  // it the form grows to fit every field and pushes the buttons off the screen
+  // no matter what the card above caps itself at.
   return (
     <Form {...form}>
       <form
-        className="flex flex-col gap-8"
+        className={cn('flex flex-col', isDialog ? 'min-h-0 flex-1' : 'gap-8')}
         onSubmit={form.handleSubmit(handleSubmit)}
       >
-        <UnreadableConnectionNotice
-          defaultValues={defaultValues}
-          isEditMode={isEditMode}
-        />
-
-        <ConnectionDetailsSection
-          databaseType={databaseType}
-          form={form}
-          onSslModeApplied={() => setShowAdvanced(true)}
-          onTypeChange={handleTypeChange}
-        />
-
-        {databaseType !== 'sqlite' && (
-          <AuthenticationSection
-            form={form}
+        {/* Only the fields scroll. The actions stay put because Save is the
+            reason the screen is open, and a form long enough to need a
+            scrollbar is exactly the one where hunting for it costs the most —
+            an SSL connection with a certificate path is already past the
+            bottom of a laptop window. The negative margin pulls the scrollbar
+            out to the card's edge, past the padding it would otherwise sit
+            inside. */}
+        <div
+          className={cn(
+            'flex flex-col gap-8',
+            // `pb-4` because the footer bleeds over the card's bottom
+            // padding, so without it the last field's helper text sits on the
+            // bar's top border. It also leaves a little tail below the last
+            // field when the area does scroll.
+            isDialog && '-mr-6 min-h-0 flex-1 overflow-y-auto pr-6 pb-4'
+          )}
+        >
+          <UnreadableConnectionNotice
+            defaultValues={defaultValues}
             isEditMode={isEditMode}
           />
-        )}
 
-        {databaseType !== 'sqlite' &&
-          (showAdvanced ? (
-            <SslSection form={form} />
-          ) : (
-            <button
-              className="flex items-center gap-1 self-start text-xs text-text2 hover:text-text"
-              type="button"
-              onClick={() => setShowAdvanced(true)}
-            >
-              <ChevronRightIcon className="size-3" />
-              Advanced (SSL)
-            </button>
-          ))}
+          <ConnectionDetailsSection
+            databaseType={databaseType}
+            form={form}
+            onSslModeApplied={() => setShowAdvanced(true)}
+            onTypeChange={handleTypeChange}
+          />
+
+          {databaseType !== 'sqlite' && (
+            <AuthenticationSection
+              form={form}
+              isEditMode={isEditMode}
+            />
+          )}
+
+          {databaseType !== 'sqlite' &&
+            (showAdvanced ? (
+              <SslSection form={form} />
+            ) : (
+              <button
+                className="flex items-center gap-1 self-start text-xs text-text2 hover:text-text"
+                type="button"
+                onClick={() => setShowAdvanced(true)}
+              >
+                <ChevronRightIcon className="size-3" />
+                Advanced (SSL)
+              </button>
+            ))}
+        </div>
 
         <DatabaseFormActions
           connectionTestIcon={connectionTestIcon}
           isLoading={isLoading}
           isSaving={isSaving}
+          variant={variant}
           onCancel={onCancel}
           onTestConnection={handleTestConnection}
         />
@@ -594,15 +630,15 @@ function useConnectionTest({
   }
 }
 
-interface ConnectionStringSectionProps {
+interface ConnectionStringPopoverProps {
   form: DatabaseFormApi
   onSslModeApplied: () => void
 }
 
-function ConnectionStringSection({
+function ConnectionStringPopover({
   form,
   onSslModeApplied
-}: ConnectionStringSectionProps): ReactElement {
+}: ConnectionStringPopoverProps): ReactElement {
   const [connectionString, setConnectionString] = useState('')
   const [showConnectionString, setShowConnectionString] = useState(false)
 
@@ -647,49 +683,63 @@ function ConnectionStringSection({
     toast.success('Connection details filled in')
   }, [connectionString, form, onSslModeApplied])
 
-  if (!showConnectionString) {
-    return (
-      <button
-        className="self-start text-xs text-accent underline-offset-4 hover:underline"
-        type="button"
-        onClick={() => setShowConnectionString(true)}
-      >
-        Have a connection string? Paste it
-      </button>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs text-text2">
-        Paste a connection string to fill in the fields below.
-      </p>
-
-      <div className="flex gap-2">
-        <Input
-          autoFocus
-          className="flex-1 font-mono text-xs"
-          placeholder="postgresql://user:password@host:5432/database"
-          value={connectionString}
-          onChange={(event) => setConnectionString(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              handleApplyConnectionString()
-            }
-          }}
-        />
-
+    <Popover
+      open={showConnectionString}
+      onOpenChange={setShowConnectionString}
+    >
+      <PopoverTrigger asChild>
         <Button
-          disabled={!connectionString.trim()}
-          size="sm"
+          aria-label="Paste a connection string"
+          size="icon"
+          title="Paste a connection string"
           type="button"
-          onClick={handleApplyConnectionString}
+          variant="ghost"
         >
-          Fill in
+          <ClipboardPasteIcon className="size-3.5" />
         </Button>
-      </div>
-    </div>
+      </PopoverTrigger>
+
+      {/* Wider than the default 20rem: a connection string is long, and a URL
+          the user cannot read back is one they cannot spot a typo in. Both
+          `w-` and `max-w-` because the base class caps the width at 20rem, so
+          widening one alone changes nothing.
+
+          `z-[200]` to clear the `z-100` editor-screen overlay, matching what
+          `SelectContent` already does for the same reason — a portaled surface
+          keeps the popover's default `z-50`, which lands it behind the card. */}
+      <PopoverContent className="z-[200] w-[min(26rem,calc(100vw-2rem))] max-w-[min(26rem,calc(100vw-2rem))]">
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-text2">
+            Paste a connection string to fill in the fields.
+          </p>
+
+          <div className="flex gap-2">
+            <Input
+              autoFocus
+              className="flex-1 font-mono text-xs"
+              placeholder="postgresql://user:password@host:5432/database"
+              value={connectionString}
+              onChange={(event) => setConnectionString(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  handleApplyConnectionString()
+                }
+              }}
+            />
+
+            <Button
+              disabled={!connectionString.trim()}
+              type="button"
+              onClick={handleApplyConnectionString}
+            >
+              Fill in
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -712,6 +762,18 @@ function ConnectionDetailsSection({
         <FormSectionTitle text="Connection Details" />
 
         <FormSectionHeaderActions>
+          {/* Beside the type select rather than above the fields: it fills
+              those fields in, so it belongs to this section, and a control
+              that appears and disappears in the header costs the fields below
+              it nothing. As a link between the separator and Name it read as
+              an interruption, and expanding it pushed the whole form down. */}
+          {databaseType !== 'sqlite' && (
+            <ConnectionStringPopover
+              form={form}
+              onSslModeApplied={onSslModeApplied}
+            />
+          )}
+
           <FormField
             control={form.control}
             name="type"
@@ -740,16 +802,6 @@ function ConnectionDetailsSection({
       </FormSectionHeader>
 
       <Separator />
-
-      {/* Inside the section rather than above it: this fills in the fields
-          below, and on its own it read as a stray link floating in the gap
-          between sections. */}
-      {databaseType !== 'sqlite' && (
-        <ConnectionStringSection
-          form={form}
-          onSslModeApplied={onSslModeApplied}
-        />
-      )}
 
       <div className="flex items-start gap-4">
         <FormField
@@ -1005,6 +1057,7 @@ interface DatabaseFormActionsProps {
   connectionTestIcon: ReactNode
   isLoading: boolean
   isSaving: boolean
+  variant: 'dialog' | 'page'
   onCancel?: () => void
   onTestConnection: (event: React.FormEvent) => void
 }
@@ -1013,15 +1066,33 @@ function DatabaseFormActions({
   connectionTestIcon,
   isLoading,
   isSaving,
+  variant,
   onCancel,
   onTestConnection
 }: DatabaseFormActionsProps): ReactElement {
+  const isDialog = variant === 'dialog'
+
+  // In a dialog the bar carries its own ground and bleeds through the card's
+  // padding to its edges, so it reads as a piece of the window rather than the
+  // last row of the form — `panel2` is the same step down from `panel` the
+  // inputs use, so it recedes in both themes without naming a colour.
+  //
+  // `size="default"` rather than `sm`: it is the app's own button metric
+  // (29px, 12.5px text), which matches the fields above it, where `sm` stood a
+  // row of 32px buttons taller than anything else in the form.
   return (
-    <div className="flex justify-end gap-3 py-4">
+    <div
+      className={cn(
+        'flex justify-end',
+        isDialog
+          ? '-mx-6 -mb-6 gap-2 rounded-b-md border-t border-border2 bg-panel2 px-6 py-3'
+          : 'gap-3 py-4'
+      )}
+    >
       {onCancel && (
         <Button
           disabled={isLoading}
-          size="sm"
+          size={isDialog ? 'default' : 'sm'}
           type="button"
           variant="ghost"
           onClick={onCancel}
@@ -1032,7 +1103,7 @@ function DatabaseFormActions({
 
       <Button
         disabled={isLoading}
-        size="sm"
+        size={isDialog ? 'default' : 'sm'}
         type="button"
         variant="outline"
         onClick={onTestConnection}
@@ -1043,7 +1114,7 @@ function DatabaseFormActions({
 
       <Button
         disabled={isLoading}
-        size="sm"
+        size={isDialog ? 'default' : 'sm'}
         type="submit"
       >
         {isSaving && <Loader2Icon className="size-3 animate-spin" />}
