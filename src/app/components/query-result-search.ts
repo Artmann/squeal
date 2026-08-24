@@ -206,3 +206,70 @@ export interface ResultSearchView {
   needle: string
   query: string
 }
+
+export interface AppliedSearch {
+  // The match being jumped to, if any, resolved from the view's ordinal.
+  activeMatch: ResultRowMatch | undefined
+  // Its index into `result.rows`, or -1.
+  activeRowIndex: number
+  // Its index in the virtualizer's coordinate space, or -1. The two differ
+  // while filtering, where the virtualizer counts matches rather than rows.
+  activeVisibleIndex: number
+  isFiltering: boolean
+  needle: string
+  // The one place a virtualizer index becomes an index into `result.rows`.
+  toSourceIndex: (visibleIndex: number) => number
+  visibleRowCount: number
+}
+
+const noMatches: ResultRowMatch[] = []
+
+/**
+ * What a search view means for a grid of `rowCount` rows: which rows to render,
+ * how to address them, and which cell is the one being jumped to.
+ *
+ * Pulled out of the grid because the addressing is the part that goes wrong
+ * quietly. While filtering, a virtualizer index is a position in the match list
+ * rather than a row, and every read of the row -- its number, its cells, its
+ * copy actions -- has to go through `toSourceIndex`. A missed call site shows a
+ * different row's data with nothing to say so, which is worth a test that does
+ * not need a rendered table.
+ */
+export function applySearchToRows(
+  rowCount: number,
+  search: ResultSearchView | undefined
+): AppliedSearch {
+  const needle = search?.needle ?? ''
+  const matches = search?.matches ?? noMatches
+  const isFiltering = search?.isFiltering === true && needle !== ''
+
+  const activeMatch =
+    search === undefined || search.activeIndex < 0
+      ? undefined
+      : matches[search.activeIndex]
+
+  const toSourceIndex = (visibleIndex: number): number => {
+    if (!isFiltering) {
+      return visibleIndex
+    }
+
+    const match = matches[visibleIndex]
+
+    return match === undefined ? visibleIndex : match.rowIndex
+  }
+
+  return {
+    activeMatch,
+    activeRowIndex: activeMatch?.rowIndex ?? -1,
+    activeVisibleIndex:
+      activeMatch === undefined
+        ? -1
+        : isFiltering
+          ? (search?.activeIndex ?? -1)
+          : activeMatch.rowIndex,
+    isFiltering,
+    needle,
+    toSourceIndex,
+    visibleRowCount: isFiltering ? matches.length : rowCount
+  }
+}

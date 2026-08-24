@@ -5,14 +5,16 @@
 // as a workspace is shown, so the `mod+f` registered here already fires from
 // anywhere in the app -- including out of CodeMirror, which is the usual reason
 // to reach for a store -- and nothing outside this pane reads any of it.
+//
+// The session's own moves live in `../find-session`, as plain functions over a
+// plain value; what is left here is React and the shortcut.
 import {
   RefObject,
   useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
-  useRef,
-  useState
+  useRef
 } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 
@@ -23,19 +25,19 @@ import {
   buildResultSearchIndex,
   type ResultSearchView
 } from '../components/query-result-search'
+import {
+  activeIndexWithin,
+  closed,
+  closedSession,
+  type FindSession,
+  opened,
+  stepped,
+  withFilteringToggled,
+  withQuery
+} from '../find-session'
 import { useAppSelector } from '../store'
-import { selectOpenWorksheetIds } from '../store/tabs-slice'
-
-interface FindSession {
-  // An ordinal into the match list. Stored rather than clamped so that a
-  // re-run which returns fewer rows does not lose the user's place, and read
-  // through a clamp so it can never point past the end.
-  activeIndex: number
-  isFiltering: boolean
-  isOpen: boolean
-  // What the user typed, untrimmed: this is the input's value.
-  query: string
-}
+import { useFocusRequest } from './use-focus-request'
+import { usePerWorksheetState } from './use-per-worksheet-state'
 
 export interface ResultsFind {
   // 1-based, for display. 0 when there is nothing to jump to.
@@ -64,13 +66,6 @@ interface ResultsFindOptions {
   onShowResults: () => void
 }
 
-const closedSession: FindSession = {
-  activeIndex: 0,
-  isFiltering: false,
-  isOpen: false,
-  query: ''
-}
-
 const noRows: Record<string, unknown>[] = []
 
 export function useResultsFind({
@@ -78,47 +73,12 @@ export function useResultsFind({
   worksheetId,
   onShowResults
 }: ResultsFindOptions): ResultsFind {
-  const openWorksheetIds = useAppSelector(selectOpenWorksheetIds)
-
   // Kept per worksheet, like the pane's height and its active tab: coming back
-  // to a tab should find it as it was left. Bounded by the open tabs rather
-  // than by every worksheet visited this session.
-  const [sessionByWorksheet, setSessionByWorksheet] = useState<
-    Record<string, FindSession>
-  >({})
+  // to a tab should find it as it was left.
+  const sessions = usePerWorksheetState(closedSession)
+  const session = sessions.valueFor(worksheetId)
 
-  useEffect(() => {
-    const open = new Set(openWorksheetIds)
-
-    setSessionByWorksheet((current) => {
-      const next = Object.fromEntries(
-        Object.entries(current).filter(([id]) => open.has(id))
-      )
-
-      return Object.keys(next).length === Object.keys(current).length
-        ? current
-        : next
-    })
-  }, [openWorksheetIds])
-
-  const session =
-    (worksheetId ? sessionByWorksheet[worksheetId] : undefined) ?? closedSession
-
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  // A counter rather than a boolean, so a second ⌘F while the bar is already
-  // open still asks for focus. That is what makes ⌘F ⌘V with a different id
-  // replace the old one instead of appending to it.
-  const [focusRequest, setFocusRequest] = useState(0)
-
-  useEffect(() => {
-    if (focusRequest === 0) {
-      return
-    }
-
-    inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [focusRequest])
+  const focus = useFocusRequest<HTMLInputElement>()
 
   // Scanning every row is cheap enough not to need a debounce, but it is not
   // free on a full result of JSON columns. Deferring the needle keeps the input
@@ -142,109 +102,49 @@ export function useResultsFind({
   )
 
   const matchCount = index.matches.length
+  const activeIndex = activeIndexWithin(session, matchCount)
 
-  // Clamped on read: a re-run, a narrowed query or a shorter result all shrink
-  // the list, and doing this in an effect would cost a second render pass to
-  // fix state that was only ever wrong in between.
-  const activeIndex =
-    matchCount === 0 ? -1 : Math.min(session.activeIndex, matchCount - 1)
-
-  const updateSession = useCallback(
-    (update: (session: FindSession) => FindSession) => {
-      if (!worksheetId) {
-        return
-      }
-
-      setSessionByWorksheet((current) => ({
-        ...current,
-        [worksheetId]: update(current[worksheetId] ?? closedSession)
-      }))
-    },
-    [worksheetId]
+  const update = useCallback(
+    (move: (session: FindSession) => FindSession) =>
+      sessions.update(worksheetId, move),
+    [sessions, worksheetId]
   )
 
   const open = useCallback(() => {
     // Nothing to search means nothing to open: during a run or after a failure
     // there is no result behind the pane at all.
-    if (!worksheetId || !result) {
+    if (!result) {
       return
     }
 
     onShowResults()
-    updateSession((current) => ({ ...current, isOpen: true }))
-    setFocusRequest((count) => count + 1)
-  }, [onShowResults, result, updateSession, worksheetId])
+    update(opened)
+    focus.request()
+  }, [focus, onShowResults, result, update])
 
-  const close = useCallback(() => {
-    // The query survives a close, the way a browser's does. Only `isOpen` goes,
-    // which is also what lifts the filter off the grid.
-    updateSession((current) => ({ ...current, isOpen: false }))
-  }, [updateSession])
+  const close = useCallback(() => update(closed), [update])
 
   const setQuery = useCallback(
-    (query: string) => {
-      // Back to the first match on every edit, like Chrome. Letting the ordinal
-      // survive a query change would leave the user on "match 4" of a set that
-      // no longer has anything to do with the one they were walking.
-      updateSession((current) => ({ ...current, activeIndex: 0, query }))
-    },
-    [updateSession]
+    (query: string) => update((current) => withQuery(current, query)),
+    [update]
   )
 
-  const step = useCallback(
-    (delta: number) => {
-      if (matchCount === 0) {
-        return
-      }
-
-      updateSession((current) => {
-        const from = Math.min(current.activeIndex, matchCount - 1)
-
-        return {
-          ...current,
-          activeIndex: (from + delta + matchCount) % matchCount
-        }
-      })
-    },
-    [matchCount, updateSession]
+  const next = useCallback(
+    () => update((current) => stepped(current, { delta: 1, matchCount })),
+    [matchCount, update]
   )
 
-  const next = useCallback(() => step(1), [step])
-  const previous = useCallback(() => step(-1), [step])
-
-  const toggleFiltering = useCallback(() => {
-    updateSession((current) => ({
-      ...current,
-      isFiltering: !current.isFiltering
-    }))
-  }, [updateSession])
-
-  // `EditorScreen` renders over a still-mounted workspace and the trace
-  // dashboard mounts outside it, so without this ⌘F would open a find bar
-  // behind whichever one is up and pull focus out of it.
-  const isOverlayOpen = useAppSelector(
-    (state) =>
-      state.ui.editorScreen !== undefined ||
-      state.ui.traceDashboardOpen === true
+  const previous = useCallback(
+    () => update((current) => stepped(current, { delta: -1, matchCount })),
+    [matchCount, update]
   )
-  const isOverlayOpenRef = useRef(isOverlayOpen)
 
-  useEffect(() => {
-    isOverlayOpenRef.current = isOverlayOpen
-  }, [isOverlayOpen])
+  const toggleFiltering = useCallback(
+    () => update(withFilteringToggled),
+    [update]
+  )
 
-  useHotkeys('mod+f', open, {
-    // CodeMirror is a contenteditable and holds focus by default, so without
-    // this the shortcut is dead exactly where it is most wanted: straight after
-    // a query returns.
-    enableOnContentEditable: true,
-    enableOnFormTags: true,
-    // Not `enabled`: a hotkey that matches while disabled gets
-    // stopImmediatePropagation() called on its event, which would swallow ⌘F
-    // for everyone else rather than declining it.
-    ignoreEventWhen: () => isOverlayOpenRef.current,
-    preventDefault: true
-  })
+  useFindHotkey(open)
 
   const search = useMemo(
     () =>
@@ -265,7 +165,7 @@ export function useResultsFind({
     () => ({
       activeOrdinal: activeIndex + 1,
       close,
-      inputRef,
+      inputRef: focus.ref,
       isFiltering: session.isFiltering,
       isOpen: session.isOpen,
       matchCount,
@@ -282,6 +182,7 @@ export function useResultsFind({
     [
       activeIndex,
       close,
+      focus.ref,
       matchCount,
       next,
       open,
@@ -295,4 +196,44 @@ export function useResultsFind({
       toggleFiltering
     ]
   )
+}
+
+/**
+ * `mod+f`, wherever focus happens to be.
+ *
+ * Held apart from the session because everything interesting about it is the
+ * registration rather than the handler.
+ */
+function useFindHotkey(onOpen: () => void): void {
+  // `EditorScreen` renders over a still-mounted workspace and the trace
+  // dashboard mounts outside it, so without this ⌘F would open a find bar
+  // behind whichever one is up and pull focus out of it.
+  const isOverlayOpen = useAppSelector(
+    (state) =>
+      state.ui.editorScreen !== undefined ||
+      state.ui.traceDashboardOpen === true
+  )
+
+  // Read through a ref because `ignoreEventWhen` is called from the library's
+  // own listener rather than during render: a closure over the render value
+  // would either go stale or force a re-registration on every render,
+  // depending on how the options are memoized. A ref is right either way.
+  const isOverlayOpenRef = useRef(isOverlayOpen)
+
+  useEffect(() => {
+    isOverlayOpenRef.current = isOverlayOpen
+  }, [isOverlayOpen])
+
+  useHotkeys('mod+f', onOpen, {
+    // CodeMirror is a contenteditable and holds focus by default, so without
+    // this the shortcut is dead exactly where it is most wanted: straight after
+    // a query returns.
+    enableOnContentEditable: true,
+    enableOnFormTags: true,
+    // Not `enabled`: a hotkey that matches while disabled gets
+    // stopImmediatePropagation() called on its event, which would swallow ⌘F
+    // for everyone else rather than declining it.
+    ignoreEventWhen: () => isOverlayOpenRef.current,
+    preventDefault: true
+  })
 }

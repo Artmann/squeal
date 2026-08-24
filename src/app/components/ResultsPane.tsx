@@ -1,16 +1,15 @@
 import { SearchIcon } from 'lucide-react'
-import { ReactElement, useCallback, useEffect, useState } from 'react'
+import { ReactElement, useCallback } from 'react'
 
 import type { QueryDto } from '@/glue/api/schemas'
 import { isQueryFinished } from '@/glue/queries'
 
 import { getFindShortcut } from '../find-shortcut'
+import { usePerWorksheetState } from '../hooks/use-per-worksheet-state'
 import { usePersistedSizes } from '../hooks/use-persisted-sizes'
 import { useResultsFind } from '../hooks/use-results-find'
 import { useWorksheetMessages } from '../hooks/use-worksheet-messages'
 import { cn } from '../lib/utils'
-import { useAppSelector } from '../store'
-import { selectOpenWorksheetIds } from '../store/tabs-slice'
 import { QueryMessages } from './QueryMessages'
 import { QueryResultContent } from './QueryResultContent'
 import { ResizeHandle } from './ResizeHandle'
@@ -18,6 +17,8 @@ import { ResultsFindBar } from './ResultsFindBar'
 import { TimeAgo } from './TimeAgo'
 
 type ResultsTab = 'messages' | 'results'
+
+const defaultTab: ResultsTab = 'results'
 
 const defaultHeight = 320
 const maximumHeight = 620
@@ -49,7 +50,6 @@ export function ResultsPane({
   query,
   worksheetId
 }: ResultsPaneProps): ReactElement {
-  const openWorksheetIds = useAppSelector(selectOpenWorksheetIds)
   const messages = useWorksheetMessages(worksheetId)
 
   // Each worksheet keeps its own height, and the record is bounded by a cap on
@@ -68,38 +68,15 @@ export function ResultsPane({
 
   // Which tab is showing is remembered per worksheet, so switching tabs does
   // not snap everyone back to Results.
-  const [tabByWorksheet, setTabByWorksheet] = useState<
-    Record<string, ResultsTab>
-  >({})
+  const tabs = usePerWorksheetState<ResultsTab>(defaultTab)
 
-  useEffect(() => {
-    // Keeps the map bounded by the open tabs instead of every worksheet
-    // visited this session.
-    const open = new Set(openWorksheetIds)
-
-    setTabByWorksheet((current) => {
-      const next = Object.fromEntries(
-        Object.entries(current).filter(([id]) => open.has(id))
-      )
-
-      return Object.keys(next).length === Object.keys(current).length
-        ? current
-        : next
-    })
-  }, [openWorksheetIds])
-
-  const activeTab: ResultsTab =
-    (worksheetId ? tabByWorksheet[worksheetId] : undefined) ?? 'results'
+  const activeTab = tabs.valueFor(worksheetId)
 
   const selectTab = useCallback(
     (tab: ResultsTab) => {
-      if (!worksheetId) {
-        return
-      }
-
-      setTabByWorksheet((current) => ({ ...current, [worksheetId]: tab }))
+      tabs.update(worksheetId, () => tab)
     },
-    [worksheetId]
+    [tabs, worksheetId]
   )
 
   const showResults = useCallback(() => selectTab('results'), [selectTab])
