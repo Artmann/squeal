@@ -20,6 +20,13 @@ const electron = vi.hoisted(() => ({
   // app currently has, and the cases that matter are the ones where those two
   // differ — a dock click on an app whose last window is already closed.
   openWindows: [] as FakeWindow[],
+
+  // What `showOpenDialog` was handed and what it answers. Recorded rather than
+  // stubbed flat, because the options are the whole point of the file-dialog
+  // cases: which title and filters a kind resolves to, and that the dialog is
+  // parented to the window instead of floating free.
+  openDialogArguments: [] as unknown[][],
+  openDialogResult: { canceled: true, filePaths: [] as string[] },
   preventedQuits: 0,
   windows: 0
 }))
@@ -86,7 +93,11 @@ vi.mock('electron', () => ({
     showErrorBox: () => {
       electron.errorBoxes += 1
     },
-    showOpenDialog: () => Promise.resolve({ canceled: true, filePaths: [] })
+    showOpenDialog: (...args: unknown[]) => {
+      electron.openDialogArguments.push(args)
+
+      return Promise.resolve(electron.openDialogResult)
+    }
   },
   ipcMain: {
     handle: (channel: string, handler: (...args: never[]) => unknown) => {
@@ -221,6 +232,8 @@ beforeEach(() => {
   electron.hasSingleInstanceLock = true
   electron.ipcHandlers.clear()
   electron.listeners.clear()
+  electron.openDialogArguments = []
+  electron.openDialogResult = { canceled: true, filePaths: [] }
   electron.openWindows = []
   electron.preventedQuits = 0
   electron.windows = 0
@@ -526,6 +539,109 @@ describe('the app lifecycle', () => {
 // minimize wired to close is a data-losing bug that every test over there still
 // passes. The handlers are registered while the module body runs, so importing
 // `main.ts` is all these need; none of them waits for `ready`.
+// One channel serves both pickers, and the renderer names an intent rather
+// than passing dialog options across the bridge: an options object it
+// controlled could ask for directories or hidden files. So what needs holding
+// is that the intent it names is what decides the title and the filters — a
+// certificate picker cannot end up offering `.sqlite` files.
+describe('the file dialog', () => {
+  // One channel serves both pickers, and the renderer names an intent rather
+  // than passing dialog options: what these cases hold is that the intent it
+  // names is what decides the title and the filters, so a certificate picker
+  // cannot end up offering `.sqlite` files.
+  it('offers certificate filters when the renderer asks for a certificate', async () => {
+    const browserWindow = openWindow()
+
+    await importMain()
+
+    await ipc('open-file-dialog')(undefined, 'certificate')
+
+    expect(electron.openDialogArguments).toEqual([
+      [
+        browserWindow,
+        {
+          filters: [
+            {
+              extensions: ['pem', 'crt', 'cer', 'cert', 'ca'],
+              name: 'Certificate'
+            },
+            { extensions: ['*'], name: 'All Files' }
+          ],
+          properties: ['openFile'],
+          title: 'Select CA Certificate'
+        }
+      ]
+    ])
+  })
+
+  it('offers database filters when the renderer asks for a SQLite database', async () => {
+    const browserWindow = openWindow()
+
+    await importMain()
+
+    await ipc('open-file-dialog')(undefined, 'sqliteDatabase')
+
+    expect(electron.openDialogArguments).toEqual([
+      [
+        browserWindow,
+        {
+          filters: [
+            {
+              extensions: ['db', 'sqlite', 'sqlite3'],
+              name: 'SQLite Database'
+            }
+          ],
+          properties: ['openFile'],
+          title: 'Select SQLite Database'
+        }
+      ]
+    ])
+  })
+
+  it('answers the chosen path', async () => {
+    openWindow()
+
+    electron.openDialogResult = {
+      canceled: false,
+      filePaths: ['/etc/ssl/certs/pagila.pem']
+    }
+
+    await importMain()
+
+    expect(await ipc('open-file-dialog')(undefined, 'certificate')).toEqual(
+      '/etc/ssl/certs/pagila.pem'
+    )
+  })
+
+  // Null rather than an error or an empty string: cancelling is an answer, and
+  // the field the renderer would fill keeps whatever was already typed in it.
+  it('answers null when the file dialog is cancelled', async () => {
+    openWindow()
+
+    await importMain()
+
+    expect(await ipc('open-file-dialog')(undefined, 'certificate')).toEqual(
+      null
+    )
+  })
+
+  // A kind the catalogue does not have can only come from a renderer bug, and
+  // the guard has to be `Object.hasOwn` rather than a truthiness check on the
+  // lookup: indexing a plain object with 'constructor' answers a function, so a
+  // truthiness check would spread one into the dialog options.
+  it('opens no dialog for a file dialog kind it does not have', async () => {
+    openWindow()
+
+    await importMain()
+
+    await expect(
+      ipc('open-file-dialog')(undefined, 'constructor')
+    ).rejects.toThrow(/constructor/)
+
+    expect(electron.openDialogArguments).toEqual([])
+  })
+})
+
 describe('the title bar and the dock', () => {
   it('closes the window from the title bar', async () => {
     const browserWindow = openWindow()

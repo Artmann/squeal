@@ -2,7 +2,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import {
   CheckCircle2Icon,
   ChevronRightIcon,
-  FolderOpenIcon,
   Loader2Icon,
   XCircleIcon
 } from 'lucide-react'
@@ -42,6 +41,7 @@ import {
 } from '../hooks/mutations'
 import { useSecretStorage } from '../hooks/queries'
 import { cn } from '../lib/utils'
+import { FilePathInput } from './FilePathInput'
 import { Button } from './ui/button'
 import {
   Form,
@@ -264,14 +264,6 @@ export function DatabaseForm({
     [form]
   )
 
-  const handleBrowseFile = useCallback(async () => {
-    const filePath = await window.electron.openFileDialog()
-
-    if (filePath) {
-      form.setValue('connectionInfo.path', filePath)
-    }
-  }, [form])
-
   const isLoading = isSaving || isTestingConnection
 
   return (
@@ -288,7 +280,6 @@ export function DatabaseForm({
         <ConnectionDetailsSection
           databaseType={databaseType}
           form={form}
-          onBrowseFile={handleBrowseFile}
           onSslModeApplied={() => setShowAdvanced(true)}
           onTypeChange={handleTypeChange}
         />
@@ -705,7 +696,6 @@ function ConnectionStringSection({
 interface ConnectionDetailsSectionProps {
   databaseType: DatabaseType
   form: DatabaseFormApi
-  onBrowseFile: () => void
   onSslModeApplied: () => void
   onTypeChange: (newType: string) => void
 }
@@ -713,7 +703,6 @@ interface ConnectionDetailsSectionProps {
 function ConnectionDetailsSection({
   databaseType,
   form,
-  onBrowseFile,
   onSslModeApplied,
   onTypeChange
 }: ConnectionDetailsSectionProps): ReactElement {
@@ -788,25 +777,14 @@ function ConnectionDetailsSection({
           render={({ field }) => (
             <FormItem>
               <FormLabel>File Path</FormLabel>
-              <div className="flex gap-2">
-                <FormControl>
-                  <Input
-                    className="flex-1"
-                    placeholder="/path/to/database.sqlite"
-                    type="text"
-                    {...field}
-                    value={field.value ?? ''}
-                  />
-                </FormControl>
-                <Button
-                  size="icon"
-                  type="button"
-                  variant="outline"
-                  onClick={onBrowseFile}
-                >
-                  <FolderOpenIcon className="h-4 w-4" />
-                </Button>
-              </div>
+              <FilePathInput
+                browseLabel="Browse for database file"
+                dialogKind="sqliteDatabase"
+                placeholder="/path/to/database.sqlite"
+                {...field}
+                value={field.value ?? ''}
+                onFileSelected={field.onChange}
+              />
               <FormMessage />
             </FormItem>
           )}
@@ -1002,14 +980,14 @@ function SslSection({ form }: { form: DatabaseFormApi }): ReactElement {
           render={({ field }) => (
             <FormItem>
               <FormLabel>SSL Root Certificate</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="system"
-                  type="text"
-                  {...field}
-                  value={field.value ?? ''}
-                />
-              </FormControl>
+              <FilePathInput
+                browseLabel="Browse for certificate file"
+                dialogKind="certificate"
+                placeholder="system"
+                {...field}
+                value={field.value ?? ''}
+                onFileSelected={field.onChange}
+              />
               <p className="text-xs text-muted-foreground">
                 Path to a CA certificate file, or <code>system</code> to use the
                 OS trust store.

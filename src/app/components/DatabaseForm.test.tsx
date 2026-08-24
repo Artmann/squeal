@@ -906,6 +906,64 @@ describe('DatabaseForm', () => {
       ).not.toBeInTheDocument()
     })
 
+    // The path is the field nobody remembers, so it is the one field in the
+    // form with a picker beside it. What matters here is that the picked path
+    // reaches the form state, not just the input's own value.
+    it('saves a certificate path picked from the file dialog', async () => {
+      const user = userEvent.setup()
+      const database: DatabaseDto = {
+        connectionInfo: {
+          database: 'testdb',
+          host: 'localhost',
+          port: 5432,
+          username: 'admin'
+        },
+        createdAt: Date.now(),
+        id: '123',
+        name: 'My Database',
+        sortOrder: null,
+        type: 'postgres'
+      }
+
+      vi.spyOn(window.electron, 'openFileDialog').mockResolvedValue(
+        '/etc/ssl/certs/pagila.pem'
+      )
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ database }, { status: 201 })
+      )
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: /advanced/i }))
+      await user.click(screen.getByRole('combobox', { name: /ssl mode/i }))
+      await user.click(screen.getByRole('option', { name: 'Verify Full' }))
+      await user.click(
+        screen.getByRole('button', { name: 'Browse for certificate file' })
+      )
+
+      expect(screen.getByLabelText('SSL Root Certificate')).toHaveValue(
+        '/etc/ssl/certs/pagila.pem'
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalled()
+      })
+
+      const body = (await capturedFetch()).body as {
+        connectionInfo: { sslRootCert: string }
+      }
+
+      expect(body.connectionInfo.sslRootCert).toEqual(
+        '/etc/ssl/certs/pagila.pem'
+      )
+      expect(vi.mocked(window.electron.openFileDialog).mock.calls).toEqual([
+        ['certificate']
+      ])
+    })
+
     it('includes ssl fields in the save payload', async () => {
       const user = userEvent.setup()
       const onSuccess = vi.fn()
@@ -948,6 +1006,36 @@ describe('DatabaseForm', () => {
       expect(body.connectionInfo.sslMode).toEqual('verify-full')
       expect(body.connectionInfo.sslRootCert).toEqual('system')
     })
+  })
+
+  // The SQLite path field's picker predates the certificate one and had no
+  // case of its own; both go through the same component now, so a break in one
+  // is a break in both.
+  it('fills the SQLite file path from the file dialog', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(window.electron, 'openFileDialog').mockResolvedValue(
+      '/tmp/pagila.sqlite3'
+    )
+
+    renderDatabaseForm()
+
+    // The type select has no accessible name; it is the first combobox, and
+    // the SSL mode one below it is the second.
+    const [typeSelect] = screen.getAllByRole('combobox')
+
+    await user.click(typeSelect)
+    await user.click(screen.getByRole('option', { name: 'SQLite' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Browse for database file' })
+    )
+
+    expect(screen.getByLabelText('File Path')).toHaveValue(
+      '/tmp/pagila.sqlite3'
+    )
+    expect(vi.mocked(window.electron.openFileDialog).mock.calls).toEqual([
+      ['sqliteDatabase']
+    ])
   })
 
   it('disables buttons while saving', async () => {
