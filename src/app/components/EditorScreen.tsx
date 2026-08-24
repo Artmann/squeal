@@ -81,9 +81,15 @@ export function EditorScreen(props: EditorScreenProps): ReactElement {
   // because centering something taller than its scroller splits the overflow
   // across both edges, and `scrollTop` cannot go negative — the top of the form
   // is then unreachable on a short window.
+  //
+  // `max-h-full` caps the card at the slot minus the `py-6` above, and the
+  // form scrolls its own fields inside that. So the overlay's own
+  // `overflow-y-auto` is now a backstop rather than the mechanism — the card
+  // does not outgrow it, which is what keeps the title and the Save button on
+  // screen at every window height.
   return (
-    <div className="absolute inset-0 z-100 bg-bg/70 flex justify-center items-start overflow-y-auto py-10">
-      <div className="w-full max-w-md my-auto flex flex-col gap-6 rounded-md border border-border bg-panel p-6 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
+    <div className="absolute inset-0 z-100 bg-bg/70 flex justify-center items-start overflow-y-auto py-6">
+      <div className="w-full max-w-lg max-h-full my-auto flex flex-col gap-6 overflow-hidden rounded-md border border-border bg-panel p-6 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">{title}</h1>
 
@@ -114,6 +120,7 @@ export function EditorScreen(props: EditorScreenProps): ReactElement {
           <DatabaseForm
             databaseId={databaseId}
             defaultValues={defaultValues}
+            variant="dialog"
             onCancel={handleClose}
             onSuccess={handleClose}
           />
