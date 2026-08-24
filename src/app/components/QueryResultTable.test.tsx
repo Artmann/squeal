@@ -3,13 +3,20 @@ import userEvent from '@testing-library/user-event'
 import invariant from 'tiny-invariant'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
+import type { QueryResultDto } from '@/glue/api/schemas'
+
 import { stubElementSize } from '../test-element-size'
+import { getResultFieldNames } from './query-result-columns'
 import {
   escapeCsvField,
   formatCellValue,
   formatRowAsCsv,
   formatRowAsJson
 } from './query-result-format'
+import {
+  buildResultSearchIndex,
+  type ResultSearchView
+} from './query-result-search'
 import { QueryResultTable } from './QueryResultTable'
 
 const writeText = vi.fn().mockResolvedValue(undefined)
@@ -366,5 +373,247 @@ describe('formatRowAsJson', () => {
     const row = { id: 1, name: 'Alice' }
 
     expect(formatRowAsJson(row)).toEqual(JSON.stringify(row, null, 2))
+  })
+})
+
+describe('QueryResultTable find', () => {
+  const people = {
+    fields: [{ name: 'id' }, { name: 'email' }],
+    rowCount: 4,
+    rows: [
+      { email: 'mia@example.com', id: 'a3f9' },
+      { email: 'leo@example.com', id: '0c8e' },
+      { email: 'a3f9@x.io', id: '77bd' },
+      { email: 'zoe@example.com', id: '9fe2' }
+    ],
+    truncated: false
+  }
+
+  // Built through the real engine rather than by hand, so these also check that
+  // the grid and the matcher agree about column order and row indexes.
+  function searchFor(
+    result: QueryResultDto,
+    query: string,
+    overrides: Partial<ResultSearchView> = {}
+  ): ResultSearchView {
+    const index = buildResultSearchIndex({
+      columnNames: getResultFieldNames(result),
+      query,
+      rows: result.rows
+    })
+
+    return {
+      activeIndex: index.matches.length > 0 ? 0 : -1,
+      columnHasMatch: index.columnHasMatch,
+      isFiltering: false,
+      matches: index.matches,
+      needle: index.needle,
+      query,
+      ...overrides
+    }
+  }
+
+  function cellsOf(row: HTMLElement): string[] {
+    return within(row)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent ?? '')
+  }
+
+  // The plain path has to stay exactly as it was: every result in the app is
+  // rendered without a search, so a stray wrapper here would be permanent.
+  it('marks nothing when no search is given', () => {
+    const { container } = render(<QueryResultTable result={people} />)
+
+    expect(container.querySelectorAll('mark')).toHaveLength(0)
+  })
+
+  it('marks nothing while the find bar is open but empty', () => {
+    const { container } = render(
+      <QueryResultTable
+        result={people}
+        search={searchFor(people, '')}
+      />
+    )
+
+    expect(container.querySelectorAll('mark')).toHaveLength(0)
+  })
+
+  it('marks the matched run and leaves the rest of the cell alone', () => {
+    const { container } = render(
+      <QueryResultTable
+        result={people}
+        search={searchFor(people, 'a3f9')}
+      />
+    )
+
+    const marks = container.querySelectorAll('mark')
+
+    expect(Array.from(marks).map((mark) => mark.textContent)).toEqual([
+      'a3f9',
+      'a3f9'
+    ])
+
+    const [, firstRow] = screen.getAllByRole('row')
+
+    expect(cellsOf(firstRow)).toEqual(['1', 'a3f9', 'mia@example.com'])
+  })
+
+  it('keeps the cell text intact when the match is only part of it', () => {
+    render(
+      <QueryResultTable
+        result={people}
+        search={searchFor(people, 'example')}
+      />
+    )
+
+    const [, firstRow] = screen.getAllByRole('row')
+
+    expect(cellsOf(firstRow)).toEqual(['1', 'a3f9', 'mia@example.com'])
+  })
+
+  it('marks the active match apart from the others', () => {
+    const { container } = render(
+      <QueryResultTable
+        result={people}
+        search={searchFor(people, 'a3f9')}
+      />
+    )
+
+    const active = container.querySelectorAll('[data-find-active]')
+
+    expect(active).toHaveLength(1)
+    expect(active[0]).toHaveTextContent('a3f9')
+  })
+
+  it('moves the active cell to the row the ordinal points at', () => {
+    const { container } = render(
+      <QueryResultTable
+        result={people}
+        search={searchFor(people, 'a3f9', { activeIndex: 1 })}
+      />
+    )
+
+    const active = container.querySelector('[data-find-active]')
+
+    // The second match is in the third row's email, not its id.
+    expect(active).toHaveTextContent('a3f9@x.io')
+  })
+
+  it('marks nothing as active when nothing matches', () => {
+    const { container } = render(
+      <QueryResultTable
+        result={people}
+        search={searchFor(people, 'nobody')}
+      />
+    )
+
+    expect(container.querySelectorAll('mark')).toHaveLength(0)
+    expect(container.querySelectorAll('[data-find-active]')).toHaveLength(0)
+  })
+
+  it('names the columns the search landed in', () => {
+    render(
+      <QueryResultTable
+        result={people}
+        search={searchFor(people, 'mia')}
+      />
+    )
+
+    expect(screen.getByRole('columnheader', { name: 'email' })).toHaveClass(
+      'text-find-strong'
+    )
+    expect(screen.getByRole('columnheader', { name: 'id' })).not.toHaveClass(
+      'text-find-strong'
+    )
+  })
+
+  describe('with non-matching rows hidden', () => {
+    const filtered = searchFor(people, 'a3f9', { isFiltering: true })
+
+    it('shows only the matching rows', () => {
+      render(
+        <QueryResultTable
+          result={people}
+          search={filtered}
+        />
+      )
+
+      // The header plus the two matches.
+      expect(screen.getAllByRole('row')).toHaveLength(3)
+    })
+
+    // Renumbering would make "row 3" mean one thing while filtering and another
+    // without it, and nothing would line the view back up with the query.
+    //
+    // This is also the guard on the index translation, and the only one there
+    // can be: the number, the cells, and both Copy actions all read the row
+    // through the same source index, and Radix menu items cannot be activated
+    // under jsdom -- a click resolves the item but never fires `onSelect` --
+    // so the copy path itself is unassertable here.
+    it('keeps each row its original number', () => {
+      render(
+        <QueryResultTable
+          result={people}
+          search={filtered}
+        />
+      )
+
+      const [, firstRow, secondRow] = screen.getAllByRole('row')
+
+      expect(cellsOf(firstRow)).toEqual(['1', 'a3f9', 'mia@example.com'])
+      expect(cellsOf(secondRow)).toEqual(['3', '77bd', 'a3f9@x.io'])
+    })
+
+    it('offers the context menu on a row that survived the filter', async () => {
+      const user = userEvent.setup()
+
+      render(
+        <QueryResultTable
+          result={people}
+          search={filtered}
+        />
+      )
+
+      const [, , secondRow] = screen.getAllByRole('row')
+      const [, idCell] = within(secondRow).getAllByRole('cell')
+
+      await user.pointer({ keys: '[MouseRight]', target: idCell })
+
+      expect(screen.getByRole('menuitem', { name: 'Copy' })).toBeInTheDocument()
+    })
+
+    it('says so when nothing matches, keeping the columns visible', () => {
+      render(
+        <QueryResultTable
+          result={people}
+          search={searchFor(people, 'nobody', { isFiltering: true })}
+        />
+      )
+
+      expect(
+        screen.getByRole('columnheader', { name: 'email' })
+      ).toBeInTheDocument()
+      expect(screen.getByText(/No matches for/)).toHaveTextContent(
+        'No matches for “nobody”.'
+      )
+    })
+
+    it('says how far the search reached when the result was cut off', () => {
+      const truncated = { ...people, truncated: true }
+
+      render(
+        <QueryResultTable
+          result={truncated}
+          search={searchFor(truncated, 'nobody', { isFiltering: true })}
+        />
+      )
+
+      expect(screen.getByText(/No matches for/)).toHaveTextContent(
+        'No matches for “nobody” in the first 10,000 rows.'
+      )
+      expect(
+        screen.getByText(/Add a WHERE clause to search the rest/)
+      ).toBeInTheDocument()
+    })
   })
 })

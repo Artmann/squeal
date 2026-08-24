@@ -6,16 +6,19 @@ import type { QueryDto } from '@/glue/api/schemas'
 
 import { QueryResultEmpty } from './QueryResultEmpty'
 import { QueryResultTable } from './QueryResultTable'
+import type { ResultSearchView } from './query-result-search'
 import { toQueryErrorParts } from './query-error-parts'
 
 interface QueryResultContentProps {
   databaseName: string | undefined
   query: QueryDto | undefined
+  search?: ResultSearchView
 }
 
 export function QueryResultContent({
   databaseName,
-  query
+  query,
+  search
 }: QueryResultContentProps): ReactElement {
   if (isQueryInFlight(query)) {
     return (
@@ -38,7 +41,12 @@ export function QueryResultContent({
   }
 
   if (query?.result) {
-    return <QueryResultTable result={query.result} />
+    return (
+      <QueryResultTable
+        result={query.result}
+        search={search}
+      />
+    )
   }
 
   return <QueryResultEmpty />

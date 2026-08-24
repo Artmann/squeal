@@ -60,6 +60,13 @@
   --color-accent-btn: var(--accent-btn);
   --color-accent-soft: var(--accent-soft);
 
+  /* Find */
+  --color-find: var(--find);
+  --color-find-text: var(--find-text);
+  --color-find-active: var(--find-active);
+  --color-find-active-text: var(--find-active-text);
+  --color-find-strong: var(--find-strong);
+
   /* Status */
   --color-err: var(--err);
   --color-err-bg: var(--err-bg);

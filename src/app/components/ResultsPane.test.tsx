@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReactElement, useState } from 'react'
+import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { QueryDto } from '@/glue/api/schemas'
@@ -265,5 +266,316 @@ describe('ResultsPane', () => {
     expect(screen.getByText('No results yet').closest('section')).toHaveStyle({
       height: '320px'
     })
+  })
+})
+
+const findableResult = {
+  fields: [{ name: 'title' }],
+  rowCount: 3,
+  rows: [
+    { title: 'Alien' },
+    { title: 'Alien Nation' },
+    { title: 'Barbarella' }
+  ],
+  truncated: false
+}
+
+const findableQuery = query({ result: findableResult })
+
+// The same switch as `SwitchablePane`, but with a result behind each worksheet
+// so there is something for find to open onto.
+function SwitchableResultPane(): ReactElement {
+  const [worksheetId, setWorksheetId] = useState('ws-1')
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          setWorksheetId((current) => (current === 'ws-1' ? 'ws-2' : 'ws-1'))
+        }
+      >
+        Switch worksheet
+      </button>
+
+      <ResultsPane
+        databaseName="Pagila"
+        query={{ ...findableQuery, worksheetId }}
+        worksheetId={worksheetId}
+      />
+    </>
+  )
+}
+
+function renderFindablePane(
+  options: Parameters<typeof renderWithProviders>[1] = {}
+) {
+  return renderWithProviders(
+    <ResultsPane
+      databaseName="Pagila"
+      query={findableQuery}
+      worksheetId="ws-1"
+    />,
+    { openWorksheetId: 'ws-1', queries: [], ...options }
+  )
+}
+
+function findInput(): HTMLInputElement {
+  const input = screen.getByPlaceholderText('Find in results')
+
+  invariant(input instanceof HTMLInputElement, 'The find box is an input.')
+
+  return input
+}
+
+describe('ResultsPane find in results', () => {
+  // The whole point of the shortcut: the box has to be ready for the paste that
+  // follows it, wherever focus happened to be. The editor holds focus by
+  // default, so this is the case that matters.
+  it('opens the find bar on the shortcut and gives it focus', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+
+    expect(findInput()).toHaveFocus()
+  })
+
+  it('selects what is already in the box when the shortcut is pressed again', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+
+    expect(findInput().selectionStart).toEqual(5)
+
+    await user.keyboard('{Meta>}f{/Meta}')
+
+    // Selected rather than appended to, so the next paste replaces the old id.
+    expect(findInput().selectionStart).toEqual(0)
+    expect(findInput().selectionEnd).toEqual(5)
+  })
+
+  it('counts the rows that matched', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+
+    expect(screen.getByRole('status')).toHaveTextContent('1 of 2')
+  })
+
+  it('steps through the matches with Enter, wrapping at the end', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByRole('status')).toHaveTextContent('2 of 2')
+
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByRole('status')).toHaveTextContent('1 of 2')
+  })
+
+  it('steps backwards with Shift and Enter, wrapping at the start', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+    await user.keyboard('{Shift>}{Enter}{/Shift}')
+
+    expect(screen.getByRole('status')).toHaveTextContent('2 of 2')
+  })
+
+  it('goes back to the first match when the query changes', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+    await user.keyboard('{Enter}')
+    await user.type(findInput(), ' n')
+
+    expect(screen.getByRole('status')).toHaveTextContent('1 of 1')
+  })
+
+  it('says so when nothing matched', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'nobody')
+
+    expect(screen.getByRole('status')).toHaveTextContent('No matches')
+  })
+
+  // A row missing from the first page is not a row missing from the table, and
+  // a bare "No matches" against a capped result answers the wrong question.
+  it('says how far the search reached when the result was cut off', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(
+      <ResultsPane
+        databaseName="Pagila"
+        query={query({ result: { ...findableResult, truncated: true } })}
+        worksheetId="ws-1"
+      />,
+      { openWorksheetId: 'ws-1', queries: [] }
+    )
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'nobody')
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'No matches in the first 10,000 rows'
+    )
+  })
+
+  it('closes on Escape', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.keyboard('{Escape}')
+
+    expect(
+      screen.queryByPlaceholderText('Find in results')
+    ).not.toBeInTheDocument()
+  })
+
+  // Clicking any control in the bar moves focus off the input, and Escape used
+  // to be the input's own handler -- so the key went dead exactly after the
+  // user had reached for the filter.
+  it('still closes on Escape after a bar button took focus', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+    await user.click(
+      screen.getByRole('button', { name: 'Hide non-matching rows' })
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'Hide non-matching rows' })
+    ).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+
+    expect(
+      screen.queryByPlaceholderText('Find in results')
+    ).not.toBeInTheDocument()
+  })
+
+  it('hides the non-matching rows once the filter is turned on', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+
+    await user.click(
+      screen.getByRole('button', { name: 'Hide non-matching rows' })
+    )
+
+    // The header plus the two matches; Barbarella is gone.
+    expect(screen.getAllByRole('row')).toHaveLength(3)
+  })
+
+  it('offers nothing to find until there is a result', () => {
+    renderWithProviders(
+      <ResultsPane
+        databaseName="Pagila"
+        query={undefined}
+        worksheetId="ws-1"
+      />,
+      { openWorksheetId: 'ws-1', queries: [] }
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Find in results' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens onto an empty result and says there is nothing to search', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(
+      <ResultsPane
+        databaseName="Pagila"
+        query={query({
+          result: { fields: [], rowCount: 0, rows: [], truncated: false }
+        })}
+        worksheetId="ws-1"
+      />,
+      { openWorksheetId: 'ws-1', queries: [] }
+    )
+
+    await user.keyboard('{Meta>}f{/Meta}')
+
+    expect(screen.getByRole('status')).toHaveTextContent('No rows to search')
+  })
+
+  it('brings the results back when the shortcut is used on the Messages tab', async () => {
+    const user = userEvent.setup()
+    renderFindablePane()
+
+    await user.click(screen.getByRole('tab', { name: 'Messages' }))
+
+    expect(screen.getByRole('tab', { name: 'Messages' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+
+    await user.keyboard('{Meta>}f{/Meta}')
+
+    expect(screen.getByRole('tab', { name: 'Results' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(findInput()).toHaveFocus()
+  })
+
+  // `EditorScreen` covers a still-mounted workspace, so a find bar opening
+  // behind it would take focus out of a form the user is filling in.
+  it('leaves the shortcut alone while an overlay is up', async () => {
+    const user = userEvent.setup()
+    renderFindablePane({ ui: { editorScreen: { type: 'create-database' } } })
+
+    await user.keyboard('{Meta>}f{/Meta}')
+
+    expect(
+      screen.queryByPlaceholderText('Find in results')
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps a find query of its own for each worksheet', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<SwitchableResultPane />, {
+      queries: [],
+      tabs: { openWorksheetIds: ['ws-1', 'ws-2'] }
+    })
+
+    await user.keyboard('{Meta>}f{/Meta}')
+    await user.type(findInput(), 'alien')
+    await user.click(screen.getByRole('button', { name: 'Switch worksheet' }))
+
+    // The other worksheet never had a find open, so it does not inherit one.
+    expect(
+      screen.queryByPlaceholderText('Find in results')
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Switch worksheet' }))
+
+    expect(findInput()).toHaveValue('alien')
   })
 })
