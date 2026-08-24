@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { SearchInput } from './SearchInput'
@@ -60,6 +61,44 @@ describe('SearchInput', () => {
     expect(screen.getByPlaceholderText('Filter tables')).toHaveClass(
       'custom-class'
     )
+  })
+
+  // Find opens on a shortcut and has to be ready for the paste that follows,
+  // so its caller needs a handle on the element rather than a click to wait for.
+  it('hands the input element back through inputRef', () => {
+    const inputRef = createRef<HTMLInputElement>()
+
+    render(
+      <SearchInput
+        inputRef={inputRef}
+        placeholder="Find in results"
+        value=""
+        onChange={vi.fn()}
+      />
+    )
+
+    expect(inputRef.current).toEqual(
+      screen.getByPlaceholderText('Find in results')
+    )
+  })
+
+  it('forwards key presses, which is how Enter and Escape are handled', async () => {
+    const user = userEvent.setup()
+    const onKeyDown = vi.fn()
+
+    render(
+      <SearchInput
+        placeholder="Find in results"
+        value=""
+        onChange={vi.fn()}
+        onKeyDown={onKeyDown}
+      />
+    )
+
+    await user.type(screen.getByPlaceholderText('Find in results'), '{Enter}')
+
+    expect(onKeyDown).toHaveBeenCalledTimes(1)
+    expect(onKeyDown.mock.calls[0][0]).toMatchObject({ key: 'Enter' })
   })
 
   it('renders search icon', () => {

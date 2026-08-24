@@ -74,6 +74,23 @@ describe('WorksheetEditor', () => {
     })
   })
 
+  // The results grid owns Mod-f now. `basicSetup` opts in to every option it is
+  // not handed a literal `false` for, so leaving this out silently gives the key
+  // back to CodeMirror's own search panel -- and nothing in the extension list
+  // would show it happening.
+  it('leaves the editor search keymap off, so Mod-f reaches the results grid', () => {
+    render(editor('select 1'))
+
+    expect(capturedProps[0].basicSetup).toEqual({
+      autocompletion: false,
+      bracketMatching: true,
+      highlightActiveLine: true,
+      history: true,
+      lineNumbers: true,
+      searchKeymap: false
+    })
+  })
+
   it('still passes the current content through to the editor', () => {
     const { rerender } = render(editor('select 1'))
 

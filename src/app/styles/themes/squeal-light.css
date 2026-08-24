@@ -44,6 +44,15 @@
   --accent-btn: oklch(from var(--accent) 50% c h);
   --accent-soft: color-mix(in oklab, var(--accent) 10%, var(--panel));
 
+  /* Find */
+  --find: oklch(89% 0.09 310);
+  --find-text: oklch(28% 0.02 310);
+  --find-active: oklch(72% 0.17 305);
+  --find-active-text: oklch(22% 0.03 305);
+  /* The same violet at a lightness that works as text rather than as a block
+     behind it, for the header of a column the search landed in. */
+  --find-strong: oklch(48% 0.19 305);
+
   /* Status */
   --err: oklch(52% 0.15 25);
   --err-bg: oklch(96.5% 0.02 25);

@@ -20,6 +20,11 @@ interface ResultColumnsInput {
   rows: Record<string, unknown>[]
 }
 
+interface ResultFieldNamesInput {
+  fields: { name: string }[]
+  rows: Record<string, unknown>[]
+}
+
 export interface ResultColumn {
   align: 'left' | 'right'
   // Position, not name: a result can carry two fields with one name (`SELECT *
@@ -94,4 +99,21 @@ export function getResultColumns({
       width: widthForCharacters(longest)
     }
   })
+}
+
+/**
+ * The column names of a result, in column order, duplicates included.
+ *
+ * Falls back to the first row's keys when the adapter returned rows without
+ * field metadata, so a fields/rows desync can never blank out the columns.
+ */
+export function getResultFieldNames({
+  fields,
+  rows
+}: ResultFieldNamesInput): string[] {
+  if (fields.length > 0) {
+    return fields.map((field) => field.name)
+  }
+
+  return Object.keys(rows[0] ?? {})
 }

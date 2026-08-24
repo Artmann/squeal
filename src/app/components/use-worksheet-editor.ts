@@ -43,12 +43,33 @@ import { findGutterMarkerPositions } from './worksheet-editor-lines'
 // `autocompletion` is off because the extension list registers it explicitly;
 // basicSetup only leaves an option out when it is literally `false`, so without
 // this it would be registered twice.
+//
+// `searchKeymap` is off because the results grid owns Mod-f. That option opts in
+// silently -- nothing in the extension list below mentions it -- and it binds
+// Mod-f to CodeMirror's own search panel without stopping propagation, so
+// leaving it on runs both finds and the grid's steals focus from the panel. The
+// editor holds focus by default, so this is the difference between Mod-f
+// working straight after a query returns and not.
+//
+// Turning it off also drops Mod-g, F3, Mod-Alt-g and Mod-d from the editor.
+// Putting any of them back means importing `@codemirror/search` here, and this
+// tree carries four separate copies of that package at two versions -- the one
+// an app import resolves to is not the one basicSetup is built against, so the
+// binding would read a different search state than it wrote. Flattening that is
+// its own job; until then the editor simply has no find.
+//
+// It also drops Mod-Shift-l, which is the app's own light/dark toggle -- but
+// that key stays dead in the editor regardless: `ThemeProvider` registers it
+// without `enableOnContentEditable`, so react-hotkeys-hook declines it on a
+// contenteditable target whatever CodeMirror does. Verified in the running app.
+// Removing CodeMirror's binding is necessary but not sufficient there.
 const editorBasicSetup = {
   autocompletion: false,
   bracketMatching: true,
   highlightActiveLine: true,
   history: true,
-  lineNumbers: true
+  lineNumbers: true,
+  searchKeymap: false
 }
 
 export interface WorksheetEditorOptions {

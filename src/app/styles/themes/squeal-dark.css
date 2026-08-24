@@ -27,6 +27,13 @@
   --accent-btn: oklch(from var(--accent) 58% calc(c * 1.35) h);
   --accent-soft: color-mix(in oklab, var(--accent) 24%, var(--panel));
 
+  /* Find */
+  --find: oklch(40% 0.09 310);
+  --find-text: oklch(94% 0.02 310);
+  --find-active: oklch(56% 0.15 305);
+  --find-active-text: oklch(16% 0.03 305);
+  --find-strong: oklch(78% 0.13 305);
+
   /* Status */
   --err: oklch(74% 0.13 25);
   --err-bg: oklch(28% 0.04 25);

@@ -1,9 +1,12 @@
-import { ReactElement, useEffect, useState } from 'react'
+import { SearchIcon } from 'lucide-react'
+import { ReactElement, useCallback, useEffect, useState } from 'react'
 
 import type { QueryDto } from '@/glue/api/schemas'
 import { isQueryFinished } from '@/glue/queries'
 
+import { getFindShortcut } from '../find-shortcut'
 import { usePersistedSizes } from '../hooks/use-persisted-sizes'
+import { useResultsFind } from '../hooks/use-results-find'
 import { useWorksheetMessages } from '../hooks/use-worksheet-messages'
 import { cn } from '../lib/utils'
 import { useAppSelector } from '../store'
@@ -11,6 +14,7 @@ import { selectOpenWorksheetIds } from '../store/tabs-slice'
 import { QueryMessages } from './QueryMessages'
 import { QueryResultContent } from './QueryResultContent'
 import { ResizeHandle } from './ResizeHandle'
+import { ResultsFindBar } from './ResultsFindBar'
 import { TimeAgo } from './TimeAgo'
 
 type ResultsTab = 'messages' | 'results'
@@ -87,13 +91,26 @@ export function ResultsPane({
   const activeTab: ResultsTab =
     (worksheetId ? tabByWorksheet[worksheetId] : undefined) ?? 'results'
 
-  const selectTab = (tab: ResultsTab) => {
-    if (!worksheetId) {
-      return
-    }
+  const selectTab = useCallback(
+    (tab: ResultsTab) => {
+      if (!worksheetId) {
+        return
+      }
 
-    setTabByWorksheet((current) => ({ ...current, [worksheetId]: tab }))
-  }
+      setTabByWorksheet((current) => ({ ...current, [worksheetId]: tab }))
+    },
+    [worksheetId]
+  )
+
+  const showResults = useCallback(() => selectTab('results'), [selectTab])
+
+  const find = useResultsFind({
+    result: query?.result,
+    worksheetId,
+    onShowResults: showResults
+  })
+
+  const isFindShowing = find.isOpen && activeTab === 'results'
 
   return (
     <>
@@ -132,8 +149,37 @@ export function ResultsPane({
             />
           </div>
 
-          <div className="ml-auto font-mono text-[11.5px] text-text3">
-            <ResultsMeta query={query} />
+          {/* The find affordance and the run summary are one right-aligned
+              group. An `ml-auto` on each instead splits the free space between
+              them, which left the search icon stranded mid-strip rather than
+              sitting where its input is about to appear. */}
+          <div className="ml-auto flex flex-none items-center gap-[2px]">
+            {isFindShowing ? (
+              <ResultsFindBar find={find} />
+            ) : (
+              query?.result && (
+                <button
+                  aria-label="Find in results"
+                  className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
+                  title={`Find in results (${getFindShortcut()})`}
+                  type="button"
+                  onClick={find.open}
+                >
+                  <SearchIcon className="size-3" />
+                </button>
+              )
+            )}
+
+            <div
+              className={cn(
+                'pl-[10px] font-mono text-[11.5px] whitespace-nowrap text-text3',
+                // In a 37px strip the find bar wins; the same run summary is in
+                // the status bar either way.
+                isFindShowing && 'hidden lg:block'
+              )}
+            >
+              <ResultsMeta query={query} />
+            </div>
           </div>
         </div>
 
@@ -144,6 +190,7 @@ export function ResultsPane({
             <QueryResultContent
               databaseName={databaseName}
               query={query}
+              search={find.search}
             />
           )}
         </div>
