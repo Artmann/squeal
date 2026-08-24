@@ -1,8 +1,10 @@
+import type { FileDialogKind } from '@/glue/file-dialogs'
+
 declare global {
   interface Window {
     electron: {
       getApiToken: () => Promise<string>
-      openFileDialog: () => Promise<string | null>
+      openFileDialog: (kind: FileDialogKind) => Promise<string | null>
       windowClose: () => Promise<void>
       windowMaximize: () => Promise<void>
       windowMinimize: () => Promise<void>

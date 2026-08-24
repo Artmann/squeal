@@ -4,8 +4,10 @@ import { randomBytes } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import started from 'electron-squirrel-startup'
+import invariant from 'tiny-invariant'
 import { log } from 'tiny-typescript-logger'
 
+import { fileDialogs, type FileDialogKind } from './glue/file-dialogs'
 import {
   closeMainWindow,
   focusMainWindow,
@@ -35,13 +37,30 @@ ipcMain.handle('window-close', () => {
   closeMainWindow()
 })
 
-ipcMain.handle('open-file-dialog', async () => {
-  const result = await dialog.showOpenDialog({
-    filters: [
-      { extensions: ['db', 'sqlite', 'sqlite3'], name: 'SQLite Database' }
-    ],
+ipcMain.handle('open-file-dialog', async (_event, kind: unknown) => {
+  // `Object.hasOwn` before indexing, not a truthiness check on the result: a
+  // plain object literal indexed by an untrusted string answers for prototype
+  // keys too, so `'constructor'` would sail past `if (!fileDialog)` and get
+  // spread into the options.
+  invariant(
+    typeof kind === 'string' && Object.hasOwn(fileDialogs, kind),
+    `Unknown file dialog kind: ${String(kind)}.`
+  )
+
+  const fileDialog = fileDialogs[kind as FileDialogKind]
+
+  // The only thing that opens a picker is a button inside the window, so no
+  // window means something is wrong rather than something to work around. It
+  // is passed so the dialog is a sheet on the frameless window instead of a
+  // panel floating off on its own.
+  const parentWindow = getMainWindow()
+
+  invariant(parentWindow, 'A file dialog was requested with no window open.')
+
+  const result = await dialog.showOpenDialog(parentWindow, {
+    filters: fileDialog.filters,
     properties: ['openFile'],
-    title: 'Select SQLite Database'
+    title: fileDialog.title
   })
 
   if (result.canceled || result.filePaths.length === 0) {
