@@ -866,8 +866,9 @@ describe('DatabaseExplorer', () => {
       renderWithProviders(<DatabaseExplorer />, seededOptions)
 
       // The matcher reads event.code, and `mod` accepts either meta or ctrl.
+      // No `altKey`: this was Mod-Alt-R only for as long as Electron's default
+      // menu owned Mod-R for Reload, which `src/main/menu.ts` now leaves out.
       fireEvent.keyDown(document, {
-        altKey: true,
         code: 'KeyR',
         key: 'r',
         metaKey: true
