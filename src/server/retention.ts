@@ -8,6 +8,13 @@ import { deleteExpiredQueries } from '@/main/queries/query-retention'
 import { deleteExpiredSpans } from '@/main/tracing/trace-retention'
 import { AppDatabase, type AppDatabaseClient } from './services/app-database'
 
+// The sweeps used to start the moment the layer built, which put two DELETEs on
+// the event loop while the window was still being created. Forking was never
+// the protection it looked like: the libsql driver is synchronous, so a sweep
+// in progress is the main process blocked, first paint included. Late enough to
+// be clear of that, and mirroring `firstCheckDelay` in `updates.ts`.
+export const firstSweepDelay = Duration.seconds(20)
+
 interface MaintenanceSweep {
   name: string
   run: (client: AppDatabaseClient) => Promise<number>
@@ -54,11 +61,15 @@ export const RetentionLive = Layer.scopedDiscard(
     // cannot run before that has happened.
     const appDatabase = yield* AppDatabase
 
-    yield* runSweeps(appDatabase.client).pipe(
-      // `fixed`, not `spaced`: the cadence is anchored to when a pass started,
-      // so a slow sweep does not push every later day's maintenance back by
-      // however long it took.
-      Effect.repeat(Schedule.fixed(Duration.days(1))),
+    yield* Effect.sleep(firstSweepDelay).pipe(
+      Effect.andThen(
+        runSweeps(appDatabase.client).pipe(
+          // `fixed`, not `spaced`: the cadence is anchored to when a pass
+          // started, so a slow sweep does not push every later day's
+          // maintenance back by however long it took.
+          Effect.repeat(Schedule.fixed(Duration.days(1)))
+        )
+      ),
       Effect.forkScoped
     )
   })
