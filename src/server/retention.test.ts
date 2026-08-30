@@ -14,7 +14,7 @@ import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { makeTestAppDatabase } from '@/test/effect-test-helper'
-import { RetentionLive } from './retention'
+import { firstSweepDelay, RetentionLive } from './retention'
 import { AppDatabase, type AppDatabaseClient } from './services/app-database'
 
 // The sweeps are the subject of their own tests, against their own databases.
@@ -64,6 +64,9 @@ function withRetention<A>(body: Effect.Effect<A, never, never>): Promise<A> {
           RetentionLive.pipe(Layer.provide(makeTestAppDatabase()))
         )
 
+        // Past the startup delay, so the cases below all start from the first
+        // pass having run. The delay itself is its own case.
+        yield* TestClock.adjust(firstSweepDelay)
         yield* settle
 
         return yield* body
@@ -88,6 +91,38 @@ describe('RetentionLive', () => {
     expect(swept).toEqual({ queries: 1, spans: 1 })
   })
 
+  // The sweeps used to start the instant the layer built, which put two
+  // synchronous DELETEs on the event loop while the window was still being
+  // created — the driver blocks the main process, so that was first paint
+  // waiting on retention. Nothing may run before the delay is up.
+  it('sweeps nothing until the startup delay is up', async () => {
+    const swept = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* Layer.build(
+            RetentionLive.pipe(Layer.provide(makeTestAppDatabase()))
+          )
+
+          // Everything the runtime has to offer short of moving the clock: if
+          // a sweep were still unscheduled, this is where it would run.
+          yield* settle
+
+          const beforeDelay = counts()
+
+          yield* TestClock.adjust(firstSweepDelay)
+          yield* settle
+
+          return { afterDelay: counts(), beforeDelay }
+        })
+      ).pipe(Effect.provide(captureLogs), Effect.provide(TestContext))
+    )
+
+    expect(swept).toEqual({
+      afterDelay: { queries: 1, spans: 1 },
+      beforeDelay: { queries: 0, spans: 0 }
+    })
+  })
+
   // The client the sweeps are handed, rather than one they went and found.
   // A sweep reaching a module singleton would pass every case in its own file,
   // where the two are the same database — this is the seam where they are not.
@@ -101,6 +136,7 @@ describe('RetentionLive', () => {
             RetentionLive.pipe(Layer.provide(Layer.succeedContext(context)))
           )
 
+          yield* TestClock.adjust(firstSweepDelay)
           yield* settle
 
           const { client } = Context.get(context, AppDatabase)
@@ -287,6 +323,7 @@ describe('RetentionLive', () => {
           scope
         )
 
+        yield* TestClock.adjust(firstSweepDelay)
         yield* settle
 
         // The runtime scope closes on before-quit, and a sweep left running
