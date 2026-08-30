@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { Exit } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
