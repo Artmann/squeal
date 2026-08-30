@@ -427,15 +427,19 @@ describe('DatabaseForm', () => {
     // The values can change while the request is in flight — the fields are not
     // disabled — so the verdict has to be dropped on arrival, not just hidden.
     // The toast is part of that: it names the host that was tested.
+    // The verdict is released by hand rather than on a timer. A timer races the
+    // typing it is supposed to lose to: under load the response lands first,
+    // the verdict is no longer late, and the test passes for the wrong reason
+    // or fails for none.
     it('drops a verdict that arrives after the connection changed', async () => {
       const user = userEvent.setup()
 
+      let settleTest: (response: Response) => void = () => undefined
+
       vi.mocked(fetch).mockImplementationOnce(
         () =>
-          new Promise((resolve) => {
-            setTimeout(() => {
-              resolve(jsonResponse({ success: true }))
-            }, 50)
+          new Promise<Response>((resolve) => {
+            settleTest = resolve
           })
       )
 
@@ -445,6 +449,8 @@ describe('DatabaseForm', () => {
       await user.click(screen.getByRole('button', { name: 'Test Connection' }))
 
       await user.type(screen.getByLabelText('Host'), '.invalid')
+
+      settleTest(jsonResponse({ success: true }))
 
       await waitFor(() => {
         expect(

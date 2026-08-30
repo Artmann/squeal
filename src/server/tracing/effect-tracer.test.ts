@@ -4,10 +4,13 @@ import {
   Context,
   Effect,
   Exit,
+  Fiber,
   FiberId,
   Layer,
   Option,
   Queue,
+  TestClock,
+  TestContext,
   Tracer
 } from 'effect'
 import { log } from 'tiny-typescript-logger'
@@ -305,22 +308,35 @@ describe('TracerLive', () => {
   // a span is available — so the batch of 100 it looks like it writes was really
   // one INSERT, one transaction and one fsync per span, on the main process's
   // event loop. Running a single query ends seven spans.
+  // On virtual time, not wall-clock. The linger window is 100ms of real time,
+  // and on a loaded machine the drain fiber can be descheduled for longer than
+  // that mid-window -- the batch then splits and the assertion reads `[2, 2]`,
+  // which looks exactly like a regression in batching and is not. `TestClock`
+  // fires every sleeper in timestamp order, so the four spans are all queued
+  // before the linger elapses no matter what the host is doing.
   it('writes spans that end within the linger window as one batch', async () => {
     await Effect.runPromise(
-      Effect.forEach([1, 2, 3, 4], (index) =>
-        // Spread out on purpose. Spans that all end in the same tick get batched
-        // either way; the ones a real query produces end tens of milliseconds
-        // apart, which is exactly when a minimum of one span per take turns into
-        // a write per span.
-        Effect.sleep('10 millis').pipe(Effect.withSpan(`burst.${index}`))
-      )
-        .pipe(
+      Effect.gen(function* () {
+        const burst = yield* Effect.forEach([1, 2, 3, 4], (index) =>
+          // Spread out on purpose. Spans that all end in the same tick get
+          // batched either way; the ones a real query produces end tens of
+          // milliseconds apart, which is exactly when a minimum of one span per
+          // take turns into a write per span.
+          Effect.sleep('10 millis').pipe(Effect.withSpan(`burst.${index}`))
+        ).pipe(
           // Outlasts the linger window, so the write under test is the batched
           // one from the drain fiber rather than the shutdown flush.
           Effect.andThen(Effect.sleep('400 millis')),
-          Effect.provide(TracerLive)
+          Effect.provide(TracerLive),
+          Effect.fork
         )
-        .pipe(Effect.provide(makeTestAppDatabase()))
+
+        yield* TestClock.adjust('500 millis')
+        yield* Fiber.join(burst)
+      }).pipe(
+        Effect.provide(makeTestAppDatabase()),
+        Effect.provide(TestContext.TestContext)
+      )
     )
 
     expect(
