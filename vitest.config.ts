@@ -2,13 +2,22 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { configDefaults, defineConfig } from 'vitest/config'
 
-// Tests for backend code (pure glue modules and, as the Effect migration
-// lands, src/server) run in a plain node environment. Everything else keeps
-// the jsdom environment the React tests need.
+// The split is by environment, and this list is the whole of it: everything
+// named here runs in a plain node environment, and the renderer project is
+// whatever is left, under jsdom. So it has to name the main process too --
+// `src/main.ts` and `src/main/**` are the least renderer-like code in the
+// repository, and leaving them out put them in the project called `renderer`
+// while `--project backend src/main.test.ts` answered `No test files found`.
+//
+// One array for both sides: it is the backend project's `include` and the
+// renderer project's `exclude`, so a path added here moves rather than
+// duplicates.
 const backendTestPatterns = [
   'scripts/**/*.test.ts',
   'src/build/**/*.test.ts',
   'src/glue/**/*.test.ts',
+  'src/main.test.ts',
+  'src/main/**/*.test.ts',
   'src/server/**/*.test.ts'
 ]
 
