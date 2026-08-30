@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
   index,
   integer,
@@ -42,7 +43,15 @@ export const queriesTable = sqliteTable(
     index('queries_worksheet_id_queried_at_index').on(
       table.worksheetId,
       table.queriedAt
-    )
+    ),
+    // Partial on purpose. Boot reconciliation asks for exactly the rows this
+    // covers — the ones left unfinished by the previous process — and it asks
+    // before the window can paint, so it was a full scan of a table whose rows
+    // each carry a whole query result. In steady state the index holds nothing
+    // at all, since a finished query leaves it.
+    index('queries_unfinished_index')
+      .on(table.finishedAt)
+      .where(sql`finishedAt IS NULL`)
   ]
 )
 

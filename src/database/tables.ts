@@ -39,6 +39,15 @@ const statements: SQL[] = [
     ON queries (worksheetId, queriedAt)
   `,
 
+  // Partial on purpose — see the matching declaration in `schema.ts`. Boot
+  // reconciliation wants exactly the rows left unfinished by the previous
+  // process, and it runs before the window can paint.
+  sql`
+    CREATE INDEX IF NOT EXISTS queries_unfinished_index
+    ON queries (finishedAt)
+    WHERE finishedAt IS NULL
+  `,
+
   sql`
     CREATE TABLE IF NOT EXISTS settings (
       id TEXT PRIMARY KEY NOT NULL,
