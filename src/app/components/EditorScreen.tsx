@@ -88,7 +88,7 @@ export function EditorScreen(props: EditorScreenProps): ReactElement {
   // does not outgrow it, which is what keeps the title and the Save button on
   // screen at every window height.
   return (
-    <div className="absolute inset-0 z-100 bg-bg/70 flex justify-center items-start overflow-y-auto py-6">
+    <div className="absolute inset-0 z-(--z-overlay) bg-bg/70 flex justify-center items-start overflow-y-auto py-6">
       <div className="w-full max-w-lg max-h-full my-auto flex flex-col gap-6 overflow-hidden rounded-md border border-border bg-panel p-6 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">{title}</h1>

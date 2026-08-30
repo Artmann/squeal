@@ -703,12 +703,8 @@ function ConnectionStringPopover({
       {/* Wider than the default 20rem: a connection string is long, and a URL
           the user cannot read back is one they cannot spot a typo in. Both
           `w-` and `max-w-` because the base class caps the width at 20rem, so
-          widening one alone changes nothing.
-
-          `z-[200]` to clear the `z-100` editor-screen overlay, matching what
-          `SelectContent` already does for the same reason — a portaled surface
-          keeps the popover's default `z-50`, which lands it behind the card. */}
-      <PopoverContent className="z-[200] w-[min(26rem,calc(100vw-2rem))] max-w-[min(26rem,calc(100vw-2rem))]">
+          widening one alone changes nothing. */}
+      <PopoverContent className="w-[min(26rem,calc(100vw-2rem))] max-w-[min(26rem,calc(100vw-2rem))]">
         <div className="flex flex-col gap-2">
           <p className="text-xs text-text2">
             Paste a connection string to fill in the fields.

@@ -435,7 +435,7 @@ export function TraceDashboard(): ReactElement {
   )
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-7 z-100 flex flex-col bg-panel">
+    <div className="fixed inset-x-0 bottom-0 top-7 z-(--z-overlay) flex flex-col bg-panel">
       <TraceDashboardHeader
         errorOnly={errorOnly}
         onBack={handleBack}

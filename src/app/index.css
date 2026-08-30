@@ -38,6 +38,25 @@
   background: transparent;
 }
 
+/* Stacking. Two layers, because there are only two kinds of surface that argue
+   about it.
+
+   Full-screen overlays -- the editor screen, the trace dashboard -- cover the
+   app at `--z-overlay`. Radix portals its content into `<body>`, outside those
+   overlays' stacking context, so a portaled surface is not "inside" the overlay
+   that opened it and has to clear it outright. `SelectContent` used to be the
+   only one that did, via a bare `z-[200]` with nothing saying why; a `Popover`
+   opened from the same card rendered behind it, which reads as a layout bug in
+   the popover rather than a stacking one.
+
+   Anything portaled gets `--z-portal`. Anything covering the app gets
+   `--z-overlay`. Elements positioned in the normal flow keep their local `z-*`
+   and are not part of this. */
+:root {
+  --z-overlay: 100;
+  --z-portal: 200;
+}
+
 @theme inline {
   /* Surfaces */
   --color-bg: var(--bg);
