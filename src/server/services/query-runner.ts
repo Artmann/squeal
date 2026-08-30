@@ -84,7 +84,7 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
         }
 
         return {
-          adapter: adapterFactory.create(record.value.connection),
+          adapter: yield* adapterFactory.create(record.value.connection),
           databaseType: record.value.connection.type
         }
       }).pipe(
