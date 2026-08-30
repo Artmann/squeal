@@ -1,3 +1,7 @@
+# `frog log` writes these; its Markdown is not prose-wrapped at 80 columns and
+# its YAML `title:` stays on one line, so checking them turns the Format job red
+# on the next push after logging friction.
+.agents/friction-log/
 .cache/
 CHANGELOG.md
 build/
