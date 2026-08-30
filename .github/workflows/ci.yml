@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Required for a merge queue: GitHub runs queued merges on a `gh-readonly-queue`
+  # ref, which matches neither trigger above. A workflow without this is invisible
+  # to the queue -- the merge is gated on checks that never run, and nothing says
+  # so. Every job below has to run here for the queue to be worth having, which is
+  # the whole point: these are the checks against the `main` a branch will land on,
+  # rather than against the one it was cut from.
+  merge_group:
 
 jobs:
   fallow:
