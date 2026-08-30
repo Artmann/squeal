@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // why every case re-imports it through `vi.resetModules()` for a fresh set of
 // module-level lifecycle values.
 const electron = vi.hoisted(() => ({
+  applicationMenus: 0,
   errorBoxes: 0,
   exits: [] as number[],
   hasSingleInstanceLock: true,
@@ -102,6 +103,15 @@ vi.mock('electron', () => ({
   ipcMain: {
     handle: (channel: string, handler: (...args: never[]) => unknown) => {
       electron.ipcHandlers.set(channel, handler)
+    }
+  },
+  // Recorded rather than ignored: `applyApplicationMenu` runs on the boot path
+  // this file drives, and a menu installed on a run that should not have
+  // reached `ready` is the same class of bug as a window opened there.
+  Menu: {
+    buildFromTemplate: (template: unknown) => ({ template }),
+    setApplicationMenu: () => {
+      electron.applicationMenus += 1
     }
   },
   shell: { openExternal: () => Promise.resolve() }
@@ -227,6 +237,7 @@ function quitEvent(): { preventDefault: () => void } {
 }
 
 beforeEach(() => {
+  electron.applicationMenus = 0
   electron.errorBoxes = 0
   electron.exits = []
   electron.hasSingleInstanceLock = true
@@ -501,6 +512,19 @@ describe('the app lifecycle', () => {
   // The losing second instance quits on the lock, before anything is built.
   // Booting here would give a second process its own handle on the one shared
   // SQLite file and let it write through the moment before it goes away.
+  // The template is checked in `main/menu.test.ts`; what is checked here is
+  // that it is installed at all. Without this call Electron supplies its own
+  // menu, whose Reload accelerator is Mod-R -- and a missing call is invisible,
+  // because the app looks completely normal right up until a shortcut reloads
+  // the window.
+  it('replaces the default application menu once the backend has booted', async () => {
+    await importMain()
+
+    await fire('ready')
+
+    expect(electron.applicationMenus).toEqual(1)
+  })
+
   it('boots no backend when another instance already holds the lock', async () => {
     electron.hasSingleInstanceLock = false
 
@@ -509,9 +533,10 @@ describe('the app lifecycle', () => {
     await fire('ready')
 
     expect({
+      applicationMenus: electron.applicationMenus,
       runtimes: backend.runtimes,
       windows: electron.windows
-    }).toEqual({ runtimes: 0, windows: 0 })
+    }).toEqual({ applicationMenus: 0, runtimes: 0, windows: 0 })
   })
 
   // The timeout is a three-second timer, and a clean shutdown wins the race

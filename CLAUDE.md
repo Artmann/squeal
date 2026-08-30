@@ -152,6 +152,14 @@ from older databases. A new table or column goes in both
 
 ## Notes
 
+- The application menu is replaced at boot by `src/main/menu.ts`. Electron's
+  default menu binds Reload to ⌘R and Force Reload to ⌘⇧R, and a menu
+  accelerator beats anything the renderer registers — so an app shortcut on
+  either key reloads the window instead, with nothing on a frameless window to
+  suggest a menu is doing it. `Menu.setApplicationMenu(null)` is worse: on macOS
+  the Edit menu is what supplies ⌘C/⌘V/⌘X/⌘A/⌘Z. The template is the default
+  minus `reload` and `forceReload`, and `menu.test.ts` fails if either comes
+  back.
 - Native packages (`pg`, `@libsql`) are externalized in `vite.main.config.ts`
 - API base URL in frontend: `http://127.0.0.1:7847` (the server binds loopback
   only)
