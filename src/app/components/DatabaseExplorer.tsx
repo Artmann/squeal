@@ -215,7 +215,7 @@ function useRefreshDatabaseTree(): DatabaseTreeRefresh {
     refresh()
   }, [refresh])
 
-  useHotkeys('mod+alt+r', refreshAll, {
+  useHotkeys('mod+r', refreshAll, {
     enableOnContentEditable: true,
     enableOnFormTags: true,
     preventDefault: true

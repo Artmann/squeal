@@ -8,6 +8,7 @@ import invariant from 'tiny-invariant'
 import { log } from 'tiny-typescript-logger'
 
 import { fileDialogs, type FileDialogKind } from './glue/file-dialogs'
+import { applyApplicationMenu } from './main/menu'
 import {
   closeMainWindow,
   focusMainWindow,
@@ -266,6 +267,7 @@ app.on('ready', async () => {
   }
 
   applyDevelopmentDockIcon()
+  applyApplicationMenu()
 
   apiToken = randomBytes(32).toString('hex')
 
