@@ -74,20 +74,40 @@ describe('WorksheetEditor', () => {
     })
   })
 
-  // The results grid owns Mod-f now. `basicSetup` opts in to every option it is
-  // not handed a literal `false` for, so leaving this out silently gives the key
-  // back to CodeMirror's own search panel -- and nothing in the extension list
-  // would show it happening.
-  it('leaves the editor search keymap off, so Mod-f reaches the results grid', () => {
+  // The whole object, not the three interesting keys. `basicSetup` opts in to
+  // every option it is not handed a literal `false` for, so a key missing from
+  // what the editor passes is not a feature it lacks -- it is one it silently
+  // has. Asserting the whole object is what makes that visible here: dropping
+  // `searchKeymap` would hand Mod-f back to CodeMirror's own search panel, and
+  // nothing in the extension list would show it happening.
+  it('names every option basicSetup reads, so none is opted into silently', () => {
     render(editor('select 1'))
 
     expect(capturedProps[0].basicSetup).toEqual({
+      allowMultipleSelections: true,
       autocompletion: false,
       bracketMatching: true,
+      closeBrackets: true,
+      closeBracketsKeymap: true,
+      completionKeymap: true,
+      crosshairCursor: false,
+      defaultKeymap: true,
+      drawSelection: true,
+      dropCursor: true,
+      foldGutter: true,
+      foldKeymap: true,
       highlightActiveLine: true,
+      highlightActiveLineGutter: true,
+      highlightSelectionMatches: true,
+      highlightSpecialChars: true,
       history: true,
+      historyKeymap: true,
+      indentOnInput: true,
       lineNumbers: true,
-      searchKeymap: false
+      lintKeymap: false,
+      rectangularSelection: true,
+      searchKeymap: false,
+      syntaxHighlighting: true
     })
   })
 
