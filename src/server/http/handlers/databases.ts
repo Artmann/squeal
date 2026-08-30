@@ -66,7 +66,7 @@ export const DatabasesLive = HttpApiBuilder.group(
             })
           }
 
-          const adapter = adapterFactory.create(record.value.connection)
+          const adapter = yield* adapterFactory.create(record.value.connection)
 
           // Deliberately sequential. Running the probe alongside introspection
           // would double the connections every schema request opens, and

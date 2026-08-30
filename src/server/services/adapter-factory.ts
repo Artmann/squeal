@@ -13,8 +13,17 @@ export class AdapterFactory extends Effect.Service<AdapterFactory>()(
     sync: () => ({
       // One discriminated value, not a (type, connectionInfo) pair that could
       // disagree — see DatabaseConnection in the contract.
-      create: (connection: DatabaseConnection): DatabaseAdapter =>
-        createAdapter(connection)
+      //
+      // An Effect rather than the adapter itself because `createAdapter` loads
+      // its driver on demand now. `Effect.promise` is right despite the import
+      // being able to fail: a driver missing from the build is not a condition
+      // any caller can handle or any user can act on, so it belongs in the
+      // defect channel with the rest of `src/server/errors.ts` — a 500 — rather
+      // than in the contract.
+      create: (
+        connection: DatabaseConnection
+      ): Effect.Effect<DatabaseAdapter> =>
+        Effect.promise(() => createAdapter(connection))
     })
   }
 ) {}

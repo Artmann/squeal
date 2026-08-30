@@ -195,7 +195,11 @@ export function makeTestAdapterFactory(config: TestAdapterConfig = {}) {
         state.lastConnectionInfo = connection.connectionInfo
         state.lastType = connection.type
 
-        return {
+        // Wrapped because the real factory loads its driver on demand and so
+        // answers with an Effect. `succeed`, not `promise`: the stub has
+        // nothing to wait for, and keeping it synchronous means a test still
+        // observes the adapter in the same step it asks for one.
+        return Effect.succeed({
           cancel: config.cancel ?? (() => Promise.resolve()),
           getSchema:
             config.getSchema ?? (() => Promise.resolve(defaultTestSchema)),
@@ -207,7 +211,7 @@ export function makeTestAdapterFactory(config: TestAdapterConfig = {}) {
           runQuery:
             config.runQuery ?? (() => Promise.resolve(defaultTestQueryResult)),
           testConnection: config.testConnection ?? (() => Promise.resolve())
-        }
+        })
       }
     })
   )

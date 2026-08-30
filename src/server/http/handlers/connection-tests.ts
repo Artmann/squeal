@@ -39,7 +39,7 @@ export const ConnectionTestsLive = HttpApiBuilder.group(
           }
         }
 
-        const adapter = adapterFactory.create(resolved.connection)
+        const adapter = yield* adapterFactory.create(resolved.connection)
 
         return yield* Effect.tryPromise(() => adapter.testConnection()).pipe(
           Effect.as({ success: true }),
