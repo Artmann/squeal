@@ -19,18 +19,15 @@ import {
 } from './query-result-search'
 import { QueryResultTable } from './QueryResultTable'
 
-const writeText = vi.fn().mockResolvedValue(undefined)
-
+// `navigator.clipboard` is deliberately not stubbed here. `userEvent.setup()`
+// installs its own clipboard stub over whatever is on the navigator, so a spy
+// taken in `beforeEach` is replaced before a single event is dispatched -- it
+// then records nothing no matter what the menu does, which reads as "the menu
+// item did not fire". Read the text back through userEvent's own stub instead.
 beforeEach(() => {
   Element.prototype.scrollTo = vi.fn()
   // The row list is virtualized, so it needs a viewport with a real height.
   stubElementSize()
-  Object.defineProperty(navigator, 'clipboard', {
-    value: { writeText },
-    writable: true,
-    configurable: true
-  })
-  writeText.mockClear()
 })
 
 describe('formatCellValue', () => {
@@ -236,6 +233,32 @@ describe('QueryResultTable', () => {
     expect(screen.getByText('Copy')).toBeInTheDocument()
     expect(screen.getByText('Copy Column Name')).toBeInTheDocument()
     expect(screen.getByText('Copy Row')).toBeInTheDocument()
+  })
+
+  it('copies the cell it was opened on', async () => {
+    const user = userEvent.setup()
+    render(<QueryResultTable result={result} />)
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByText('Alice')
+    })
+    await user.click(screen.getByRole('menuitem', { name: 'Copy' }))
+
+    expect(await navigator.clipboard.readText()).toEqual('Alice')
+  })
+
+  it('copies the column name of the cell it was opened on', async () => {
+    const user = userEvent.setup()
+    render(<QueryResultTable result={result} />)
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByText('Alice')
+    })
+    await user.click(screen.getByRole('menuitem', { name: 'Copy Column Name' }))
+
+    expect(await navigator.clipboard.readText()).toEqual('name')
   })
 
   describe('alignment', () => {
@@ -544,12 +567,6 @@ describe('QueryResultTable find', () => {
 
     // Renumbering would make "row 3" mean one thing while filtering and another
     // without it, and nothing would line the view back up with the query.
-    //
-    // This is also the guard on the index translation, and the only one there
-    // can be: the number, the cells, and both Copy actions all read the row
-    // through the same source index, and Radix menu items cannot be activated
-    // under jsdom -- a click resolves the item but never fires `onSelect` --
-    // so the copy path itself is unassertable here.
     it('keeps each row its original number', () => {
       render(
         <QueryResultTable
@@ -564,7 +581,11 @@ describe('QueryResultTable find', () => {
       expect(cellsOf(secondRow)).toEqual(['3', '77bd', 'a3f9@x.io'])
     })
 
-    it('offers the context menu on a row that survived the filter', async () => {
+    // The sharpest guard there is on the index translation: the row the menu
+    // copies has to be the row the filter kept, not the row that now sits in
+    // that position. `77bd` is the fourth source row; `0c8e` is what a
+    // filtered-position lookup would reach for.
+    it('copies the source row a filtered row stands for', async () => {
       const user = userEvent.setup()
 
       render(
@@ -578,8 +599,31 @@ describe('QueryResultTable find', () => {
       const [, idCell] = within(secondRow).getAllByRole('cell')
 
       await user.pointer({ keys: '[MouseRight]', target: idCell })
+      await user.click(screen.getByRole('menuitem', { name: 'Copy' }))
 
-      expect(screen.getByRole('menuitem', { name: 'Copy' })).toBeInTheDocument()
+      expect(await navigator.clipboard.readText()).toEqual('77bd')
+    })
+
+    it('copies a filtered row whole, as CSV', async () => {
+      const user = userEvent.setup()
+
+      render(
+        <QueryResultTable
+          result={people}
+          search={filtered}
+        />
+      )
+
+      const [, , secondRow] = screen.getAllByRole('row')
+      const [, idCell] = within(secondRow).getAllByRole('cell')
+
+      await user.pointer({ keys: '[MouseRight]', target: idCell })
+      await user.click(screen.getByRole('menuitem', { name: 'Copy Row' }))
+      await user.click(screen.getByRole('menuitem', { name: 'As CSV' }))
+
+      expect(await navigator.clipboard.readText()).toEqual(
+        'id,email\n77bd,a3f9@x.io'
+      )
     })
 
     it('says so when nothing matches, keeping the columns visible', () => {
