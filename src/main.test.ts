@@ -1,5 +1,6 @@
-import { Exit } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { BootOutcome } from './main/backend'
 
 // `src/main.ts` is a script, not a module: importing it registers every ipc
 // handler and every `app` event listener as a side effect, and there is no
@@ -9,6 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // module-level lifecycle values.
 const electron = vi.hoisted(() => ({
   applicationMenus: 0,
+
+  // What `nativeTheme.shouldUseDarkColors` answers, which is how the window
+  // picks the background it paints before the renderer has rendered anything.
+  darkMode: false,
   errorBoxes: 0,
   exits: [] as number[],
   hasSingleInstanceLock: true,
@@ -28,6 +33,11 @@ const electron = vi.hoisted(() => ({
   openDialogArguments: [] as unknown[][],
   openDialogResult: { canceled: true, filePaths: [] as string[] },
   preventedQuits: 0,
+
+  // The options each `BrowserWindow` was built with, so the loading background
+  // can be asserted on. The window is shown before anything has painted in it
+  // now, so that colour is what the user actually sees first.
+  windowOptions: [] as Array<Record<string, unknown>>,
   windows: 0
 }))
 
@@ -37,14 +47,23 @@ const electron = vi.hoisted(() => ({
 // therefore stubs the case drives directly, so that "the backend is still
 // booting" and "shutdown is wedged" become states a test can hold open.
 const backend = vi.hoisted(() => ({
-  boot: undefined as (() => Promise<unknown>) | undefined,
+  boot: undefined as (() => Promise<BootOutcome>) | undefined,
   dispose: undefined as (() => Promise<void>) | undefined,
   disposeCalls: 0,
   runtimes: 0
 }))
 
+// The whole `Logger` surface, not the subset `main.ts` happens to call today.
+// A partial literal here turns the next added log line into a dozen failures in
+// cases that log nothing, reported against `main.ts` rather than against this
+// mock — see `.agents/friction-log/20260830125059-the-logger-mock`.
 const logger = vi.hoisted(() => ({
+  debug: vi.fn(),
   error: vi.fn(),
+  fatal: vi.fn(),
+  info: vi.fn(),
+  log: vi.fn(),
+  trace: vi.fn(),
   warn: vi.fn()
 }))
 
@@ -77,8 +96,9 @@ vi.mock('electron', () => ({
       setWindowOpenHandler: () => undefined
     }
 
-    constructor() {
+    constructor(options: Record<string, unknown>) {
       electron.windows += 1
+      electron.windowOptions.push(options)
     }
 
     loadFile() {
@@ -113,6 +133,11 @@ vi.mock('electron', () => ({
       electron.applicationMenus += 1
     }
   },
+  nativeTheme: {
+    get shouldUseDarkColors() {
+      return electron.darkMode
+    }
+  },
   shell: { openExternal: () => Promise.resolve() }
 }))
 
@@ -130,17 +155,21 @@ vi.mock('node:fs', async (importOriginal) => ({
 
 vi.mock('tiny-typescript-logger', () => ({ log: logger }))
 
-vi.mock('./server/runtime', () => ({
-  makeMainRuntime: () => {
+// `./main/backend` rather than `./server/runtime`: the boot path reaches the
+// backend through a dynamic import of that module, so that is the seam. It is
+// also where Effect stops — the outcomes below are plain values, which is the
+// whole point of the module existing.
+vi.mock('./main/backend', () => ({
+  makeBackend: () => {
     backend.runtimes += 1
 
     return {
+      boot: () => backend.boot?.() ?? Promise.resolve({ status: 'ready' }),
       dispose: () => {
         backend.disposeCalls += 1
 
         return backend.dispose?.() ?? Promise.resolve()
-      },
-      runPromiseExit: () => backend.boot?.() ?? Promise.resolve(Exit.void)
+      }
     }
   }
 }))
@@ -237,6 +266,7 @@ function quitEvent(): { preventDefault: () => void } {
 
 beforeEach(() => {
   electron.applicationMenus = 0
+  electron.darkMode = false
   electron.errorBoxes = 0
   electron.exits = []
   electron.hasSingleInstanceLock = true
@@ -246,15 +276,17 @@ beforeEach(() => {
   electron.openDialogResult = { canceled: true, filePaths: [] }
   electron.openWindows = []
   electron.preventedQuits = 0
+  electron.windowOptions = []
   electron.windows = 0
 
-  backend.boot = () => Promise.resolve(Exit.void)
+  backend.boot = () => Promise.resolve({ status: 'ready' })
   backend.dispose = () => Promise.resolve()
   backend.disposeCalls = 0
   backend.runtimes = 0
 
-  logger.error.mockClear()
-  logger.warn.mockClear()
+  for (const level of Object.values(logger)) {
+    level.mockClear()
+  }
 
   vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', undefined)
   vi.stubGlobal('MAIN_WINDOW_VITE_NAME', 'main_window')
@@ -277,27 +309,166 @@ describe('the app lifecycle', () => {
     expect(electron.windows).toEqual(1)
   })
 
-  // The window is the case above, so it is not that windows are never made; it
-  // is that this one would be made over a backend already mid-`dispose()` and a
-  // few seconds from `app.exit(0)` — a window whose every request 500s or
-  // vanishes, for the moment it survives.
-  //
-  // The quit lands in the gap between the boot promise resolving and the
-  // continuation that reads it, which is why the boot here is held open across
-  // the quit rather than resolved before it.
-  it('opens no window when a quit arrives while the backend is still booting', async () => {
+  // The change this file's window cases are all about: the window used to be
+  // built after the backend was up, so everything the layer graph does — open
+  // SQLite, run the DDL, reconcile the previous process's queries, bind the
+  // port — happened with nothing at all on screen. Holding the boot open and
+  // asserting *without* awaiting it is what pins the ordering down; awaiting
+  // first would pass either way.
+  it('opens the window before the backend has finished booting', async () => {
+    backend.boot = () => new Promise(() => undefined)
+
+    await importMain()
+
+    void fire('ready')
+
+    expect(electron.windows).toEqual(1)
+  })
+
+  // The gap the `starting` state exists for: the window is up and the backend
+  // module has not finished importing, so there is nothing acquired to dispose
+  // and no reason to hold the quit — but the ready handler is still going to
+  // wake up on the other side of that import, and it must not go on to open the
+  // database and bind the port for an app that is already leaving.
+  it('boots no backend when a quit arrives while the backend module is loading', async () => {
+    await importMain()
+
+    const ready = fire('ready')
+
+    // Deliberately not flushed first: this is the one case that wants the quit
+    // to land before the import resolves.
+    fire('before-quit', quitEvent())
+
+    await ready
+    await flush()
+
+    expect({
+      disposals: backend.disposeCalls,
+      prevented: electron.preventedQuits,
+      runtimes: backend.runtimes
+    }).toEqual({ disposals: 0, prevented: 0, runtimes: 0 })
+  })
+
+  // What makes opening the window early safe. The renderer awaits its token
+  // inside the request transform, before any fetch leaves, so a token withheld
+  // is a request not yet sent — which is the difference between a spinner and
+  // the client spending three retries and its backoff on an unbound port.
+  it('withholds the session token until the backend is listening', async () => {
     let finishBoot = (): void => undefined
 
     backend.boot = () =>
       new Promise((resolve) => {
         finishBoot = () => {
-          resolve(Exit.void)
+          resolve({ status: 'ready' })
         }
       })
 
     await importMain()
 
     const ready = fire('ready')
+    const token = ipc('get-api-token')() as Promise<string>
+
+    // Raced rather than asserted directly: a pending promise has no state to
+    // read, so the sentinel winning is the evidence that it is still pending.
+    expect(
+      await Promise.race([token, flush().then(() => 'still waiting')])
+    ).toEqual('still waiting')
+
+    finishBoot()
+
+    await ready
+
+    expect(await token).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  // The gate is released on the failure path too, and that is deliberate: the
+  // renderer is up and asking by the time a boot fails, so leaving it pending
+  // would hold it on the spinner behind the error dialog. Released, the request
+  // goes out, finds nothing listening, and says so the way it always has.
+  it('releases the session token when the boot fails', async () => {
+    backend.boot = () =>
+      Promise.resolve({ error: new Error('port in use'), status: 'failed' })
+
+    await importMain()
+
+    await fire('ready')
+
+    expect(await (ipc('get-api-token')() as Promise<string>)).toMatch(
+      /^[0-9a-f]{64}$/
+    )
+  })
+
+  // A dock click between the window opening and the backend coming up finds an
+  // app that is genuinely on its way in. Refusing it — which `!== 'running'`
+  // did — left a macOS user who closed the loading window with no way back
+  // until the boot finished, and the boot path no longer opens one at the end.
+  it('reopens a window closed while the backend is still booting', async () => {
+    backend.boot = () => new Promise(() => undefined)
+
+    await importMain()
+
+    void fire('ready')
+
+    fire('activate')
+
+    expect(electron.windows).toEqual(2)
+  })
+
+  // The window is on screen before the renderer has painted into it, so the
+  // colour it is built with is what the user actually sees first. Unset, that
+  // is white — a full-window flash on the theme where it is most obvious.
+  it('builds the window in the dark loading colour when the OS is dark', async () => {
+    electron.darkMode = true
+
+    await importMain()
+
+    await fire('ready')
+
+    expect(electron.windowOptions[0]?.backgroundColor).toEqual('#181c24')
+  })
+
+  it('builds the window in the light loading colour when the OS is light', async () => {
+    electron.darkMode = false
+
+    await importMain()
+
+    await fire('ready')
+
+    expect(electron.windowOptions[0]?.backgroundColor).toEqual('#f6f7f9')
+  })
+
+  // The window used to be withheld here, because the boot path only opened one
+  // after the backend was up: a quit landing mid-boot meant the window was
+  // never made. It is made first now, so the same guarantee — that no window is
+  // left over a backend already mid-`dispose()` and a few seconds from
+  // `app.exit(0)` — has to be kept by closing it instead.
+  //
+  // The quit lands in the gap between the boot promise resolving and the
+  // continuation that reads it, which is why the boot here is held open across
+  // the quit rather than resolved before it.
+  it('closes the window when a quit arrives while the backend is still booting', async () => {
+    let finishBoot = (): void => undefined
+
+    backend.boot = () =>
+      new Promise((resolve) => {
+        finishBoot = () => {
+          resolve({ status: 'ready' })
+        }
+      })
+
+    await importMain()
+
+    const ready = fire('ready')
+
+    // Lets the dynamic import of `./main/backend` resolve, so the quit below
+    // lands while the backend is booting rather than while its module is still
+    // loading. Those are different branches, and the other one has its own case.
+    await flush()
+
+    // Stands in for the window the boot path just built. The fake constructor
+    // deliberately does not add to `openWindows` — that list is what the app
+    // currently has — so `shutDown` needs one put there to find.
+    const window = openWindow()
 
     fire('before-quit', quitEvent())
     finishBoot()
@@ -306,10 +477,10 @@ describe('the app lifecycle', () => {
     await flush()
 
     expect({
+      closes: window.close.mock.calls.length,
       disposals: backend.disposeCalls,
-      exits: electron.exits,
-      windows: electron.windows
-    }).toEqual({ disposals: 1, exits: [0], windows: 0 })
+      exits: electron.exits
+    }).toEqual({ closes: 1, disposals: 1, exits: [0] })
   })
 
   // Both halves matter and they pull in opposite directions. Disposing twice
@@ -407,10 +578,12 @@ describe('the app lifecycle', () => {
   })
 
   // The other half of the same branch, and the reason it cannot simply be
-  // silenced: a backend that genuinely failed to start leaves an app with no
-  // window and no explanation, so this one says so and goes.
+  // silenced: a backend that genuinely failed to start leaves an app with a
+  // window that will never load anything, so this one says so and goes. The
+  // window is built either way now — `app.exit(1)` is what takes it away.
   it('reports a boot failure that is not a shutdown, and exits nonzero', async () => {
-    backend.boot = () => Promise.resolve(Exit.fail(new Error('port in use')))
+    backend.boot = () =>
+      Promise.resolve({ error: new Error('port in use'), status: 'failed' })
 
     await importMain()
 
@@ -420,7 +593,7 @@ describe('the app lifecycle', () => {
       dialogs: electron.errorBoxes,
       exits: electron.exits,
       windows: electron.windows
-    }).toEqual({ dialogs: 1, exits: [1], windows: 0 })
+    }).toEqual({ dialogs: 1, exits: [1], windows: 1 })
   })
 
   // A quit while the layer is still building interrupts the build, so the boot
@@ -433,13 +606,17 @@ describe('the app lifecycle', () => {
     backend.boot = () =>
       new Promise((resolve) => {
         failBoot = () => {
-          resolve(Exit.fail(new Error('interrupted')))
+          resolve({ status: 'interrupted' })
         }
       })
 
     await importMain()
 
     const ready = fire('ready')
+
+    // As above: past the backend module's import, so the quit interrupts the
+    // layer build rather than the load.
+    await flush()
 
     fire('before-quit', quitEvent())
     failBoot()

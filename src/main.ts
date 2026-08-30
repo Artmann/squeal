@@ -1,5 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { Cause, Effect, Exit } from 'effect'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  shell
+} from 'electron'
 import { randomBytes } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -16,15 +22,48 @@ import {
   minimizeMainWindow,
   toggleMainWindowMaximized
 } from './main/window'
-import { makeMainRuntime, type MainRuntime } from './server/runtime'
+// Type-only, so it is erased and the backend module stays out of this file's
+// runtime import graph -- which is the entire point of `./main/backend`.
+import type { Backend } from './main/backend'
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
 
+// Milliseconds since the process started, which `performance.now()` measures
+// from `timeOrigin` — not from when this line runs. That distinction is the
+// reason it is used instead of a mark taken here: evaluating this file's import
+// graph pulls in the whole backend, and a mark taken after the imports would be
+// blind to the largest thing it needs to report on.
+function millisecondsSinceStart(): number {
+  return performance.now()
+}
+
 let apiToken = ''
 
-ipcMain.handle('get-api-token', () => apiToken)
+// Resolved once the backend has finished booting — successfully or not. Every
+// renderer request awaits the token before its fetch leaves (see the request
+// transform in `src/app/api-client.ts`), so gating the token is what keeps a
+// window that opens *during* the boot from firing requests at a server that is
+// not listening yet. Without it the renderer's three retries and their backoff
+// would spend about seven seconds arriving at the error screen.
+//
+// It resolves rather than rejects on a failed boot on purpose: the renderer is
+// already up and asking by then, and what it needs is for the request to go
+// out and fail the way an unreachable backend normally fails — the error
+// screen it already has. A rejection here would instead reach `Effect.promise`
+// in the api-client, which turns a rejected promise into a defect.
+let markBackendSettled: () => void = () => undefined
+
+const backendSettled = new Promise<void>((resolve) => {
+  markBackendSettled = resolve
+})
+
+ipcMain.handle('get-api-token', async () => {
+  await backendSettled
+
+  return apiToken
+})
 
 ipcMain.handle('window-minimize', () => {
   minimizeMainWindow()
@@ -91,10 +130,16 @@ if (!hasSingleInstanceLock) {
 // run without consulting any of them. Here the runtime is present exactly where
 // it is usable, so the question has to be asked to reach it.
 type Lifecycle =
-  | { runtime: MainRuntime; status: 'booting' }
-  | { runtime: MainRuntime; status: 'quitting' }
-  | { runtime: MainRuntime; status: 'running' }
+  | { backend: Backend; status: 'booting' }
+  | { backend: Backend; status: 'quitting' }
+  | { backend: Backend; status: 'running' }
   | { status: 'idle' }
+  // The window is up and the backend module is still being imported. It earns a
+  // state of its own because it is the one moment with something on screen and
+  // nothing behind it: there is no backend to dispose, but a quit landing here
+  // still has to stop the boot that is about to start, which is why it cannot
+  // simply be `idle`.
+  | { status: 'starting' }
 
 let lifecycle: Lifecycle = { status: 'idle' }
 
@@ -102,8 +147,28 @@ let lifecycle: Lifecycle = { status: 'idle' }
 // hold the app open.
 const disposeTimeoutMs = 3_000
 
-const createWindow = async () => {
+// The `--panel2` token both themes paint the loading screen in, converted to
+// the hex Electron wants. The window is now built before the renderer has
+// loaded anything, so whatever is set here is what the user actually sees for
+// the first frames — unset, that is white, and on a dark theme a white
+// frameless rectangle reads as a broken app rather than a starting one.
+//
+// `nativeTheme` is the closest the main process can get to the answer: the real
+// choice lives in the renderer's localStorage (`src/theme-bootstrap.ts` reads
+// `theme:v1`), which is unreachable from here. A user who has forced a theme
+// against their system setting gets one wrong-coloured frame instead of a
+// wrong-coloured flash.
+function windowBackgroundColor(): string {
+  return nativeTheme.shouldUseDarkColors ? '#181c24' : '#f6f7f9'
+}
+
+// Synchronous, and that is load-bearing rather than tidiness: the boot path
+// below depends on the window existing before the first tick of the layer
+// build, which an `async` function returning a discarded promise only happened
+// to deliver.
+function createWindow(): void {
   const window = new BrowserWindow({
+    backgroundColor: windowBackgroundColor(),
     frame: false,
     height: 880,
     titleBarStyle: 'hidden',
@@ -173,11 +238,12 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-// Quitting while the layer is still building interrupts it. That is a shutdown,
-// not a boot failure, so it must not raise a dialog racing the before-quit
-// handler's own exit.
-function isShutdownInterruption(cause: Cause.Cause<unknown>): boolean {
-  return lifecycle.status === 'quitting' || Cause.isInterruptedOnly(cause)
+// Asked through a function so the answer is opaque to narrowing. `lifecycle` is
+// module-level and mutable, and an await is exactly where a quit changes it —
+// but TypeScript narrows it from the assignment made before that await and
+// calls the inline comparison unreachable.
+function isQuitting(): boolean {
+  return lifecycle.status === 'quitting'
 }
 
 function reportBootFailure(error: unknown): void {
@@ -209,8 +275,19 @@ function reportBootFailure(error: unknown): void {
  * same `app.exit(0)` and a backend that wedges on every quit otherwise leaves
  * no trace of having done so.
  */
-async function shutDown(runtime: MainRuntime): Promise<void> {
+async function shutDown(backend: Backend): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined
+
+  // The window goes first, and this is the guarantee that used to come from
+  // never having opened one: a quit that lands mid-boot now finds a window on
+  // screen, and everything behind it is about to be disposed. Left up, it
+  // would spend its last seconds turning every request into an error.
+  closeMainWindow()
+
+  // Nothing should be left waiting on a backend that is being torn down. A
+  // renderer still holding its token request would otherwise sit on the
+  // spinner until the process exits underneath it.
+  markBackendSettled()
 
   const reportFailure = (error: unknown) => {
     log.warn(
@@ -239,7 +316,7 @@ async function shutDown(runtime: MainRuntime): Promise<void> {
     // that lacked one — a `dispose()` that throws where it should have rejected
     // would otherwise skip the `finally`, and the quit it skips has already
     // been prevented, so nothing would be left to release it.
-    const disposal = runtime
+    const disposal = backend
       .dispose()
       .then(() => 'disposed' as const, reportFailure)
 
@@ -271,27 +348,66 @@ app.on('ready', async () => {
 
   apiToken = randomBytes(32).toString('hex')
 
-  const runtime = makeMainRuntime({
+  lifecycle = { status: 'starting' }
+
+  // Opened first, before the backend module has even been loaded — which is the
+  // whole point. Importing it evaluates Effect, drizzle and the libsql driver,
+  // and building the layer graph then opens the app database, runs the DDL,
+  // reconciles interrupted queries and binds the port. None of that needs a
+  // window and all of it used to happen with nothing on screen. The renderer
+  // paints the spinner it already has through all of it now.
+  //
+  // What stops the window racing the server it talks to is `backendSettled`:
+  // the renderer awaits `get-api-token` before every request's fetch leaves.
+  createWindow()
+
+  const windowCreatedAt = millisecondsSinceStart()
+
+  const { makeBackend } = await import('./main/backend')
+
+  // A quit can land while that import is in flight. `before-quit` has no
+  // backend to dispose at that point, so it lets the quit through and leaves
+  // the lifecycle idle — and booting one here would open the database and bind
+  // the port on an app that is already on its way out.
+  if (lifecycle.status !== 'starting') {
+    markBackendSettled()
+
+    return
+  }
+
+  const backend = makeBackend({
     allowedOrigins: corsAllowedOrigins(),
     // Lets local agents read traces with plain curl during development.
     publicTraceReads: !app.isPackaged,
     token: apiToken
   })
 
-  lifecycle = { runtime, status: 'booting' }
+  lifecycle = { backend, status: 'booting' }
 
-  // Forces the runtime layer to build: the app database initializes,
-  // interrupted queries are reconciled, the encryption migration runs
-  // (safeStorage is only reliable once the app is ready), and only then
-  // does the HTTP server start listening.
-  const bootExit = await runtime.runPromiseExit(Effect.void)
+  const outcome = await backend.boot()
 
-  if (Exit.isFailure(bootExit)) {
-    if (isShutdownInterruption(bootExit.cause)) {
+  log.info(
+    `Startup: window at ${windowCreatedAt.toFixed(0)}ms, backend at ${millisecondsSinceStart().toFixed(0)}ms.`
+  )
+
+  if (outcome.status !== 'ready') {
+    // Released on this arm too. The renderer is up and waiting on the token by
+    // now, and holding it pending would leave it on the spinner behind the
+    // dialog below rather than letting the request fail and say so.
+    markBackendSettled()
+
+    // Quitting while the layer is still building interrupts it, and that is a
+    // shutdown rather than a boot failure — reporting it would raise a modal
+    // racing the before-quit handler's own exit. Two spellings of the same
+    // situation, and both are needed: the backend reports an interrupt-only
+    // cause, and the lifecycle knows about a quit that landed too early for the
+    // layer build to have noticed. The outcome half stays inline so that what
+    // is left below is narrowed to the arm that carries an error.
+    if (isQuitting() || outcome.status === 'interrupted') {
       return
     }
 
-    reportBootFailure(Cause.squash(bootExit.cause))
+    reportBootFailure(outcome.error)
     app.exit(1)
 
     return
@@ -299,16 +415,16 @@ app.on('ready', async () => {
 
   // The same question the failure arm asks through `isShutdownInterruption`,
   // asked on this arm too. A quit that landed while the boot was in flight has
-  // already started disposing the runtime this window would talk to, and is
-  // seconds from `app.exit(0)`: what it opens is a window whose every request
-  // fails, for as long as it survives.
+  // already started disposing the runtime, and `shutDown` has already closed
+  // the window — so there is nothing here to promote to `running`, and the
+  // token must not be handed to a renderer whose backend is mid-`dispose()`.
   if (lifecycle.status !== 'booting') {
     return
   }
 
-  lifecycle = { runtime, status: 'running' }
+  lifecycle = { backend, status: 'running' }
 
-  createWindow()
+  markBackendSettled()
 })
 
 app.on('second-instance', () => {
@@ -328,6 +444,19 @@ app.on('before-quit', (event) => {
     return
   }
 
+  // A window is up, but the backend module is still being imported: nothing has
+  // been acquired, so there is nothing to dispose and no reason to hold the
+  // quit. Dropping back to `idle` is also the signal the ready handler reads
+  // when its import finally resolves — without it, it would go on to boot a
+  // backend for an app that is already gone.
+  if (lifecycle.status === 'starting') {
+    lifecycle = { status: 'idle' }
+
+    markBackendSettled()
+
+    return
+  }
+
   // Every quit signal arriving during the dispose window has to keep being
   // prevented. Returning early without preventDefault let a second Cmd+Q — or
   // window-all-closed firing app.quit() — complete the quit and kill the
@@ -338,11 +467,11 @@ app.on('before-quit', (event) => {
     return
   }
 
-  const { runtime } = lifecycle
+  const { backend } = lifecycle
 
-  lifecycle = { runtime, status: 'quitting' }
+  lifecycle = { backend, status: 'quitting' }
 
-  void shutDown(runtime)
+  void shutDown(backend)
 })
 
 app.on('window-all-closed', () => {
@@ -357,7 +486,14 @@ app.on('activate', () => {
   // indistinguishable from the last-window-closed app this exists to revive —
   // except that what it would open talks to a runtime already inside
   // `dispose()`, seconds from `app.exit(0)`.
-  if (lifecycle.status !== 'running') {
+  //
+  // `starting` and `booting` are allowed through now that the boot path opens
+  // its window before the backend exists: a window closed while the backend is
+  // still coming up leaves an app that a dock click should revive, and what it
+  // opens waits on `backendSettled` like any other. Refusing them would strand
+  // a macOS user with no window until the boot finished, since the boot path no
+  // longer opens one when it does.
+  if (lifecycle.status === 'idle' || lifecycle.status === 'quitting') {
     return
   }
 
