@@ -63,13 +63,47 @@ import { findGutterMarkerPositions } from './worksheet-editor-lines'
 // without `enableOnContentEditable`, so react-hotkeys-hook declines it on a
 // contenteditable target whatever CodeMirror does. Verified in the running app.
 // Removing CodeMirror's binding is necessary but not sufficient there.
+//
+// Every option is named, including the ones left at their default. basicSetup
+// enables everything it is not handed a literal `false`, so a name missing from
+// this object is not a feature the editor lacks -- it is a feature the editor
+// silently has, with nothing in `src/` to say so. That is how the editor came
+// to own Mod-f, Mod-g, F3, Mod-d, Mod-Alt-g and Mod-Shift-l without any list
+// mentioning search. Twenty-four names is the price of the file being able to
+// answer "what does this editor bind?" on its own.
+//
+// `completionKeymap` stays on while `autocompletion` is off, because the
+// extension list registers `autocompletion()` itself and the keymap is still
+// wanted. `crosshairCursor` is the one option basicSetup defaults *off*; it is
+// named too, so the asymmetry is visible rather than looking like an oversight.
+//
+// `lintKeymap` is off because nothing configures a lint source, so Mod-Shift-m
+// and F8 opened an empty panel.
 const editorBasicSetup = {
+  allowMultipleSelections: true,
   autocompletion: false,
   bracketMatching: true,
+  closeBrackets: true,
+  closeBracketsKeymap: true,
+  completionKeymap: true,
+  crosshairCursor: false,
+  defaultKeymap: true,
+  drawSelection: true,
+  dropCursor: true,
+  foldGutter: true,
+  foldKeymap: true,
   highlightActiveLine: true,
+  highlightActiveLineGutter: true,
+  highlightSelectionMatches: true,
+  highlightSpecialChars: true,
   history: true,
+  historyKeymap: true,
+  indentOnInput: true,
   lineNumbers: true,
-  searchKeymap: false
+  lintKeymap: false,
+  rectangularSelection: true,
+  searchKeymap: false,
+  syntaxHighlighting: true
 }
 
 export interface WorksheetEditorOptions {
