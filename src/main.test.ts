@@ -292,9 +292,21 @@ beforeEach(() => {
   vi.stubGlobal('MAIN_WINDOW_VITE_NAME', 'main_window')
 })
 
-afterEach(() => {
-  vi.unstubAllGlobals()
+afterEach(async () => {
+  // Before the tick below, which is a real `setTimeout`.
   vi.useRealTimers()
+
+  // The ready handler spans an await now — the dynamic import of
+  // `./main/backend` — so a case that holds the boot open and asserts without
+  // awaiting it is still inside that handler when the case ends. Unstubbing
+  // first pulls `MAIN_WINDOW_VITE_DEV_SERVER_URL` out from under
+  // `corsAllowedOrigins()`, which the handler reads on the far side of that
+  // import: it rejects with a ReferenceError belonging to no test, and vitest
+  // fails the run on an unhandled error while reporting every case as passing.
+  // One tick is all it takes to get the handler as far as the boot it parks on.
+  await flush()
+
+  vi.unstubAllGlobals()
 })
 
 // The four things `main.ts` decides — open a window, hold a quit, dispose the
