@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.7.0](https://github.com/Artmann/squeal/compare/v1.6.0...v1.7.0) (2026-08-31)
+
+
+### Features
+
+* **main:** install a menu that does not own Mod-R ([c5c50ec](https://github.com/Artmann/squeal/commit/c5c50ec691e2b9d36d4c7bbbbd7448f80af880b5))
+
+
+### Bug Fixes
+
+* **ui:** give portaled surfaces one stacking rule ([8c92cd1](https://github.com/Artmann/squeal/commit/8c92cd1fa5bbbfa9608e00c09e7fd839d5deac99))
+
+
+### Performance Improvements
+
+* **database:** index the rows boot reconciliation goes looking for ([b57cbf6](https://github.com/Artmann/squeal/commit/b57cbf635f9d7980408406ae323b8269d0cbe9f6))
+* **databases:** load each driver on the first connection to it ([c1d3ba5](https://github.com/Artmann/squeal/commit/c1d3ba5da3b73fa97034929d8722ee7ad5139b82))
+* **retention:** keep the first sweep clear of the window opening ([b5ae2cb](https://github.com/Artmann/squeal/commit/b5ae2cb43e89514b5bfdc863424a1fd5167e51ce))
+* **startup:** open the window before the backend, not after ([162d673](https://github.com/Artmann/squeal/commit/162d673dc2ad6399ccc872792c9ba373b39d878b))
+
 ## [1.6.0](https://github.com/Artmann/squeal/compare/v1.5.0...v1.6.0) (2026-08-24)
 
 
