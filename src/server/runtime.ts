@@ -68,5 +68,3 @@ export function makeMainRuntime(options: MainRuntimeOptions) {
 
   return ManagedRuntime.make(MainLive)
 }
-
-export type MainRuntime = ReturnType<typeof makeMainRuntime>
