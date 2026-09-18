@@ -33,8 +33,8 @@ free of main-process imports. See `CLAUDE.md` for the architecture in detail.
 - `yarn typecheck` - Type-check both projects (backend and renderer)
 - `yarn test` - Run the test suite once
 - `yarn test:watch` - Run the test suite in watch mode
-- `yarn lint` - Run ESLint
-- `yarn format` - Format code with Prettier
+- `yarn lint` - Run oxlint
+- `yarn format` - Format code with oxfmt
 - `yarn format:check` - Check formatting without writing (what CI runs)
 - `yarn seed` - Seed the sample databases
 - `yarn package` - Package the app

@@ -387,14 +387,9 @@ at the code to change.
       `src/glue`, but `tsconfig.renderer.json` inherits only `noImplicitAny`
       from `tsconfig.base.json` — so across `src/app` the "no non-null
       assertion" and "prefer nullish coalescing" rules still can't be enforced.
-- [ ] **Re-enable `@typescript-eslint/no-explicit-any`.** `.eslintrc.json:17`
-      still turns it off, contradicting `CLAUDE.md`'s "No any" rule. Now free:
-      there is no `any` left in non-test `src/`, so flipping the rule to `error`
-      should pass as-is.
-- [ ] **Upgrade the lint stack.** `@typescript-eslint` `^5.62` doesn't support
-      TypeScript 5.7, and ESLint 8 is EOL. Move to `@typescript-eslint` v8 +
-      ESLint 9 flat config — this unlocks the type-aware `no-floating-promises`
-      rule.
+- [ ] **Turn on oxlint's type-aware rules.** `no-floating-promises` and the rest
+      of the type-aware set need `oxlint-tsgolint`; `.oxlintrc.json` runs the
+      syntax-only rules today.
 - [ ] **Fix the test scripts and add coverage.** `"test": "vitest"` still runs
       watch mode (hangs contributors; CI gets away with it only because vitest
       detects `CI`). Add `"test": "vitest run"` + `"test:watch"`, install
@@ -403,8 +398,8 @@ at the code to change.
       all five jobs (use `--frozen-lockfile`), builds only on ubuntu — add a
       `[ubuntu, macos, windows]` matrix to the `build` job so native
       `pg`/`@libsql` packaging regressions are caught on PR rather than at
-      release, where `release.yml` already runs all three — and has no
-      `prettier --check` step. Consider `husky` + `lint-staged`.
+      release, where `release.yml` already runs all three. Consider `husky` +
+      `lint-staged`.
 - [ ] **Add macOS signing/notarization** to `forge.config.ts` (gated on secrets)
       — released builds are unsigned and Gatekeeper-blocked. (The version-scheme
       half of this item is obsolete: release-please owns versions now, so the

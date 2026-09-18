@@ -4,15 +4,15 @@ import { join, resolve } from 'path'
 import invariant from 'tiny-invariant'
 import { describe, expect, it } from 'vitest'
 
-// `doctor.config.json` says what in this repository is not source. Prettier has
-// its own list and they disagreed: `design/squeal-sql-editor.html` is a 252 KB
-// bundle whose script block the design tool generates, declared not-source
-// there and walked by `prettier --write .` anyway.
+// `doctor.config.json` says what in this repository is not source. The
+// formatter has its own list and they disagreed: `design/squeal-sql-editor.html`
+// is a 252 KB bundle whose script block the design tool generates, declared
+// not-source there and walked by a whole-repository format anyway.
 //
 // This is not a hypothetical cost. `459efbf style: format the repo with
 // prettier` reformatted that one file by 917 lines — 81% of everything that
-// commit changed — and the bundle is only Prettier-shaped today because
-// Prettier reshaped it then. The bill arrives again the next time the design
+// commit changed — and the bundle is only formatter-shaped today because the
+// formatter reshaped it then. The bill arrives again the next time the design
 // tool regenerates it.
 //
 // `ignore.files` is the right list to compare against rather than the whole
@@ -21,46 +21,49 @@ import { describe, expect, it } from 'vitest'
 // `forge.config.ts` instead of an import. So an entry under `ignore.files` is a
 // claim that the formatter has no business there either.
 //
-// The stronger test would ask Prettier's own matcher instead of comparing the
-// two declarations textually. Importing `prettier` is not available: it is not
-// a declared dependency — `package.json` names it in the `format` script and
-// nowhere else — and Fallow fails the build on an unlisted one, static import
-// or dynamic. Shelling out to `prettier --file-info` does dodge that, at the
-// price of a 1.2 s subprocess per path resolved through a binary this
-// repository never asked for. Not worth it before #107 lands; worth
-// reconsidering after.
+// The stronger test would ask oxfmt's own matcher instead of comparing the two
+// declarations textually. That means shelling out to the binary once per path
+// resolved, which the textual comparison buys its way out of. Worth
+// reconsidering if the patterns ever grow past prefixes.
 //
 // The file lives here rather than beside a subject because it has no subject,
 // and `src/` is the only directory that both runs under vitest and typechecks
 // — see #161.
-describe('.prettierignore', () => {
+describe('.oxfmtrc.json ignorePatterns', () => {
   const root = resolve(import.meta.dirname, '..')
 
-  const lines = readFileSync(join(root, '.prettierignore'), 'utf-8')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'))
+  // Both configs are JSONC — their entries carry the comments explaining why
+  // each is there, which is most of their value. Only whole-line comments are
+  // stripped, because `$schema`'s value contains `//`; a trailing comment or a
+  // trailing comma is legal JSONC that this does not handle, and arrives as a
+  // bare `SyntaxError` from `JSON.parse`.
+  function readJsonc<T>(name: string): T {
+    return JSON.parse(
+      readFileSync(join(root, name), 'utf-8').replace(/^\s*\/\/.*$/gm, '')
+    ) as T
+  }
+
+  const formatter = readJsonc<{ ignorePatterns?: string[] }>('.oxfmtrc.json')
+
+  const lines = formatter.ignorePatterns ?? []
 
   const negations = lines.filter((line) => line.startsWith('!'))
   const patterns = lines.filter((line) => !line.startsWith('!'))
 
-  // The config is JSONC — its entries carry the comments explaining why each is
-  // there, which is most of their value. Only whole-line comments are stripped,
-  // because `$schema`'s value contains `//`; a trailing comment or a trailing
-  // comma is legal JSONC that this does not handle, and arrives as a bare
-  // `SyntaxError` from `JSON.parse`.
-  const configuration = JSON.parse(
-    readFileSync(join(root, 'doctor.config.json'), 'utf-8').replace(
-      /^\s*\/\/.*$/gm,
-      ''
-    )
-  ) as { ignore?: { files?: string[] } }
+  const configuration = readJsonc<{ ignore?: { files?: string[] } }>(
+    'doctor.config.json'
+  )
 
   const declared = configuration.ignore?.files ?? []
 
   invariant(
     declared.length > 0 && declared.every((entry) => typeof entry === 'string'),
     'doctor.config.json must declare a list of ignored file patterns for this to compare.'
+  )
+
+  invariant(
+    patterns.length > 0,
+    '.oxfmtrc.json must declare `ignorePatterns` for this to compare.'
   )
 
   /**
@@ -98,10 +101,9 @@ describe('.prettierignore', () => {
 
   // A `!` line re-includes what an earlier line excluded, and the prefix
   // comparison above reads it as one more exclusion — so the test below would
-  // report a bundle Prettier formats as covered. Measured: `design/` followed
-  // by `!design/` makes `prettier --file-info` answer `"ignored": false` while
-  // both assertions pass. Nothing here uses negation, so rather than model
-  // gitignore's re-inclusion rules this fails until someone needs them.
+  // report a bundle the formatter formats as covered. Nothing here uses
+  // negation, so rather than model gitignore's re-inclusion rules this fails
+  // until someone needs them.
   it('has no negated pattern for the comparison below to misread', () => {
     expect(negations).toEqual([])
   })
@@ -112,7 +114,10 @@ describe('.prettierignore', () => {
         !patterns.some((pattern) => covers(rootOf(pattern), rootOf(entry)))
     )
 
-    expect(uncovered, 'these each need a line in .prettierignore').toEqual([])
+    expect(
+      uncovered,
+      'these each need an entry in .oxfmtrc.json `ignorePatterns`'
+    ).toEqual([])
   })
 
   // An ignore entry for a path that holds nothing is decoration — `build/` and

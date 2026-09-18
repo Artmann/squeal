@@ -62,9 +62,9 @@ describe('flushSpans', () => {
 
     await exporter.flushSpans()
 
-    expect(send).toHaveBeenCalledTimes(2)
-    expect((send.mock.calls[0]?.[0] as unknown[]).length).toEqual(100)
-    expect((send.mock.calls[1]?.[0] as unknown[]).length).toEqual(50)
+    expect(
+      send.mock.calls.map((call) => (call[0] as unknown[]).length)
+    ).toEqual([100, 50])
   })
 
   it('keeps spans buffered when the send fails', async () => {
