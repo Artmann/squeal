@@ -217,6 +217,64 @@ function UnencryptedPasswordNotice(): ReactElement | null {
   )
 }
 
+// The form's starting point, built outside the component so the fallbacks for
+// a create -- where every field arrives undefined -- are not counted against
+// the component that renders them.
+function buildDefaultValues(
+  defaultValues: DatabaseFormProps['defaultValues']
+): FormInput {
+  const type = (defaultValues?.type as DatabaseType) ?? 'postgres'
+
+  return {
+    connectionInfo: getDefaultConnectionInfo(
+      type,
+      defaultValues?.connectionInfo as Record<string, unknown>
+    ),
+    environmentId: defaultValues?.environmentId ?? null,
+    name: defaultValues?.name ?? '',
+    type
+  }
+}
+
+interface ServerOnlySectionsProps {
+  form: DatabaseFormApi
+  isEditMode: boolean
+  showAdvanced: boolean
+  onShowAdvanced: () => void
+}
+
+// Everything a SQLite connection has no use for: it authenticates against no
+// server and travels over no network. One gate rather than one per section, so
+// the two cannot come apart.
+function ServerOnlySections({
+  form,
+  isEditMode,
+  showAdvanced,
+  onShowAdvanced
+}: ServerOnlySectionsProps): ReactElement {
+  return (
+    <>
+      <AuthenticationSection
+        form={form}
+        isEditMode={isEditMode}
+      />
+
+      {showAdvanced ? (
+        <SslSection form={form} />
+      ) : (
+        <button
+          className="flex items-center gap-1 self-start text-xs text-text2 hover:text-text"
+          type="button"
+          onClick={onShowAdvanced}
+        >
+          <ChevronRightIcon className="size-3" />
+          Advanced (SSL)
+        </button>
+      )}
+    </>
+  )
+}
+
 export function DatabaseForm({
   databaseId,
   defaultValues,
@@ -226,18 +284,9 @@ export function DatabaseForm({
 }: DatabaseFormProps): ReactElement {
   const isDialog = variant === 'dialog'
   const isEditMode = Boolean(databaseId)
-  const defaultType = (defaultValues?.type as DatabaseType) ?? 'postgres'
 
   const form = useForm<FormInput, unknown, FormOutput>({
-    defaultValues: {
-      connectionInfo: getDefaultConnectionInfo(
-        defaultType,
-        defaultValues?.connectionInfo as Record<string, unknown>
-      ),
-      environmentId: defaultValues?.environmentId ?? null,
-      name: defaultValues?.name ?? '',
-      type: defaultType
-    },
+    defaultValues: buildDefaultValues(defaultValues),
     resolver: zodResolver(
       isEditMode ? updateDatabaseSchema : createDatabaseSchema
     ) as Resolver<FormInput, unknown, FormOutput>
@@ -321,25 +370,13 @@ export function DatabaseForm({
           />
 
           {databaseType !== 'sqlite' && (
-            <AuthenticationSection
+            <ServerOnlySections
               form={form}
               isEditMode={isEditMode}
+              showAdvanced={showAdvanced}
+              onShowAdvanced={() => setShowAdvanced(true)}
             />
           )}
-
-          {databaseType !== 'sqlite' &&
-            (showAdvanced ? (
-              <SslSection form={form} />
-            ) : (
-              <button
-                className="flex items-center gap-1 self-start text-xs text-text2 hover:text-text"
-                type="button"
-                onClick={() => setShowAdvanced(true)}
-              >
-                <ChevronRightIcon className="size-3" />
-                Advanced (SSL)
-              </button>
-            ))}
         </div>
 
         <DatabaseFormActions

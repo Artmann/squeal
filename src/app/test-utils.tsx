@@ -56,24 +56,22 @@ function seedQueryCache(
   queryClient: QueryClient,
   options: RenderOptions
 ): void {
-  if (options.databases) {
-    queryClient.setQueryData(queryKeys.databases, options.databases)
-  }
+  // One option, one key, seeded only when the test passed it. A list rather
+  // than a block each, so adding a query to the app is one line here.
+  const seededOptions = [
+    ['databases', queryKeys.databases],
+    ['environments', queryKeys.environments],
+    ['queries', queryKeys.queries],
+    ['updateStatus', queryKeys.updateStatus],
+    ['worksheets', queryKeys.worksheets]
+  ] as const
 
-  if (options.environments) {
-    queryClient.setQueryData(queryKeys.environments, options.environments)
-  }
+  for (const [option, key] of seededOptions) {
+    const seed = options[option]
 
-  if (options.worksheets) {
-    queryClient.setQueryData(queryKeys.worksheets, options.worksheets)
-  }
-
-  if (options.queries) {
-    queryClient.setQueryData(queryKeys.queries, options.queries)
-  }
-
-  if (options.updateStatus) {
-    queryClient.setQueryData(queryKeys.updateStatus, options.updateStatus)
+    if (seed) {
+      queryClient.setQueryData(key, seed)
+    }
   }
 
   // Seeded by default, unlike everything above: the read suspends, and the

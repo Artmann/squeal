@@ -580,16 +580,10 @@ export const ListEnvironmentsResponse = Schema.Struct({
 export const CreateEnvironmentResponse = Schema.Struct({
   environment: EnvironmentDto
 })
-export type CreateEnvironmentResponse = Schema.Schema.Type<
-  typeof CreateEnvironmentResponse
->
 
 export const UpdateEnvironmentResponse = Schema.Struct({
   environment: EnvironmentDto
 })
-export type UpdateEnvironmentResponse = Schema.Schema.Type<
-  typeof UpdateEnvironmentResponse
->
 
 export const DeleteEnvironmentResponse = Schema.Struct({
   success: Schema.Literal(true)
