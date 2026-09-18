@@ -6,6 +6,7 @@ import { log } from 'tiny-typescript-logger'
 import { appTables } from './app-tables'
 import { databaseFilePath } from './path'
 import { reconcileColumns } from './reconcile-columns'
+import { seedEnvironments } from './seed-environments'
 import { createTables } from './tables'
 
 export const database = drizzle(databaseFilePath)
@@ -35,4 +36,6 @@ export async function initializeDatabase() {
   if (added.length > 0) {
     log.info(`Added missing database columns: ${added.join(', ')}.`)
   }
+
+  await seedEnvironments(database)
 }

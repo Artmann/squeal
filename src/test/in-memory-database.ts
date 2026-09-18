@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/libsql'
 
 import type { database } from '@/database'
+import { seedEnvironments } from '@/database/seed-environments'
 import { createTables } from '@/database/tables'
 
 /**
@@ -25,6 +26,7 @@ export async function createInMemoryDatabase(): Promise<typeof database> {
   const client = drizzle(':memory:')
 
   await createTables(client)
+  await seedEnvironments(client)
 
   return client
 }

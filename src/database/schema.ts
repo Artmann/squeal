@@ -16,10 +16,31 @@ export const databasesTable = sqliteTable('databases', {
     .notNull()
     .$defaultFn(() => Date.now()),
   deletedAt: integer(),
+  // The environment this connection belongs to, or null for none. Not a
+  // foreign key: SQLite only enforces those behind a pragma, and deleting an
+  // environment already has to clear this column itself.
+  environmentId: text(),
   lastUsedAt: integer(),
   name: text().notNull(),
   sortOrder: integer(),
   type: text().notNull()
+})
+
+export const environmentsTable = sqliteTable('environments', {
+  // The three shipped defaults use fixed ids so re-seeding is a primary key
+  // conflict rather than a duplicate; everything else gets a uuid.
+  id: text()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  createdAt: integer()
+    .notNull()
+    .$defaultFn(() => Date.now()),
+  deletedAt: integer(),
+  // An OKLCH hue angle, 0-360. A hue rather than a colour because the badge
+  // composes its own lightness and chroma per theme — see `--color-env` in
+  // `src/app/index.css`.
+  hue: integer().notNull(),
+  name: text().notNull()
 })
 
 export const queriesTable = sqliteTable(

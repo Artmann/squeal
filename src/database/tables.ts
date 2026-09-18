@@ -9,10 +9,21 @@ const statements: SQL[] = [
       connectionInfo TEXT NOT NULL,
       createdAt INTEGER NOT NULL,
       deletedAt INTEGER,
+      environmentId TEXT,
       lastUsedAt INTEGER,
       name TEXT NOT NULL,
       sortOrder INTEGER,
       type TEXT NOT NULL
+    )
+  `,
+
+  sql`
+    CREATE TABLE IF NOT EXISTS environments (
+      id TEXT PRIMARY KEY NOT NULL,
+      createdAt INTEGER NOT NULL,
+      deletedAt INTEGER,
+      hue INTEGER NOT NULL,
+      name TEXT NOT NULL
     )
   `,
 

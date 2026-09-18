@@ -13,6 +13,8 @@ import { isValidTraceId } from '../tracing/traceparent'
 
 export const DatabaseId = Schema.String.pipe(Schema.minLength(1))
 
+export const EnvironmentId = Schema.String.pipe(Schema.minLength(1))
+
 export const QueryId = Schema.String.pipe(Schema.minLength(1))
 
 export const TraceId = Schema.String.pipe(
@@ -153,6 +155,10 @@ export const DatabaseDto = Schema.Struct({
   // it, repair it, or delete it.
   connectionInfo: Schema.NullOr(PublicConnectionInfo),
   createdAt: Schema.Number,
+  // The environment this connection is labelled with, or null. May name an
+  // environment that has since been deleted -- the renderer falls back to no
+  // badge rather than treating that as an error.
+  environmentId: Schema.NullOr(Schema.String),
   id: Schema.String,
   name: Schema.String,
   sortOrder: Schema.NullOr(Schema.Number),
@@ -164,17 +170,40 @@ const databaseName = Schema.String.pipe(
   Schema.minLength(1, { message: () => 'Name is required.' })
 )
 
+// Optional rather than nullable-and-required: omitting it on a PATCH has to
+// leave the stored value alone, which is a different thing from sending null
+// to clear it.
+const databaseEnvironmentId = Schema.optional(
+  Schema.NullOr(Schema.String)
+)
+
 export const CreateDatabaseRequest = Schema.Union(
-  Schema.Struct({ ...serverConnectionFields, name: databaseName }),
-  Schema.Struct({ ...sqliteConnectionFields, name: databaseName })
+  Schema.Struct({
+    ...serverConnectionFields,
+    environmentId: databaseEnvironmentId,
+    name: databaseName
+  }),
+  Schema.Struct({
+    ...sqliteConnectionFields,
+    environmentId: databaseEnvironmentId,
+    name: databaseName
+  })
 )
 export type CreateDatabaseRequest = Schema.Schema.Type<
   typeof CreateDatabaseRequest
 >
 
 export const UpdateDatabaseRequest = Schema.Union(
-  Schema.Struct({ ...updateServerConnectionFields, name: databaseName }),
-  Schema.Struct({ ...sqliteConnectionFields, name: databaseName })
+  Schema.Struct({
+    ...updateServerConnectionFields,
+    environmentId: databaseEnvironmentId,
+    name: databaseName
+  }),
+  Schema.Struct({
+    ...sqliteConnectionFields,
+    environmentId: databaseEnvironmentId,
+    name: databaseName
+  })
 )
 export type UpdateDatabaseRequest = Schema.Schema.Type<
   typeof UpdateDatabaseRequest
@@ -190,6 +219,46 @@ export const ReorderDatabasesRequest = Schema.Struct({
     Schema.filter((ids) => uniqueIds(ids) || 'Database ids must be unique.')
   )
 })
+
+// --- Environments --------------------------------------------------------------
+
+// An OKLCH hue angle. The badge composes lightness and chroma per theme, so a
+// hue is all that has to be stored for a colour that works in both.
+const EnvironmentHue = Schema.Number.pipe(
+  Schema.int({ message: () => 'Pick one of the colours.' }),
+  Schema.between(0, 360, { message: () => 'Pick one of the colours.' })
+)
+
+const environmentName = Schema.String.pipe(
+  Schema.minLength(1, { message: () => 'Name is required.' }),
+  Schema.maxLength(32, {
+    message: () => 'Environment names are limited to 32 characters.'
+  })
+)
+
+export const EnvironmentDto = Schema.Struct({
+  createdAt: Schema.Number,
+  hue: Schema.Number,
+  id: Schema.String,
+  name: Schema.String
+})
+export type EnvironmentDto = Schema.Schema.Type<typeof EnvironmentDto>
+
+export const CreateEnvironmentRequest = Schema.Struct({
+  hue: EnvironmentHue,
+  name: environmentName
+})
+export type CreateEnvironmentRequest = Schema.Schema.Type<
+  typeof CreateEnvironmentRequest
+>
+
+export const UpdateEnvironmentRequest = Schema.Struct({
+  hue: Schema.optional(EnvironmentHue),
+  name: Schema.optional(environmentName)
+})
+export type UpdateEnvironmentRequest = Schema.Schema.Type<
+  typeof UpdateEnvironmentRequest
+>
 
 // --- Worksheets ----------------------------------------------------------------
 
@@ -503,6 +572,28 @@ export const GetDatabaseSchemaResponse = Schema.Struct({
 })
 
 export const DeleteDatabaseResponse = Schema.Struct({
+  success: Schema.Literal(true)
+})
+
+export const ListEnvironmentsResponse = Schema.Struct({
+  environments: Schema.mutable(Schema.Array(EnvironmentDto))
+})
+
+export const CreateEnvironmentResponse = Schema.Struct({
+  environment: EnvironmentDto
+})
+export type CreateEnvironmentResponse = Schema.Schema.Type<
+  typeof CreateEnvironmentResponse
+>
+
+export const UpdateEnvironmentResponse = Schema.Struct({
+  environment: EnvironmentDto
+})
+export type UpdateEnvironmentResponse = Schema.Schema.Type<
+  typeof UpdateEnvironmentResponse
+>
+
+export const DeleteEnvironmentResponse = Schema.Struct({
   success: Schema.Literal(true)
 })
 

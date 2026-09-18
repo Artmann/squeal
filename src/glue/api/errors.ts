@@ -27,6 +27,15 @@ export class DifferentServerError extends Schema.TaggedError<DifferentServerErro
   HttpApiSchema.annotations({ status: 400 })
 ) {}
 
+export class EnvironmentNotFoundError extends Schema.TaggedError<EnvironmentNotFoundError>()(
+  'EnvironmentNotFoundError',
+  {
+    environmentId: Schema.String,
+    message: Schema.String
+  },
+  HttpApiSchema.annotations({ status: 404 })
+) {}
+
 export class NoDatabaseAvailableError extends Schema.TaggedError<NoDatabaseAvailableError>()(
   'NoDatabaseAvailableError',
   {

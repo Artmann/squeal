@@ -8,6 +8,7 @@ import { HttpApi } from '@effect/platform'
 
 import { connectionTestsGroup } from './groups/connection-tests'
 import { databasesGroup } from './groups/databases'
+import { environmentsGroup } from './groups/environments'
 import { healthGroup } from './groups/health'
 import { queriesGroup } from './groups/queries'
 import { secretStorageGroup } from './groups/secret-storage'
@@ -18,6 +19,7 @@ import { worksheetsGroup } from './groups/worksheets'
 export const SquealApi = HttpApi.make('SquealApi')
   .add(connectionTestsGroup)
   .add(databasesGroup)
+  .add(environmentsGroup)
   .add(healthGroup)
   .add(queriesGroup)
   .add(secretStorageGroup)
