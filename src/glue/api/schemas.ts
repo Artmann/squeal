@@ -173,9 +173,7 @@ const databaseName = Schema.String.pipe(
 // Optional rather than nullable-and-required: omitting it on a PATCH has to
 // leave the stored value alone, which is a different thing from sending null
 // to clear it.
-const databaseEnvironmentId = Schema.optional(
-  Schema.NullOr(Schema.String)
-)
+const databaseEnvironmentId = Schema.optional(Schema.NullOr(Schema.String))
 
 export const CreateDatabaseRequest = Schema.Union(
   Schema.Struct({
@@ -582,16 +580,10 @@ export const ListEnvironmentsResponse = Schema.Struct({
 export const CreateEnvironmentResponse = Schema.Struct({
   environment: EnvironmentDto
 })
-export type CreateEnvironmentResponse = Schema.Schema.Type<
-  typeof CreateEnvironmentResponse
->
 
 export const UpdateEnvironmentResponse = Schema.Struct({
   environment: EnvironmentDto
 })
-export type UpdateEnvironmentResponse = Schema.Schema.Type<
-  typeof UpdateEnvironmentResponse
->
 
 export const DeleteEnvironmentResponse = Schema.Struct({
   success: Schema.Literal(true)

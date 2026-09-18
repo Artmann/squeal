@@ -24,9 +24,11 @@ import type {
   ConnectionTestResponse,
   CreateDatabaseRequest,
   CreateDatabaseResponse,
+  CreateEnvironmentRequest,
   CreateQueryResponse,
   CreateWorksheetRequest,
   DatabaseDto,
+  EnvironmentDto,
   HealthResponse,
   ListTracesUrlParams,
   QueryDto,
@@ -38,6 +40,7 @@ import type {
   TraceSummaryDto,
   UpdateDatabaseConnection,
   UpdateDatabaseRequest,
+  UpdateEnvironmentRequest,
   UpdateDatabaseResponse,
   UpdateStatusResponse,
   UpdateWorksheetRequest,
@@ -334,6 +337,21 @@ export const apiClient = {
     )
   },
 
+  async createEnvironment(
+    request: CreateEnvironmentRequest
+  ): Promise<EnvironmentDto> {
+    const data = await traced(
+      'HTTP POST /environments',
+      { method: 'POST', path: '/environments' },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.environments.create({ payload: request })
+      )
+    )
+
+    return data.environment
+  },
+
   async createQuery(
     request: {
       content: string
@@ -378,6 +396,17 @@ export const apiClient = {
     )
   },
 
+  async deleteEnvironment(environmentId: string): Promise<void> {
+    await traced(
+      'HTTP DELETE /environments/:id',
+      { method: 'DELETE', path: `/environments/${environmentId}` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.environments.remove({ path: { id: environmentId } })
+      )
+    )
+  },
+
   async deleteWorksheet(worksheetId: string): Promise<void> {
     await traced(
       'HTTP DELETE /worksheets/:id',
@@ -411,6 +440,17 @@ export const apiClient = {
     )
 
     return data.databases
+  },
+
+  async getEnvironments(): Promise<EnvironmentDto[]> {
+    const data = await traced(
+      'HTTP GET /environments',
+      { method: 'GET', path: '/environments' },
+      undefined,
+      Effect.flatMap(client, (api) => api.environments.list())
+    )
+
+    return data.environments
   },
 
   // Untraced: a health probe every few seconds would drown the trace list.
@@ -591,6 +631,25 @@ export const apiClient = {
           : api.databases.update({ path: { id: databaseId }, payload: request })
       )
     )
+  },
+
+  async updateEnvironment(
+    environmentId: string,
+    request: UpdateEnvironmentRequest
+  ): Promise<EnvironmentDto> {
+    const data = await traced(
+      'HTTP PATCH /environments/:id',
+      { method: 'PATCH', path: `/environments/${environmentId}` },
+      undefined,
+      Effect.flatMap(client, (api) =>
+        api.environments.update({
+          path: { id: environmentId },
+          payload: request
+        })
+      )
+    )
+
+    return data.environment
   },
 
   async updateWorksheet(

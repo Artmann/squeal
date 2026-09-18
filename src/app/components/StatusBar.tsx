@@ -1,13 +1,16 @@
-import { ActivityIcon } from 'lucide-react'
+import { ActivityIcon, SettingsIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
 import { isQueryFinished } from '@/glue/queries'
 import type { QueryDto } from '@/glue/api/schemas'
 import type { DatabaseDto } from '@/glue/databases'
+import { findEnvironment } from '@/glue/environments'
 
-import { useServerVersion } from '../hooks/queries'
+import { useEnvironments, useServerVersion } from '../hooks/queries'
+import { cn } from '../lib/utils'
 import { useAppDispatch } from '../store'
 import { uiActions } from '../store/ui-slice'
+import { environmentHueStyle } from './EnvironmentBadge'
 import { UpdateIndicator } from './UpdateIndicator'
 import type { CursorPosition } from './worksheet-editor-cursor'
 
@@ -73,12 +76,30 @@ export function StatusBar({
 }: StatusBarProps): ReactElement {
   const dispatch = useAppDispatch()
   const serverVersion = useServerVersion(database)
+  const environments = useEnvironments()
+
+  const environment = findEnvironment(
+    environments,
+    database?.environmentId ?? null
+  )
 
   const health = getConnectionHealth(query)
   const runSummary = formatRunSummary(query)
 
   return (
-    <footer className="flex h-[27px] flex-none items-center gap-4 border-t border-border bg-panel2 px-[14px] text-[11.5px] text-text2">
+    // The whole bar takes the environment's colour rather than showing another
+    // badge. The point is that it is unmissable without being read: the strip
+    // along the bottom of the window going red is what stops a query aimed at
+    // production, and a badge among six other status items is not.
+    <footer
+      className={cn(
+        'flex h-[27px] flex-none items-center gap-4 border-t px-[14px] text-[11.5px] text-text2',
+        environment === undefined
+          ? 'border-border bg-panel2'
+          : 'border-env-border bg-env-bg'
+      )}
+      style={environment && environmentHueStyle(environment)}
+    >
       <span
         className="flex items-center gap-2"
         title={healthTitles[health]}
@@ -91,6 +112,10 @@ export function StatusBar({
 
         {database?.name ?? 'No database'}
       </span>
+
+      {environment !== undefined && (
+        <span className="text-env">{environment.name}</span>
+      )}
 
       {serverVersion !== undefined && (
         <span className="text-text3">{serverVersion}</span>
@@ -112,6 +137,16 @@ export function StatusBar({
         <span className="text-text3">UTF-8</span>
 
         <UpdateIndicator />
+
+        <button
+          aria-label="Open settings"
+          className="flex-none text-text3 hover:text-text"
+          title="Settings"
+          type="button"
+          onClick={() => dispatch(uiActions.openSettings())}
+        >
+          <SettingsIcon className="size-[11px]" />
+        </button>
 
         <button
           aria-label="Open traces"

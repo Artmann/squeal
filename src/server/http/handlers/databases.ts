@@ -34,7 +34,11 @@ export const DatabasesLive = HttpApiBuilder.group(
         Effect.gen(function* () {
           const service = yield* DatabaseService
 
-          return yield* service.create(payload.name, payload)
+          return yield* service.create(
+            payload.name,
+            payload,
+            payload.environmentId
+          )
         }).pipe(orDieInternal)
       )
       .handle('reorder', ({ payload }) =>
@@ -91,7 +95,12 @@ export const DatabasesLive = HttpApiBuilder.group(
         Effect.gen(function* () {
           const service = yield* DatabaseService
 
-          const database = yield* service.update(path.id, payload.name, payload)
+          const database = yield* service.update(
+            path.id,
+            payload.name,
+            payload,
+            payload.environmentId
+          )
 
           return { database }
         }).pipe(orDieInternal)

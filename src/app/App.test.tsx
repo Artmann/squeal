@@ -52,6 +52,7 @@ const testDatabase: DatabaseDto = {
     username: 'postgres'
   },
   createdAt: 1,
+  environmentId: null,
   id: 'database-1',
   name: 'Pagila',
   sortOrder: null,

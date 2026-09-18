@@ -21,6 +21,7 @@ import {
 } from './authorization-live'
 import { ConnectionTestsLive } from './handlers/connection-tests'
 import { DatabasesLive } from './handlers/databases'
+import { EnvironmentsLive } from './handlers/environments'
 import { HealthLive } from './handlers/health'
 import { QueriesLive } from './handlers/queries'
 import { SecretStorageLive } from './handlers/secret-storage'
@@ -33,6 +34,7 @@ const apiPort = 7847
 const HandlersLive = Layer.mergeAll(
   ConnectionTestsLive,
   DatabasesLive,
+  EnvironmentsLive,
   HealthLive,
   QueriesLive,
   SecretStorageLive,

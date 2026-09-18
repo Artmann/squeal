@@ -11,6 +11,10 @@ export type EditorScreen =
 export interface UiState {
   editorScreen?: EditorScreen
   gettingStartedDismissed?: boolean
+  // A flag beside the trace dashboard rather than another `editorScreen`
+  // member: that union is spread into a component whose whole body is the
+  // database form, and settings shares nothing with it but the overlay.
+  settingsOpen?: boolean
   traceDashboardOpen?: boolean
 }
 
@@ -22,6 +26,10 @@ const uiSlice = createSlice({
   reducers: {
     closeEditorScreen: (state) => {
       state.editorScreen = undefined
+    },
+
+    closeSettings: (state) => {
+      state.settingsOpen = false
     },
 
     closeTraceDashboard: (state) => {
@@ -45,6 +53,10 @@ const uiSlice = createSlice({
         databaseId: action.payload,
         type: 'edit-database'
       }
+    },
+
+    openSettings: (state) => {
+      state.settingsOpen = true
     },
 
     toggleTraceDashboard: (state) => {

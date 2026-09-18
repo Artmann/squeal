@@ -40,7 +40,8 @@ import {
   useGrantSecretStorage,
   useUpdateDatabase
 } from '../hooks/mutations'
-import { useSecretStorage } from '../hooks/queries'
+import { useEnvironments, useSecretStorage } from '../hooks/queries'
+import { environmentHueStyle } from './EnvironmentBadge'
 import { cn } from '../lib/utils'
 import { FilePathInput } from './FilePathInput'
 import { Button } from './ui/button'
@@ -216,6 +217,64 @@ function UnencryptedPasswordNotice(): ReactElement | null {
   )
 }
 
+// The form's starting point, built outside the component so the fallbacks for
+// a create -- where every field arrives undefined -- are not counted against
+// the component that renders them.
+function buildDefaultValues(
+  defaultValues: DatabaseFormProps['defaultValues']
+): FormInput {
+  const type = (defaultValues?.type as DatabaseType) ?? 'postgres'
+
+  return {
+    connectionInfo: getDefaultConnectionInfo(
+      type,
+      defaultValues?.connectionInfo as Record<string, unknown>
+    ),
+    environmentId: defaultValues?.environmentId ?? null,
+    name: defaultValues?.name ?? '',
+    type
+  }
+}
+
+interface ServerOnlySectionsProps {
+  form: DatabaseFormApi
+  isEditMode: boolean
+  showAdvanced: boolean
+  onShowAdvanced: () => void
+}
+
+// Everything a SQLite connection has no use for: it authenticates against no
+// server and travels over no network. One gate rather than one per section, so
+// the two cannot come apart.
+function ServerOnlySections({
+  form,
+  isEditMode,
+  showAdvanced,
+  onShowAdvanced
+}: ServerOnlySectionsProps): ReactElement {
+  return (
+    <>
+      <AuthenticationSection
+        form={form}
+        isEditMode={isEditMode}
+      />
+
+      {showAdvanced ? (
+        <SslSection form={form} />
+      ) : (
+        <button
+          className="flex items-center gap-1 self-start text-xs text-text2 hover:text-text"
+          type="button"
+          onClick={onShowAdvanced}
+        >
+          <ChevronRightIcon className="size-3" />
+          Advanced (SSL)
+        </button>
+      )}
+    </>
+  )
+}
+
 export function DatabaseForm({
   databaseId,
   defaultValues,
@@ -225,17 +284,9 @@ export function DatabaseForm({
 }: DatabaseFormProps): ReactElement {
   const isDialog = variant === 'dialog'
   const isEditMode = Boolean(databaseId)
-  const defaultType = (defaultValues?.type as DatabaseType) ?? 'postgres'
 
   const form = useForm<FormInput, unknown, FormOutput>({
-    defaultValues: {
-      connectionInfo: getDefaultConnectionInfo(
-        defaultType,
-        defaultValues?.connectionInfo as Record<string, unknown>
-      ),
-      name: defaultValues?.name ?? '',
-      type: defaultType
-    },
+    defaultValues: buildDefaultValues(defaultValues),
     resolver: zodResolver(
       isEditMode ? updateDatabaseSchema : createDatabaseSchema
     ) as Resolver<FormInput, unknown, FormOutput>
@@ -319,25 +370,13 @@ export function DatabaseForm({
           />
 
           {databaseType !== 'sqlite' && (
-            <AuthenticationSection
+            <ServerOnlySections
               form={form}
               isEditMode={isEditMode}
+              showAdvanced={showAdvanced}
+              onShowAdvanced={() => setShowAdvanced(true)}
             />
           )}
-
-          {databaseType !== 'sqlite' &&
-            (showAdvanced ? (
-              <SslSection form={form} />
-            ) : (
-              <button
-                className="flex items-center gap-1 self-start text-xs text-text2 hover:text-text"
-                type="button"
-                onClick={() => setShowAdvanced(true)}
-              >
-                <ChevronRightIcon className="size-3" />
-                Advanced (SSL)
-              </button>
-            ))}
         </div>
 
         <DatabaseFormActions
@@ -739,6 +778,69 @@ function ConnectionStringPopover({
   )
 }
 
+// Radix rejects an empty string as an item value, so "no environment" travels
+// as a sentinel and is mapped back to null at the boundary of the field.
+const noEnvironmentValue = 'none'
+
+function EnvironmentField({
+  form
+}: {
+  form: DatabaseFormApi
+}): ReactElement | null {
+  const environments = useEnvironments()
+
+  // Nothing to choose from means nothing to show. The list is seeded at boot,
+  // so in practice this covers the first render before it arrives and the case
+  // where the user deleted every environment.
+  if (environments.length === 0) {
+    return null
+  }
+
+  return (
+    <FormField
+      control={form.control}
+      name="environmentId"
+      render={({ field }) => (
+        <FormItem className="w-40">
+          <FormLabel>Environment</FormLabel>
+          <Select
+            value={field.value ?? noEnvironmentValue}
+            onValueChange={(value) =>
+              field.onChange(value === noEnvironmentValue ? null : value)
+            }
+          >
+            <FormControl>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+            </FormControl>
+            <SelectContent>
+              <SelectItem value={noEnvironmentValue}>None</SelectItem>
+
+              {environments.map((environment) => (
+                <SelectItem
+                  key={environment.id}
+                  value={environment.id}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="size-[8px] flex-none rounded-full bg-env"
+                      style={environmentHueStyle(environment)}
+                    />
+                    {environment.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  )
+}
+
 interface ConnectionDetailsSectionProps {
   databaseType: DatabaseType
   form: DatabaseFormApi
@@ -816,6 +918,8 @@ function ConnectionDetailsSection({
             </FormItem>
           )}
         />
+
+        <EnvironmentField form={form} />
       </div>
 
       {databaseType === 'sqlite' ? (

@@ -25,6 +25,7 @@ import {
 } from '@/server/services/app-database'
 import { AdapterFactory } from '@/server/services/adapter-factory'
 import { DatabaseService } from '@/server/services/database-service'
+import { EnvironmentService } from '@/server/services/environment-service'
 import { QueryRunner } from '@/server/services/query-runner'
 import { SecretStorage } from '@/server/services/secret-storage'
 import { SecretStorageSettings } from '@/server/services/secret-storage-settings'
@@ -249,6 +250,7 @@ export function makeTestApi(options: TestApiOptions = {}) {
   const updater = makeTestUpdater(options.updateStatus)
 
   const services = Layer.mergeAll(
+    EnvironmentService.DefaultWithoutDependencies,
     QueryRunner.DefaultWithoutDependencies,
     SecretStorageSettings.DefaultWithoutDependencies,
     TraceStore.DefaultWithoutDependencies,

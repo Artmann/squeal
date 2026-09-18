@@ -14,6 +14,7 @@ import { AppSidebar } from './components/AppSidebar'
 import { EditorScreen } from './components/EditorScreen'
 import { GettingStartedScreen } from './components/GettingStartedScreen'
 import { ResultsPane } from './components/ResultsPane'
+import { SettingsScreen } from './components/SettingsScreen'
 import { StatusBar } from './components/StatusBar'
 import { TitleBar } from './components/TitleBar'
 import type { CursorPosition } from './components/worksheet-editor-cursor'
@@ -242,6 +243,7 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
 export function App(): ReactElement {
   const dispatch = useAppDispatch()
   const editorScreen = useAppSelector((state) => state.ui.editorScreen)
+  const settingsOpen = useAppSelector((state) => state.ui.settingsOpen)
   const gettingStartedDismissed = useAppSelector(
     (state) => state.ui.gettingStartedDismissed
   )
@@ -285,6 +287,11 @@ export function App(): ReactElement {
             {editorScreen && <EditorScreen {...editorScreen} />}
           </>
         )}
+
+        {/* Outside the branch above: the only way in is the status bar, which
+            lives in Workspace, but rendering it here means the screen does not
+            also have to be torn down if that ever changes. */}
+        {settingsOpen && <SettingsScreen />}
       </div>
     </main>
   )

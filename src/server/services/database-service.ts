@@ -113,6 +113,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
             (connectionInfo): DatabaseDto => ({
               connectionInfo: toPublicConnectionInfo(connectionInfo),
               createdAt: record.createdAt,
+              environmentId: record.environmentId ?? null,
               id: record.id,
               name: record.name,
               sortOrder: record.sortOrder ?? null,
@@ -124,6 +125,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
       const toUnreadableDatabase = (record: DatabaseRow): DatabaseDto => ({
         connectionInfo: null,
         createdAt: record.createdAt,
+        environmentId: record.environmentId ?? null,
         id: record.id,
         name: record.name,
         sortOrder: record.sortOrder ?? null,
@@ -173,7 +175,12 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
 
       const create = Effect.fn('DatabaseService.create')(function* (
         name: string,
-        connection: DatabaseConnection
+        connection: DatabaseConnection,
+        // A parameter of its own rather than a field on `connection`: the
+        // handler hands its payload straight into that slot, and an extra key
+        // on a `DatabaseConnection`-typed value is dropped without a word at
+        // the `.values()` below.
+        environmentId?: string | null
       ) {
         const encrypted = yield* secrets.encrypt(
           JSON.stringify(connection.connectionInfo)
@@ -190,6 +197,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
               .insert(databasesTable)
               .values({
                 connectionInfo: encrypted,
+                environmentId: environmentId ?? null,
                 name,
                 type: connection.type
               })
@@ -476,7 +484,8 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
       const update = Effect.fn('DatabaseService.update')(function* (
         id: string,
         name: string,
-        connection: UpdateDatabaseConnection
+        connection: UpdateDatabaseConnection,
+        environmentId?: string | null
       ) {
         const resolved: ResolvedConnection = yield* resolveConnection(
           id,
@@ -504,7 +513,17 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
         const [record] = yield* appDatabase.execute((client) =>
           client
             .update(databasesTable)
-            .set({ connectionInfo: encrypted, name, type: target.type })
+            .set({
+              connectionInfo: encrypted,
+              name,
+              type: target.type,
+              // Only written when the request carried it. A PATCH that omits
+              // it -- every rename, every password edit -- has to leave the
+              // label alone, and `null` is a real value meaning "no
+              // environment", so undefined is the only thing that can mean
+              // "untouched".
+              ...(environmentId === undefined ? {} : { environmentId })
+            })
             // Soft-deleted rows are excluded like everywhere else: without this
             // a PATCH would re-encrypt a password onto a row whose secret
             // remove() deliberately purged, and answer 200 for a database that

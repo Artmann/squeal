@@ -53,6 +53,14 @@
      behind it, for the header of a column the search landed in. */
   --find-strong: oklch(48% 0.19 305);
 
+  /* Environment. Only the parts that do not depend on the hue -- the hue
+     itself arrives per element, and a var() here would be resolved against
+     :root and freeze. */
+  --env-l: 45%;
+  --env-c: 0.13;
+  --env-bg-mix: 10%;
+  --env-border-mix: 25%;
+
   /* Status */
   --err: oklch(52% 0.15 25);
   --err-bg: oklch(96.5% 0.02 25);

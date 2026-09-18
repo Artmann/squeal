@@ -36,6 +36,7 @@ const database: DatabaseDto = {
     username: 'postgres'
   },
   createdAt: 1,
+  environmentId: null,
   id: 'database-1',
   name: 'Local',
   sortOrder: null,

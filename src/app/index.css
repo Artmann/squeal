@@ -86,6 +86,24 @@
   --color-find-active-text: var(--find-active-text);
   --color-find-strong: var(--find-strong);
 
+  /* Environment badge. The oklch() is composed here rather than in the theme
+     files on purpose: a custom property is substituted on the element the
+     declaration applies to, so `--env-hue` read from `:root` would always be
+     the unset one. `@theme inline` splices this value into the utility itself,
+     which lands on the badge, where the inline `--env-hue` is in scope. The
+     fallback covers a badge rendered without one. */
+  --color-env: oklch(var(--env-l) var(--env-c) var(--env-hue, 250));
+  --color-env-bg: color-mix(
+    in oklab,
+    oklch(var(--env-l) var(--env-c) var(--env-hue, 250)) var(--env-bg-mix),
+    var(--panel)
+  );
+  --color-env-border: color-mix(
+    in oklab,
+    oklch(var(--env-l) var(--env-c) var(--env-hue, 250)) var(--env-border-mix),
+    var(--panel)
+  );
+
   /* Status */
   --color-err: var(--err);
   --color-err-bg: var(--err-bg);
