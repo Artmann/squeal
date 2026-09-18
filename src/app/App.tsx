@@ -24,7 +24,8 @@ import {
   useDatabases,
   useQueriesList,
   useQueryResultSync,
-  useWorksheets
+  useWorksheets,
+  useWorksheetSchema
 } from './hooks/queries'
 import { useCancelQuery } from './hooks/mutations'
 import { useStartQuery } from './hooks/use-start-query'
@@ -214,6 +215,10 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     [databases.data, currentWorksheet?.databaseId]
   )
 
+  // A cache hit on the explorer's prefetch. It feeds the editor's table and
+  // column completions, and says why there are none when there are none.
+  const worksheetSchema = useWorksheetSchema(currentDatabase)
+
   const handleRunQuery = useRunQuery(
     activeStatement,
     currentDatabase,
@@ -236,7 +241,8 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     isQueryRunning: isQueryInFlight(query),
     query,
     setCursorOffset,
-    statements
+    statements,
+    worksheetSchema
   }
 }
 
@@ -333,7 +339,8 @@ function Workspace(): ReactElement {
     isQueryRunning,
     query,
     setCursorOffset,
-    statements
+    statements,
+    worksheetSchema
   } = useWorksheetSession(openWorksheetId)
 
   return (
@@ -358,6 +365,8 @@ function Workspace(): ReactElement {
                 activeStatementIndex={activeStatementIndex}
                 content={content}
                 databaseType={currentDatabase?.type}
+                schema={worksheetSchema.schema}
+                schemaStatus={worksheetSchema.status}
                 statements={statements}
                 onChange={handleUpdateContent}
                 onCursorChange={setCursorPosition}
