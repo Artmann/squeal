@@ -226,12 +226,13 @@ at the code to change.
       shows the latest run — no earlier result can be reopened. Add a history
       dropdown in the results header that loads a prior query's rows.
 - [ ] **Add schema-aware, dialect-correct autocomplete.**
-      `WorksheetEditor.tsx:123-125` still calls `sql()` and `autocompletion()`
-      with no schema and no dialect. The schema is already fetched
-      (`useDatabaseSchema`) and the type is already threaded through the editor
-      for formatting (`databaseTypeRef`) — feed both into
+      `use-worksheet-editor.ts` still calls `sql()` and `autocompletion()` with
+      no schema and no dialect. The schema is already fetched and cached
+      (`useDatabaseSchemas`) and the type is already threaded through the editor
+      for formatting (`toSqlDialect`) — feed both into
       `sql({ schema, dialect })` for table/column completion. Biggest editor
-      ergonomics win left.
+      ergonomics win left. Planned in
+      [`docs/sql-intellisense.md`](docs/sql-intellisense.md).
 - [ ] **Add "Run all", a command palette, and a shortcuts surface.** Cmd+Enter
       runs only the statement under the cursor. Add run-all, a Cmd+K palette,
       and a discoverable keyboard-shortcuts help sheet. (SQL formatting landed:
