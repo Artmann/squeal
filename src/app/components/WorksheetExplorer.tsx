@@ -28,6 +28,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
+import { useConfirm } from './ConfirmDialogProvider'
 import { DropIndicatorLine } from './DropIndicatorLine'
 import { SearchInput } from './SearchInput'
 import { WorksheetNameInput } from './WorksheetNameInput'
@@ -46,9 +47,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error'
 }
 
-// Deleting takes the editor content with it, so it asks first via an action
-// toast — ignoring it is a safe no. Mirrors the database explorer.
+// Deleting takes the editor content with it, so it asks first in a modal —
+// dismissing it is a safe no. Mirrors the database explorer.
 function useConfirmedWorksheetDeletion(): (worksheets: WorksheetDto[]) => void {
+  const confirm = useConfirm()
   const deleteWorksheet = useDeleteWorksheet()
 
   return useCallback(
@@ -59,53 +61,52 @@ function useConfirmedWorksheetDeletion(): (worksheets: WorksheetDto[]) => void {
 
       const described = describeWorksheets(worksheets)
 
-      toast(`Delete ${described}?`, {
-        action: {
-          label: 'Delete',
-          onClick: () => {
-            // `allSettled`, so one row that will not go does not strand the
-            // others: every delete is attempted and the toast afterwards says
-            // how many made it. The selection needs no clearing — it is pruned
-            // to the rows that still exist on the next render.
-            const deletions = Promise.allSettled(
-              worksheets.map((worksheet) =>
-                deleteWorksheet.mutateAsync(worksheet.id)
-              )
-            )
-
-            void deletions.then((results) => {
-              const failures = results.filter(
-                (result) => result.status === 'rejected'
-              )
-
-              if (failures.length === 0) {
-                toast.success(`Deleted ${described}`)
-
-                return
-              }
-
-              const description = errorMessage(failures[0].reason)
-
-              if (worksheets.length === 1) {
-                toast.error('Failed to delete worksheet', { description })
-
-                return
-              }
-
-              toast.error(
-                `Failed to delete ${failures.length} of ${worksheets.length} worksheets`,
-                { description }
-              )
-            })
-          }
-        },
+      confirm({
+        confirmLabel: 'Delete',
         description:
           worksheets.length === 1
             ? 'This worksheet and its editor content will be removed. Query history is kept.'
-            : 'These worksheets and their editor content will be removed. Query history is kept.'
+            : 'These worksheets and their editor content will be removed. Query history is kept.',
+        onConfirm: () => {
+          // `allSettled`, so one row that will not go does not strand the
+          // others: every delete is attempted and the toast afterwards says
+          // how many made it. The selection needs no clearing — it is pruned
+          // to the rows that still exist on the next render.
+          const deletions = Promise.allSettled(
+            worksheets.map((worksheet) =>
+              deleteWorksheet.mutateAsync(worksheet.id)
+            )
+          )
+
+          void deletions.then((results) => {
+            const failures = results.filter(
+              (result) => result.status === 'rejected'
+            )
+
+            if (failures.length === 0) {
+              toast.success(`Deleted ${described}`)
+
+              return
+            }
+
+            const description = errorMessage(failures[0].reason)
+
+            if (worksheets.length === 1) {
+              toast.error('Failed to delete worksheet', { description })
+
+              return
+            }
+
+            toast.error(
+              `Failed to delete ${failures.length} of ${worksheets.length} worksheets`,
+              { description }
+            )
+          })
+        },
+        title: `Delete ${described}?`
       })
     },
-    [deleteWorksheet]
+    [confirm, deleteWorksheet]
   )
 }
 

@@ -13,6 +13,7 @@ import {
 import { cn } from '../lib/utils'
 import { useAppDispatch } from '../store'
 import { uiActions } from '../store/ui-slice'
+import { useConfirm } from './ConfirmDialogProvider'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Separator } from './ui/separator'
@@ -56,6 +57,7 @@ interface EnvironmentRowProps {
 }
 
 function EnvironmentRow({ environment }: EnvironmentRowProps): ReactElement {
+  const confirm = useConfirm()
   const updateEnvironment = useUpdateEnvironment()
   const deleteEnvironment = useDeleteEnvironment()
 
@@ -112,27 +114,26 @@ function EnvironmentRow({ environment }: EnvironmentRowProps): ReactElement {
   )
 
   const handleDelete = useCallback(() => {
-    toast(`Delete "${environment.name}"?`, {
-      action: {
-        label: 'Delete',
-        onClick: () => {
-          deleteEnvironment.mutate(environment.id, {
-            onError: (error) => {
-              toast.error('Failed to delete environment', {
-                description:
-                  error instanceof Error ? error.message : 'Unknown error'
-              })
-            },
-            onSuccess: () => {
-              toast.success(`Deleted "${environment.name}"`)
-            }
-          })
-        }
-      },
+    confirm({
+      confirmLabel: 'Delete',
       description:
-        'Connections using this environment will keep working; they just lose the label.'
+        'Connections using this environment will keep working; they just lose the label.',
+      onConfirm: () => {
+        deleteEnvironment.mutate(environment.id, {
+          onError: (error) => {
+            toast.error('Failed to delete environment', {
+              description:
+                error instanceof Error ? error.message : 'Unknown error'
+            })
+          },
+          onSuccess: () => {
+            toast.success(`Deleted "${environment.name}"`)
+          }
+        })
+      },
+      title: `Delete "${environment.name}"?`
     })
-  }, [deleteEnvironment, environment.id, environment.name])
+  }, [confirm, deleteEnvironment, environment.id, environment.name])
 
   return (
     <div className="flex items-center gap-3">

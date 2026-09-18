@@ -8,6 +8,7 @@ import { App } from './app/App'
 import { AppShell } from './app/AppShell'
 import { createCollections } from './app/collections'
 import { CollectionsProvider } from './app/collections-context'
+import { ConfirmDialogProvider } from './app/components/ConfirmDialogProvider'
 import { ThemeProvider } from './app/components/ThemeProvider'
 import { TraceDashboardHost } from './app/components/traces/TraceDashboardHost'
 import { hydrateThemeFromStorage } from './app/hooks/useTheme'
@@ -36,23 +37,25 @@ function main() {
         <CollectionsProvider collections={collections}>
           <Provider store={store}>
             <ThemeProvider>
-              <AppShell>
-                <App />
+              <ConfirmDialogProvider>
+                <AppShell>
+                  <App />
 
-                {/* sonner styles itself from its own CSS variables, so the
+                  {/* sonner styles itself from its own CSS variables, so the
                     design tokens have to be handed to it explicitly. */}
-                <Toaster
-                  toastOptions={{
-                    style: {
-                      background: 'var(--panel)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.14)',
-                      color: 'var(--text)'
-                    }
-                  }}
-                />
-              </AppShell>
+                  <Toaster
+                    toastOptions={{
+                      style: {
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.14)',
+                        color: 'var(--text)'
+                      }
+                    }}
+                  />
+                </AppShell>
+              </ConfirmDialogProvider>
 
               {/* Outside AppShell so traces stay reachable when app data
                   fails to load — that is when they matter most. */}

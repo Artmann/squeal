@@ -771,7 +771,7 @@ describe('DatabaseExplorer', () => {
     })
   })
 
-  it('deletes a database after confirming via the action toast', async () => {
+  it('deletes a database after confirming in the dialog', async () => {
     const user = userEvent.setup()
 
     vi.mocked(apiClient.deleteDatabase).mockResolvedValue(undefined)
@@ -782,9 +782,11 @@ describe('DatabaseExplorer', () => {
 
     await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
 
-    // The action toast asks for confirmation before anything is deleted.
+    // The dialog asks for confirmation before anything is deleted.
     expect(apiClient.deleteDatabase).not.toHaveBeenCalled()
-    expect(await screen.findByText('Delete "Test Database"?')).toBeVisible()
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(
+      'Delete "Test Database"?'
+    )
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
@@ -793,7 +795,7 @@ describe('DatabaseExplorer', () => {
     })
   })
 
-  it('does not delete when the confirmation toast is ignored', async () => {
+  it('does not delete when the confirmation is cancelled', async () => {
     const user = userEvent.setup()
 
     vi.mocked(apiClient.deleteDatabase).mockClear()
@@ -804,7 +806,16 @@ describe('DatabaseExplorer', () => {
 
     await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
 
-    expect(await screen.findByText('Delete "Test Database"?')).toBeVisible()
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(
+      'Delete "Test Database"?'
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+    })
+
     expect(apiClient.deleteDatabase).not.toHaveBeenCalled()
   })
 
