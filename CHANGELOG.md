@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/Artmann/squeal/compare/v1.7.0...v1.8.0) (2026-09-18)
+
+
+### Features
+
+* Environment labels ([594907c](https://github.com/Artmann/squeal/commit/594907cd118276812241e68dfc918c3dbc9da1c4))
+* **environments:** the UI, the routes and the badge ([#200](https://github.com/Artmann/squeal/issues/200)) ([71827c2](https://github.com/Artmann/squeal/commit/71827c2f5d309750050d52e0b6bab5b302ce4537))
+
 ## [1.7.0](https://github.com/Artmann/squeal/compare/v1.6.0...v1.7.0) (2026-08-31)
 
 
