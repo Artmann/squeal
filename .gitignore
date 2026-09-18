@@ -3,7 +3,6 @@
 .dynamodb/
 .env
 .env.test
-.eslintcache
 .fusebox/
 .lock-wscript
 .next

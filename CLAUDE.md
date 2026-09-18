@@ -132,8 +132,8 @@ disposes on `before-quit`.
 
 - `yarn start` - Development mode
 - `yarn seed` - Seed PostgreSQL with Pagila sample data
-- `yarn lint` / `yarn format` - Code quality (`yarn format:check` is the
-  read-only form CI runs)
+- `yarn lint` / `yarn format` - oxlint (`.oxlintrc.json`) and oxfmt
+  (`.oxfmtrc.json`); `yarn format:check` is the read-only form CI runs
 - `yarn typecheck` - Runs two projects: `tsconfig.backend.json` (strict, covers
   `src/server` and `src/glue`) and `tsconfig.renderer.json`
 - `yarn test` - Vitest, split by environment: a `backend` project (node) holding
@@ -164,6 +164,18 @@ from older databases. A new table or column goes in both
   the Edit menu is what supplies ⌘C/⌘V/⌘X/⌘A/⌘Z. The template is the default
   minus `reload` and `forceReload`, and `menu.test.ts` fails if either comes
   back.
+- Typechecking is TypeScript 7 (the native `tsc`). `baseUrl` was removed in 7,
+  so `tsconfig.base.json` has only `paths`, which resolve relative to the config
+  file that declares them. The `typescript` package now ships the `tsc` binary
+  and nothing else — no `tsserver.js`, no compiler API — so an editor pointed at
+  the workspace TypeScript will not find a language server. Nothing here imports
+  the API; `@effect/language-service` is loaded by the editor's own TypeScript,
+  not this one.
+- `.oxfmtrc.json` holds the formatter's `ignorePatterns`, and
+  `src/format-ignore.test.ts` fails when they disagree with
+  `doctor.config.json`'s `ignore.files` — that guard exists because a
+  whole-repository format once reshaped the 252 KB generated bundle in `design/`
+  by 917 lines.
 - Native packages (`pg`, `@libsql`) are externalized in `vite.main.config.ts`
 - API base URL in frontend: `http://127.0.0.1:7847` (the server binds loopback
   only)
