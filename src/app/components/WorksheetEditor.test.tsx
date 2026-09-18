@@ -24,13 +24,18 @@ vi.mock('@uiw/react-codemirror', () => ({
 }))
 
 import { createAstFromSql } from '../sql-parser'
+import type { SchemaInfoDto } from '@/glue/api/schemas'
 import { WorksheetEditor } from './WorksheetEditor'
 
-function editor(content: string): ReactElement {
+function editor(content: string, schema?: SchemaInfoDto): ReactElement {
   return (
     <WorksheetEditor
       activeStatementIndex={0}
       content={content}
+      schema={schema}
+      // Rebuilt on every render, the way a status derived from a query result
+      // is: the editor owes CodeMirror a stable configuration regardless.
+      schemaStatus={{ databaseName: 'Pagila', state: 'ready' }}
       statements={createAstFromSql(content).statements}
       // Deliberately unstable, the way a parent that forgot to memoise would
       // be: the component owes CodeMirror a stable callback regardless.
@@ -108,6 +113,43 @@ describe('WorksheetEditor', () => {
       rectangularSelection: true,
       searchKeymap: false,
       syntaxHighlighting: true
+    })
+  })
+
+  // The schema arrives after the editor has mounted, and again whenever the
+  // worksheet's connection changes. It reaches the editor through a
+  // `Compartment` the hook reconfigures on its own for exactly this reason: put
+  // it in the `extensions` array instead and every schema load would reconfigure
+  // the whole editor and leak another copy of the theme.
+  it('takes a schema without reconfiguring the editor', () => {
+    const { rerender } = render(editor('select 1'))
+
+    rerender(
+      editor('select 1', {
+        databaseName: 'pagila',
+        tables: [
+          {
+            columns: [],
+            foreignKeys: [],
+            tableName: 'users',
+            tableSchema: 'public'
+          }
+        ]
+      })
+    )
+
+    const identityCounts = {
+      basicSetup: new Set(capturedProps.map((props) => props.basicSetup)).size,
+      extensions: new Set(capturedProps.map((props) => props.extensions)).size,
+      onChange: new Set(capturedProps.map((props) => props.onChange)).size,
+      onUpdate: new Set(capturedProps.map((props) => props.onUpdate)).size
+    }
+
+    expect(identityCounts).toEqual({
+      basicSetup: 1,
+      extensions: 1,
+      onChange: 1,
+      onUpdate: 1
     })
   })
 

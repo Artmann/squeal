@@ -1,12 +1,16 @@
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 
 import { apiClient } from '../api-client'
 import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import { finishQueryTrace } from '../tracing/query-traces'
+import {
+  toWorksheetSchemaStatus,
+  type WorksheetSchemaStatus
+} from '../worksheet-schema-status'
 import { consumeErrorNotice } from './use-start-query'
 import type {
   EnvironmentDto,
@@ -111,7 +115,10 @@ export function useEnvironments(): EnvironmentDto[] {
 // One database's schema. Not exported: the only reader outside this module was
 // the explorer's table list, which now takes its tables from the parent's
 // prefetch, and nothing else should reach past `useDatabaseSchemas` for a
-// single row. `useServerVersion` below is the one caller left.
+// single row. `useServerVersion` and `useWorksheetSchema` below are the two
+// callers left, and both are single-row reads by design — one wants the server
+// version riding along with the payload, the other the payload itself for the
+// editor's completions.
 function useDatabaseSchema(databaseId: string | undefined) {
   return useQuery<SchemaInfoDto>({
     queryKey: databaseId ? queryKeys.schema(databaseId) : ['schema', 'noop'],
@@ -151,6 +158,52 @@ export function useDatabaseSchemas(requests: DatabaseSchemaRequest[]) {
       staleTime: Infinity
     }))
   })
+}
+
+export interface WorksheetSchema {
+  schema: SchemaInfoDto | undefined
+  status: WorksheetSchemaStatus
+}
+
+// The schema the worksheet's editor completes from, plus why it has none when
+// it has none.
+//
+// A cache hit rather than a request: the explorer prefetches every row through
+// `useDatabaseSchemas` under the same query key, so opening a worksheet reads
+// what is already there. Even without the prefetch this asks once and keeps it
+// — `staleTime: Infinity` — because a schema that refetched on a whim would
+// swap the editor's language out from under the cursor.
+//
+// Takes the row rather than its id for the same reason `useServerVersion`
+// does: a connection whose stored secret cannot be read has no schema to load,
+// and asking anyway spends a failing request on an answer already known. It is
+// also the only way to tell that case apart from a failed introspection, which
+// needs a different sentence.
+export function useWorksheetSchema(
+  database: DatabaseDto | undefined
+): WorksheetSchema {
+  const databaseId =
+    database === undefined || isConnectionUnreadable(database)
+      ? undefined
+      : database.id
+
+  const { data, error } = useDatabaseSchema(databaseId)
+
+  // Memoized on the primitives the status is derived from rather than on the
+  // status object, which is rebuilt on every render. The editor reads it
+  // through a ref, so an unstable identity would not reconfigure anything --
+  // this is to keep it from looking like it might.
+  const status = useMemo(
+    () =>
+      toWorksheetSchemaStatus({
+        database,
+        error,
+        isLoaded: data !== undefined
+      }),
+    [data, database, error]
+  )
+
+  return { schema: data, status }
 }
 
 // The database server's product and release, for example "PostgreSQL 16". It

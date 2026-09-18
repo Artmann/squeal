@@ -32,7 +32,8 @@ system's keychain — the app asks first, and takes no for an answer.
 
 - 🔌 PostgreSQL, MySQL, and SQLite, with as many saved connections as you need
 - 📝 Worksheets that autosave, and run the single statement under your cursor
-- ✨ Syntax highlighting, keyword completion, and one-shortcut formatting
+- ✨ Completion that knows your schema — tables, columns, aliases, and the
+  foreign-key `ON` predicate for a join — plus one-shortcut formatting
 - 🗂️ Schemas and tables in the sidebar, and a filter that searches every
   connection at once when you only half-remember the name
 - 🌗 Light and dark themes

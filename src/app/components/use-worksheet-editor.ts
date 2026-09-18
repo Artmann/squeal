@@ -11,7 +11,6 @@
 // document on each keystroke, which is why typing used to get slower the longer
 // the app stayed open.
 import { autocompletion } from '@codemirror/autocomplete'
-import { sql } from '@codemirror/lang-sql'
 import {
   Compartment,
   type Extension,
@@ -29,9 +28,11 @@ import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 
-import type { DatabaseType } from '@/glue/api/schemas'
+import type { DatabaseType, SchemaInfoDto } from '@/glue/api/schemas'
 import type { Statement } from '../sql-parser'
+import type { WorksheetSchemaStatus } from '../worksheet-schema-status'
 import { squealEditorTheme, squealHighlighting } from './codemirror-theme'
+import { createSqlLanguage } from './sql-language'
 import {
   type CursorPosition,
   isSameCursorPosition,
@@ -109,6 +110,8 @@ const editorBasicSetup = {
 export interface WorksheetEditorOptions {
   activeStatement: Statement | null
   databaseType: DatabaseType | undefined
+  schema: SchemaInfoDto | undefined
+  schemaStatus: WorksheetSchemaStatus
   onChange?: (value: string) => void
   onCursorChange?: (position: CursorPosition) => void
   onCursorPositionChange?: (position: number) => void
@@ -128,10 +131,11 @@ export interface WorksheetEditor {
 export function useWorksheetEditor(
   options: WorksheetEditorOptions
 ): WorksheetEditor {
-  const { activeStatement } = options
+  const { activeStatement, databaseType, schema } = options
 
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const gutterCompartment = useMemo(() => new Compartment(), [])
+  const languageCompartment = useMemo(() => new Compartment(), [])
   const lastCursorPositionRef = useRef<CursorPosition | null>(null)
 
   // One ref for all of it rather than one per callback. The keymap and the
@@ -146,9 +150,37 @@ export function useWorksheetEditor(
   })
 
   const extensions = useMemo(
-    () => createExtensions({ gutterCompartment, latest }),
-    [gutterCompartment, latest]
+    () => createExtensions({ gutterCompartment, languageCompartment, latest }),
+    [gutterCompartment, languageCompartment, latest]
   )
+
+  // The schema and the dialect both belong to the language, and both change on
+  // the same events — the worksheet's connection changes, or its schema
+  // finishes loading — so they are swapped together, at most a handful of times
+  // in an editor's life. `schema` comes from react-query with
+  // `staleTime: Infinity`, so its identity holds until it is refreshed on
+  // purpose.
+  //
+  // `schemaStatus` is deliberately not a dependency: it is read through
+  // `latest` when a completion is requested, so a load that fails changes the
+  // sentence the user sees without touching the language.
+  useEffect(() => {
+    const view = editorRef.current?.view
+
+    if (!view) {
+      return
+    }
+
+    view.dispatch({
+      effects: languageCompartment.reconfigure(
+        createSqlLanguage({
+          databaseType,
+          getSchemaStatus: () => latest.current.schemaStatus,
+          schema
+        })
+      )
+    })
+  }, [databaseType, languageCompartment, schema])
 
   // Swapping just this compartment leaves the rest of the configuration — and
   // the `extensions` array's identity — untouched.
@@ -215,14 +247,21 @@ export function useWorksheetEditor(
 // array instead would change its identity and reconfigure the whole editor.
 function createExtensions(options: {
   gutterCompartment: Compartment
+  languageCompartment: Compartment
   latest: RefObject<WorksheetEditorOptions>
 }): Extension[] {
-  const { gutterCompartment, latest } = options
+  const { gutterCompartment, languageCompartment, latest } = options
 
   return [
     squealEditorTheme,
     squealHighlighting,
-    sql(),
+    languageCompartment.of(
+      createSqlLanguage({
+        databaseType: latest.current.databaseType,
+        getSchemaStatus: () => latest.current.schemaStatus,
+        schema: latest.current.schema
+      })
+    ),
     EditorView.lineWrapping,
     autocompletion(),
     gutterCompartment.of(activeStatementGutter(latest.current.activeStatement)),
