@@ -27,6 +27,7 @@ const testDatabase: DatabaseDto = {
     username: 'admin'
   },
   createdAt: 1704067200000,
+  environmentId: null,
   id: 'db-123',
   name: 'Pagila',
   sortOrder: null,

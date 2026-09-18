@@ -69,14 +69,22 @@ export { databaseTypeSchema }
 // is enforced where it matters — `DatabaseConnection` in the contract, which
 // every request decodes against.
 
+// Nullable rather than optional: the select always has an answer, and "None"
+// is a real one. The contract's `undefined` — meaning "leave whatever is
+// stored" — is not something this form can express, because the form always
+// shows the current value.
+const environmentIdSchema = z.string().nullable()
+
 export const createDatabaseSchema = z.object({
   connectionInfo: connectionInfoSchema,
+  environmentId: environmentIdSchema,
   name: z.string().min(1, 'Name is required.'),
   type: databaseTypeSchema
 })
 
 export const updateDatabaseSchema = z.object({
   connectionInfo: updateConnectionInfoSchema,
+  environmentId: environmentIdSchema,
   name: z.string().min(1, 'Name is required.'),
   type: databaseTypeSchema
 })

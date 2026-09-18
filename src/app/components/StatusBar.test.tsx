@@ -14,6 +14,9 @@ vi.mock('../api-client', () => ({
       tables: []
     })),
     getDatabases: vi.fn(async () => []),
+    getEnvironments: vi.fn(async () => [
+      { createdAt: 3, hue: 25, id: 'production', name: 'Production' }
+    ]),
     getQueries: vi.fn(async () => []),
     getUpdateStatus: vi.fn(async () => ({
       currentVersion: '1.4.2',
@@ -37,6 +40,7 @@ const testDatabase: DatabaseDto = {
     username: 'postgres'
   },
   createdAt: 1,
+  environmentId: null,
   id: 'database-1',
   name: 'Pagila',
   sortOrder: null,
@@ -209,5 +213,49 @@ describe('StatusBar', () => {
     renderSaveState(false)
 
     expect(screen.queryByText('Save failed')).toBeNull()
+  })
+
+  // The bar takes the environment's colour rather than showing another badge
+  // among the six things already in it. That is the whole point of the
+  // feature: a strip along the bottom of the window that has gone red is seen
+  // without being read.
+  describe('the environment of the connection in use', () => {
+    function statusBar(): HTMLElement {
+      return screen.getByRole('contentinfo')
+    }
+
+    it('tints the bar and names the environment', async () => {
+      renderStatusBar({ ...testDatabase, environmentId: 'production' })
+
+      await waitFor(() => {
+        expect(screen.getByText('Production')).toBeInTheDocument()
+      })
+
+      expect({
+        hue: statusBar().style.getPropertyValue('--env-hue'),
+        tinted: statusBar().className.includes('bg-env-bg')
+      }).toEqual({ hue: '25', tinted: true })
+    })
+
+    it('leaves the bar alone for a connection with no environment', () => {
+      renderStatusBar(testDatabase)
+
+      expect({
+        hue: statusBar().style.getPropertyValue('--env-hue'),
+        tinted: statusBar().className.includes('bg-env-bg')
+      }).toEqual({ hue: '', tinted: false })
+    })
+
+    // A connection can name an environment that was deleted while the list in
+    // hand was still the old one. No badge, no tint, no error.
+    it('leaves the bar alone for an environment that no longer exists', async () => {
+      renderStatusBar({ ...testDatabase, environmentId: 'deleted' })
+
+      await waitFor(() => {
+        expect(apiClient.getEnvironments).toHaveBeenCalled()
+      })
+
+      expect(statusBar().className.includes('bg-env-bg')).toEqual(false)
+    })
   })
 })

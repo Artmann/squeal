@@ -5,6 +5,7 @@ const schemasKey = ['schema'] as const
 
 export const queryKeys = {
   databases: ['databases'] as const,
+  environments: ['environments'] as const,
   queries: ['queries'] as const,
   query: (id: string) => ['query', id] as const,
   schema: (databaseId: string) => [...schemasKey, databaseId] as const,

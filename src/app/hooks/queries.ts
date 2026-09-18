@@ -9,6 +9,7 @@ import { queryKeys } from '../query-keys'
 import { finishQueryTrace } from '../tracing/query-traces'
 import { consumeErrorNotice } from './use-start-query'
 import type {
+  EnvironmentDto,
   QueryDto,
   SchemaInfoDto,
   SecretStorageResponse,
@@ -85,6 +86,26 @@ const secretStorageQueryOptions = {
 // the consent screen at every returning user.
 export function useSecretStorage(): SecretStorageResponse {
   return useSuspenseQuery(secretStorageQueryOptions).data
+}
+
+// The environments connections can be labelled with. Rarely changes, so it is
+// kept as a plain query rather than a collection — nothing joins it, nothing
+// reorders it, and every reader wants the same whole list.
+//
+// staleTime: Infinity for the same reason as the secret storage read above.
+// Not a suspense query, though: every reader mounts inside the workspace,
+// past AppShell's loader, and suspending there would hold the whole window on
+// first paint for a badge. A badge that is absent for one frame is nothing.
+export function useEnvironments(): EnvironmentDto[] {
+  const { data } = useQuery<EnvironmentDto[]>({
+    queryFn: () => apiClient.getEnvironments(),
+    queryKey: queryKeys.environments,
+    staleTime: Infinity,
+    // A failed read costs a badge, which is not worth the error screen.
+    throwOnError: false
+  })
+
+  return data ?? []
 }
 
 // One database's schema. Not exported: the only reader outside this module was

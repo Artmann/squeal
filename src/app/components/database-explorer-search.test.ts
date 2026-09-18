@@ -30,6 +30,7 @@ function makeDatabase(name: string): DatabaseDto {
   return {
     connectionInfo: { path: `${name}.db` },
     createdAt: 0,
+    environmentId: null,
     id: `db-${name}`,
     name,
     sortOrder: null,

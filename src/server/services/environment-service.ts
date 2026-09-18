@@ -68,26 +68,41 @@ export class EnvironmentService extends Effect.Service<EnvironmentService>()(
       const remove = Effect.fn('EnvironmentService.remove')(function* (
         id: string
       ) {
+        // Checked before the transaction rather than from its result:
+        // `appDatabase.transaction` turns anything thrown inside it into an
+        // AppDatabaseError, which is internal and would surface as a 500
+        // instead of the 404 this is. `DatabaseService.remove` reads the row
+        // up front for the same reason.
+        const [existing] = yield* appDatabase.execute((client) =>
+          client
+            .select()
+            .from(environmentsTable)
+            .where(activeEnvironment(id))
+            .limit(1)
+        )
+
+        if (existing === undefined) {
+          return yield* new EnvironmentNotFoundError({
+            environmentId: id,
+            message: 'This environment no longer exists.'
+          })
+        }
+
         yield* appDatabase.transaction(async (client) => {
           // Soft delete, so the next boot's re-seed sees the row and skips it
-          // instead of bringing a deleted default back. The update returns the
-          // row only while it is still live, so deleting twice is a 404.
-          const [environment] = await client
+          // instead of bringing a deleted default back. Still guarded on
+          // deletedAt, so a concurrent second delete does not move the
+          // timestamp.
+          await client
             .update(environmentsTable)
             .set({ deletedAt: Date.now() })
             .where(activeEnvironment(id))
-            .returning()
 
-          if (environment === undefined) {
-            throw new EnvironmentNotFoundError({
-              environmentId: id,
-              message: 'This environment no longer exists.'
-            })
-          }
-
-          // In the same transaction as the delete: a connection left pointing
-          // at a gone environment would render without a badge anyway, but the
-          // stale id would come back the moment someone recreated that id.
+          // Detached in the same transaction as the delete. Left behind, the
+          // stale id is invisible — the badge resolves through list(), which
+          // excludes deleted rows — right up until someone creates an
+          // environment that happens to reuse the id, and old connections
+          // silently adopt it.
           await client
             .update(databasesTable)
             .set({ environmentId: null })

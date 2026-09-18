@@ -8,6 +8,7 @@ import { Toaster } from 'sonner'
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
 import type {
+  EnvironmentDto,
   QueryDto,
   SecretStorageMode,
   UpdateStatusResponse
@@ -28,6 +29,7 @@ export interface RenderOptions {
   databaseExplorer?: Partial<DatabaseExplorerState>
   databases?: DatabaseDto[]
   editor?: Partial<EditorState>
+  environments?: EnvironmentDto[]
   /** Convenience for the common case of one open, active worksheet. */
   openWorksheetId?: string
   queries?: QueryDto[]
@@ -56,6 +58,10 @@ function seedQueryCache(
 ): void {
   if (options.databases) {
     queryClient.setQueryData(queryKeys.databases, options.databases)
+  }
+
+  if (options.environments) {
+    queryClient.setQueryData(queryKeys.environments, options.environments)
   }
 
   if (options.worksheets) {

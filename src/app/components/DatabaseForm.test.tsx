@@ -16,16 +16,19 @@ import { createCollections } from '../collections'
 import { CollectionsProvider } from '../collections-context'
 import type {
   DatabaseDto,
+  EnvironmentDto,
   SecretStorageMode,
   WorksheetDto
 } from '@/glue/api/schemas'
 import { capturedFetch, jsonResponse } from '../test-fetch'
 import { DatabaseForm } from './DatabaseForm'
 
-// The form reads whether stored passwords are encrypted; stub the hook so no
-// test consumes the fetch mocks with a secret-storage request (and so none of
-// them suspend without a boundary).
+// The form reads whether stored passwords are encrypted, and the environments
+// a connection can be labelled with; stub both hooks so no test consumes the
+// fetch mocks with a request of their own (and so none of them suspend without
+// a boundary).
 let secretStorageMode: SecretStorageMode = 'keychain'
+let environments: EnvironmentDto[] = []
 
 const storageName = 'the macOS Keychain'
 
@@ -34,6 +37,7 @@ vi.mock('../hooks/queries', async (importOriginal) => {
 
   return {
     ...actual,
+    useEnvironments: () => environments,
     useSecretStorage: () => ({
       message: null,
       mode: secretStorageMode,
@@ -94,6 +98,7 @@ const unencryptedWarning =
 describe('DatabaseForm', () => {
   beforeEach(() => {
     secretStorageMode = 'keychain'
+    environments = []
 
     vi.stubGlobal('fetch', vi.fn())
   })
@@ -664,6 +669,7 @@ describe('DatabaseForm', () => {
         username: 'admin'
       },
       createdAt: Date.now(),
+      environmentId: null,
       id: '123',
       name: 'My Database',
       sortOrder: null,
@@ -708,6 +714,7 @@ describe('DatabaseForm', () => {
               username: 'admin'
             },
             createdAt: Date.now(),
+            environmentId: null,
             id: '123',
             name: 'My Database',
             sortOrder: null,
@@ -972,6 +979,7 @@ describe('DatabaseForm', () => {
           username: 'admin'
         },
         createdAt: Date.now(),
+        environmentId: null,
         id: '123',
         name: 'My Database',
         sortOrder: null,
@@ -1029,6 +1037,7 @@ describe('DatabaseForm', () => {
           username: 'admin'
         },
         createdAt: Date.now(),
+        environmentId: null,
         id: '123',
         name: 'My Database',
         sortOrder: null,

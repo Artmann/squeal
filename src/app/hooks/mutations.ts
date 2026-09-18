@@ -7,9 +7,12 @@ import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import {
   CreateDatabaseRequest,
+  type CreateEnvironmentRequest,
   type CreateWorksheetRequest,
+  type EnvironmentDto,
   type QueryDto,
-  UpdateDatabaseRequest
+  UpdateDatabaseRequest,
+  type UpdateEnvironmentRequest
 } from '@/glue/api/schemas'
 import { isQueryFinished, isQueryInFlight } from '@/glue/queries'
 
@@ -183,6 +186,77 @@ export function useDeleteWorksheet() {
 // the keychain prompt. The response is written straight into the cache rather
 // than invalidated: it is authoritative, and a refetch would race the consent
 // screen unmounting.
+// The three environment mutations all write the server's answer straight into
+// the cache rather than invalidating it. The list is small, the response is the
+// whole truth about the row that changed, and settings sits over the sidebar —
+// an invalidate would leave the badge behind it stale until the refetch lands.
+function useEnvironmentsCache() {
+  const queryClient = useQueryClient()
+
+  return useCallback(
+    (update: (environments: EnvironmentDto[]) => EnvironmentDto[]) => {
+      queryClient.setQueryData<EnvironmentDto[]>(
+        queryKeys.environments,
+        (environments) => update(environments ?? [])
+      )
+    },
+    [queryClient]
+  )
+}
+
+export function useCreateEnvironment() {
+  const writeEnvironments = useEnvironmentsCache()
+
+  return useMutation({
+    mutationFn: (request: CreateEnvironmentRequest) =>
+      apiClient.createEnvironment(request),
+    onSuccess: (environment) => {
+      // Appended, because the list is ordered by creation.
+      writeEnvironments((environments) => [...environments, environment])
+    }
+  })
+}
+
+export function useDeleteEnvironment() {
+  const queryClient = useQueryClient()
+  const writeEnvironments = useEnvironmentsCache()
+
+  return useMutation({
+    mutationFn: (environmentId: string) =>
+      apiClient.deleteEnvironment(environmentId),
+    onSuccess: (_, environmentId) => {
+      writeEnvironments((environments) =>
+        environments.filter((environment) => environment.id !== environmentId)
+      )
+
+      // The delete cleared `environmentId` on every connection that used it,
+      // so the listed databases are now stale in a way no response says.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.databases })
+    }
+  })
+}
+
+export function useUpdateEnvironment() {
+  const writeEnvironments = useEnvironmentsCache()
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      request
+    }: {
+      id: string
+      request: UpdateEnvironmentRequest
+    }) => apiClient.updateEnvironment(id, request),
+    onSuccess: (updated) => {
+      writeEnvironments((environments) =>
+        environments.map((environment) =>
+          environment.id === updated.id ? updated : environment
+        )
+      )
+    }
+  })
+}
+
 export function useGrantSecretStorage() {
   const queryClient = useQueryClient()
 

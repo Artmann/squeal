@@ -469,4 +469,88 @@ describe('database routes', () => {
       path: '/tmp/pagila.sqlite3'
     })
   })
+
+  // The environment is the one field a PATCH can send, omit, or null, and all
+  // three mean something different. Omitting it is by far the common case --
+  // every rename and every password edit -- so a `set()` that wrote it
+  // unconditionally would quietly strip the label off a connection whenever
+  // anything else about it was edited.
+  describe('the environment on a connection', () => {
+    const create = (environmentId?: string) => ({
+      payload: {
+        connectionInfo,
+        name: 'Pagila',
+        type: 'postgres' as const,
+        ...(environmentId === undefined ? {} : { environmentId })
+      }
+    })
+
+    it('is stored when the connection is created with one', async () => {
+      const response = await run(
+        Effect.gen(function* () {
+          const client = yield* makeAuthorizedClient
+
+          return yield* client.databases.create(create('production'))
+        })
+      )
+
+      expect(response.database.environmentId).toEqual('production')
+    })
+
+    it('is null when the connection is created without one', async () => {
+      const response = await run(
+        Effect.gen(function* () {
+          const client = yield* makeAuthorizedClient
+
+          return yield* client.databases.create(create())
+        })
+      )
+
+      expect(response.database.environmentId).toEqual(null)
+    })
+
+    it('survives an update that does not mention it', async () => {
+      const response = await run(
+        Effect.gen(function* () {
+          const client = yield* makeAuthorizedClient
+
+          const created = yield* client.databases.create(create('production'))
+
+          return yield* client.databases.update({
+            path: { id: created.database.id },
+            payload: { connectionInfo, name: 'Renamed', type: 'postgres' }
+          })
+        })
+      )
+
+      expect(response.database).toEqual(
+        expect.objectContaining({
+          environmentId: 'production',
+          name: 'Renamed'
+        })
+      )
+    })
+
+    it('is cleared by an update that sends null', async () => {
+      const response = await run(
+        Effect.gen(function* () {
+          const client = yield* makeAuthorizedClient
+
+          const created = yield* client.databases.create(create('production'))
+
+          return yield* client.databases.update({
+            path: { id: created.database.id },
+            payload: {
+              connectionInfo,
+              environmentId: null,
+              name: 'Pagila',
+              type: 'postgres'
+            }
+          })
+        })
+      )
+
+      expect(response.database.environmentId).toEqual(null)
+    })
+  })
 })

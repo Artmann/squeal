@@ -19,6 +19,11 @@ describe('createInMemoryDatabase', () => {
   // breaking the files that depend on this helper. Both sides derive from
   // `appTables`, which reads the schema, so a new table does not make this fail
   // for a table that is fine — and a missing one is named in the diff.
+  //
+  // Readable rather than empty: `environments` is seeded with the three shipped
+  // rows, and a helper that hands out a database with no environments in it
+  // would not be the database the app runs against. The error string is kept
+  // as the failure value so a missing table still says which one and why.
   it('creates every table the schema declares', async () => {
     invariant(appTables.length > 0, 'The schema declares no tables.')
 
@@ -29,6 +34,7 @@ describe('createInMemoryDatabase', () => {
         client
           .select()
           .from(table)
+          .then(() => 'readable')
           .catch((error: unknown) => String(error))
       )
     )
@@ -37,7 +43,7 @@ describe('createInMemoryDatabase', () => {
 
     expect(
       Object.fromEntries(names.map((name, index) => [name, rows[index]]))
-    ).toEqual(Object.fromEntries(names.map((name) => [name, []])))
+    ).toEqual(Object.fromEntries(names.map((name) => [name, 'readable'])))
   })
 
   // Written through one and read back through both, rather than comparing the

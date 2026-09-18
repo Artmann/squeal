@@ -68,6 +68,7 @@ export function EditorScreen(props: EditorScreenProps): ReactElement {
           database.connectionInfo === null
             ? undefined
             : toFormConnectionInfo(database.connectionInfo),
+        environmentId: database.environmentId,
         name: database.name,
         type: database.type
       }

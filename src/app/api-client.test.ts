@@ -35,6 +35,7 @@ const databaseDto: DatabaseDto = {
   },
   createdAt: 1704067200000,
   id: 'db-123',
+  environmentId: null,
   name: 'Test Database',
   sortOrder: null,
   type: 'postgres' as const

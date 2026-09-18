@@ -45,6 +45,7 @@ const testDatabase: DatabaseDto = {
     username: 'admin'
   },
   createdAt: 1704067200000,
+  environmentId: null,
   id: 'db-123',
   name: 'Test Database',
   sortOrder: null,
@@ -122,6 +123,28 @@ describe('DatabaseExplorer', () => {
     renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
 
     expect(screen.getByText('Test Database')).toBeInTheDocument()
+  })
+
+  it('badges a connection with the environment it is labelled with', () => {
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [{ ...testDatabase, environmentId: 'production' }],
+      environments: [
+        { createdAt: 3, hue: 25, id: 'production', name: 'Production' }
+      ]
+    })
+
+    expect(screen.getByText('Production')).toBeInTheDocument()
+  })
+
+  it('badges nothing when the connection has no environment', () => {
+    renderWithProviders(<DatabaseExplorer />, {
+      databases: [testDatabase],
+      environments: [
+        { createdAt: 3, hue: 25, id: 'production', name: 'Production' }
+      ]
+    })
+
+    expect(screen.queryByText('Production')).toBeNull()
   })
 
   it('shows a message when there are no databases', () => {

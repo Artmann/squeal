@@ -18,11 +18,13 @@ import {
 import invariant from 'tiny-invariant'
 
 import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
+import { findEnvironment } from '@/glue/environments'
 import { secretStorageMessages } from '@/glue/secret-storage'
 
 import { useCollections } from '../collections-context'
-import { useDatabases, useWorksheets } from '../hooks/queries'
+import { useDatabases, useEnvironments, useWorksheets } from '../hooks/queries'
 import { cn } from '../lib/utils'
+import { EnvironmentBadge } from './EnvironmentBadge'
 import { useAppDispatch, useAppSelector } from '../store'
 import { selectActiveWorksheetId } from '../store/tabs-slice'
 import { uiActions } from '../store/ui-slice'
@@ -318,6 +320,7 @@ function useConnectionPicker() {
 
 export function ConnectionPicker(): ReactElement {
   const dispatch = useAppDispatch()
+  const environments = useEnvironments()
 
   const {
     changeSearch,
@@ -371,6 +374,16 @@ export function ConnectionPicker(): ReactElement {
         <span className="max-w-[170px] truncate">
           {selectedDatabase?.name ?? 'Select a database'}
         </span>
+
+        {selectedDatabase && (
+          <EnvironmentBadge
+            className="max-w-[70px]"
+            environment={findEnvironment(
+              environments,
+              selectedDatabase.environmentId
+            )}
+          />
+        )}
 
         <ChevronDownIcon className="size-[9px] shrink-0 text-text3" />
       </button>
@@ -429,6 +442,8 @@ function ConnectionPopover({
   onSearchChange,
   onSelect
 }: ConnectionPopoverProps): ReactElement {
+  const environments = useEnvironments()
+
   return (
     <div
       className="absolute right-0 top-[34px] z-50 min-w-[210px] rounded-lg border border-border bg-panel p-1 shadow-[0_8px_24px_rgba(0,0,0,0.14)]"
@@ -485,6 +500,14 @@ function ConnectionPopover({
             <DatabaseIcon className="size-3 shrink-0 text-text3" />
 
             <span className="max-w-[200px] truncate">{database.name}</span>
+
+            <EnvironmentBadge
+              className="max-w-[80px]"
+              environment={findEnvironment(
+                environments,
+                database.environmentId
+              )}
+            />
 
             {/* Still selectable: refusing the choice would strand a worksheet
                 whose connection broke. Running is what asks for a password, and

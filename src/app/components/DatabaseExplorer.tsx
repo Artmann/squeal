@@ -17,7 +17,11 @@ import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
-import { useDatabases, useDatabaseSchemas } from '../hooks/queries'
+import {
+  useDatabases,
+  useDatabaseSchemas,
+  useEnvironments
+} from '../hooks/queries'
 import {
   useCreateWorksheet,
   useDeleteDatabase,
@@ -53,8 +57,10 @@ import {
 } from './ui/context-menu'
 import type { SchemaInfo, TableInfo } from '@/databases/adapter'
 import { DatabaseDto, isConnectionUnreadable } from '@/glue/databases'
+import { findEnvironment } from '@/glue/environments'
 import { secretStorageMessages } from '@/glue/secret-storage'
 import { DropIndicatorLine } from './DropIndicatorLine'
+import { EnvironmentBadge } from './EnvironmentBadge'
 
 interface RenderedDatabaseRow {
   database: DatabaseDto
@@ -760,6 +766,12 @@ function DatabaseRowHeader({
   schemaError,
   sortableProps
 }: DatabaseRowHeaderProps): ReactElement {
+  // Read here rather than threaded down from the explorer: every row observes
+  // the same cached list, which never refetches, so the alternative is two
+  // extra props carried through DatabaseRow for a value neither of them uses.
+  const environments = useEnvironments()
+  const environment = findEnvironment(environments, database.environmentId)
+
   return (
     <ContextMenu>
       <ContextMenuTrigger>
@@ -791,6 +803,15 @@ function DatabaseRowHeader({
           <span className="min-w-0 truncate text-[12.5px] text-text">
             {database.name}
           </span>
+
+          {/* ml-auto rather than sitting against the name: two connections to
+              the same server differ in the badge, and a ragged column of them
+              is harder to scan than one aligned edge. It keeps a max width so
+              a long environment name cannot squeeze the connection's own. */}
+          <EnvironmentBadge
+            className="ml-auto max-w-[80px]"
+            environment={environment}
+          />
 
           {/* The whole row already opens the repair form, so this is a label
               rather than a control — a button inside a button. Kept to one line

@@ -12,6 +12,7 @@ import { RetentionLive } from './retention'
 import { AdapterFactory } from './services/adapter-factory'
 import { AppDatabase } from './services/app-database'
 import { DatabaseService } from './services/database-service'
+import { EnvironmentService } from './services/environment-service'
 import { QueryRunner } from './services/query-runner'
 import { SecretStorage } from './services/secret-storage'
 import { SecretStorageSettings } from './services/secret-storage-settings'
@@ -31,6 +32,7 @@ const ServicesLive = Layer.mergeAll(
   AdapterFactory.Default,
   AppDatabase.Default,
   DatabaseService.Default,
+  EnvironmentService.Default,
   QueryRunner.Default,
   SecretStorage.Default,
   SecretStorageSettings.Default,

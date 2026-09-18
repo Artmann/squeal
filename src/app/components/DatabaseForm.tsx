@@ -40,7 +40,8 @@ import {
   useGrantSecretStorage,
   useUpdateDatabase
 } from '../hooks/mutations'
-import { useSecretStorage } from '../hooks/queries'
+import { useEnvironments, useSecretStorage } from '../hooks/queries'
+import { environmentHueStyle } from './EnvironmentBadge'
 import { cn } from '../lib/utils'
 import { FilePathInput } from './FilePathInput'
 import { Button } from './ui/button'
@@ -233,6 +234,7 @@ export function DatabaseForm({
         defaultType,
         defaultValues?.connectionInfo as Record<string, unknown>
       ),
+      environmentId: defaultValues?.environmentId ?? null,
       name: defaultValues?.name ?? '',
       type: defaultType
     },
@@ -739,6 +741,69 @@ function ConnectionStringPopover({
   )
 }
 
+// Radix rejects an empty string as an item value, so "no environment" travels
+// as a sentinel and is mapped back to null at the boundary of the field.
+const noEnvironmentValue = 'none'
+
+function EnvironmentField({
+  form
+}: {
+  form: DatabaseFormApi
+}): ReactElement | null {
+  const environments = useEnvironments()
+
+  // Nothing to choose from means nothing to show. The list is seeded at boot,
+  // so in practice this covers the first render before it arrives and the case
+  // where the user deleted every environment.
+  if (environments.length === 0) {
+    return null
+  }
+
+  return (
+    <FormField
+      control={form.control}
+      name="environmentId"
+      render={({ field }) => (
+        <FormItem className="w-40">
+          <FormLabel>Environment</FormLabel>
+          <Select
+            value={field.value ?? noEnvironmentValue}
+            onValueChange={(value) =>
+              field.onChange(value === noEnvironmentValue ? null : value)
+            }
+          >
+            <FormControl>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+            </FormControl>
+            <SelectContent>
+              <SelectItem value={noEnvironmentValue}>None</SelectItem>
+
+              {environments.map((environment) => (
+                <SelectItem
+                  key={environment.id}
+                  value={environment.id}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="size-[8px] flex-none rounded-full bg-env"
+                      style={environmentHueStyle(environment)}
+                    />
+                    {environment.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  )
+}
+
 interface ConnectionDetailsSectionProps {
   databaseType: DatabaseType
   form: DatabaseFormApi
@@ -816,6 +881,8 @@ function ConnectionDetailsSection({
             </FormItem>
           )}
         />
+
+        <EnvironmentField form={form} />
       </div>
 
       {databaseType === 'sqlite' ? (
