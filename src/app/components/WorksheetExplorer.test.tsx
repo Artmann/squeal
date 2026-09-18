@@ -346,7 +346,7 @@ describe('WorksheetExplorer', () => {
       name: 'Second Worksheet'
     }
 
-    it('deletes a worksheet after confirming via the action toast', async () => {
+    it('deletes a worksheet after confirming in the dialog', async () => {
       const user = userEvent.setup()
 
       vi.mocked(apiClient.deleteWorksheet).mockResolvedValue(undefined)
@@ -360,11 +360,11 @@ describe('WorksheetExplorer', () => {
 
       await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
 
-      // The toast asks first; nothing is deleted until it is confirmed.
+      // The dialog asks first; nothing is deleted until it is confirmed.
       expect(apiClient.deleteWorksheet).not.toHaveBeenCalled()
-      expect(
-        await screen.findByText('Delete "Second Worksheet"?')
-      ).toBeVisible()
+      expect(await screen.findByRole('alertdialog')).toHaveTextContent(
+        'Delete "Second Worksheet"?'
+      )
 
       await user.click(screen.getByRole('button', { name: 'Delete' }))
 
@@ -373,7 +373,7 @@ describe('WorksheetExplorer', () => {
       })
     })
 
-    it('does not delete when the confirmation is ignored', async () => {
+    it('does not delete when the confirmation is cancelled', async () => {
       const user = userEvent.setup()
 
       renderWithProviders(<WorksheetExplorer />, {
@@ -385,9 +385,16 @@ describe('WorksheetExplorer', () => {
 
       await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
 
-      expect(
-        await screen.findByText('Delete "Second Worksheet"?')
-      ).toBeVisible()
+      expect(await screen.findByRole('alertdialog')).toHaveTextContent(
+        'Delete "Second Worksheet"?'
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      await waitFor(() => {
+        expect(screen.queryByRole('alertdialog')).toBeNull()
+      })
+
       expect(apiClient.deleteWorksheet).not.toHaveBeenCalled()
     })
 

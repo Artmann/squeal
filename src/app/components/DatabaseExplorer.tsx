@@ -17,6 +17,7 @@ import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 
 import { useCollections } from '../collections-context'
+import { useConfirm } from './ConfirmDialogProvider'
 import {
   useDatabases,
   useDatabaseSchemas,
@@ -141,37 +142,37 @@ function spansMultipleSchemas(schema: SchemaInfo | undefined): boolean {
   return schemaNames.size > 1
 }
 
-// Deleting purges the stored secret, so it asks for confirmation via an
-// action toast — ignoring it is a safe no.
+// Deleting purges the stored secret, so it asks first in a modal — dismissing
+// it is a safe no.
 function useConfirmedDatabaseDeletion(): (database: DatabaseDto) => void {
+  const confirm = useConfirm()
   const deleteDatabase = useDeleteDatabase()
 
   return useCallback(
     (database: DatabaseDto) => {
-      toast(`Delete "${database.name}"?`, {
-        action: {
-          label: 'Delete',
-          onClick: () => {
-            deleteDatabase.mutate(database.id, {
-              onError: (error) => {
-                const message =
-                  error instanceof Error ? error.message : 'Unknown error'
-
-                toast.error('Failed to delete database', {
-                  description: message
-                })
-              },
-              onSuccess: () => {
-                toast.success(`Deleted "${database.name}"`)
-              }
-            })
-          }
-        },
+      confirm({
+        confirmLabel: 'Delete',
         description:
-          'The stored connection details, including its password, will be removed. Worksheets and query history are kept.'
+          'The stored connection details, including its password, will be removed. Worksheets and query history are kept.',
+        onConfirm: () => {
+          deleteDatabase.mutate(database.id, {
+            onError: (error) => {
+              const message =
+                error instanceof Error ? error.message : 'Unknown error'
+
+              toast.error('Failed to delete database', {
+                description: message
+              })
+            },
+            onSuccess: () => {
+              toast.success(`Deleted "${database.name}"`)
+            }
+          })
+        },
+        title: `Delete "${database.name}"?`
       })
     },
-    [deleteDatabase]
+    [confirm, deleteDatabase]
   )
 }
 

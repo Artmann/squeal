@@ -35,4 +35,23 @@ if (typeof window !== 'undefined') {
   Element.prototype.hasPointerCapture ??= () => false
   Element.prototype.releasePointerCapture ??= () => undefined
   Element.prototype.setPointerCapture ??= () => undefined
+
+  // A Radix modal sets `pointer-events: none` on `<body>` so clicks cannot
+  // reach the app behind it, and restores it when the last layer closes. A
+  // test that leaves the dialog open -- "does not delete when the confirmation
+  // is dismissed" leaves it open on purpose -- is torn down by Testing
+  // Library's cleanup instead of closing, and the restore never runs. The
+  // style then belongs to the shared jsdom document, so the next test in the
+  // file fails on `user.click` with "the element has pointer-events: none",
+  // pointing at whatever it clicked rather than at the dialog.
+  //
+  // `beforeEach` rather than `afterEach`: vitest runs afterEach hooks in
+  // reverse registration order, so an afterEach registered here runs before
+  // Testing Library's cleanup -- that is, before the unmount that leaks the
+  // style. Clearing it on the way in is not subject to that ordering.
+  const { beforeEach } = await import('vitest')
+
+  beforeEach(() => {
+    document.body.style.pointerEvents = ''
+  })
 }

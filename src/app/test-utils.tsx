@@ -17,6 +17,7 @@ import { WorksheetDto } from '@/glue/worksheets'
 
 import { createCollections } from './collections'
 import { CollectionsProvider } from './collections-context'
+import { ConfirmDialogProvider } from './components/ConfirmDialogProvider'
 import { queryKeys } from './query-keys'
 import databaseExplorerReducer, {
   DatabaseExplorerState
@@ -161,8 +162,10 @@ export function renderWithProviders(
     <QueryClientProvider client={queryClient}>
       <CollectionsProvider collections={collections}>
         <Provider store={store}>
-          {ui}
-          <Toaster />
+          <ConfirmDialogProvider>
+            {ui}
+            <Toaster />
+          </ConfirmDialogProvider>
         </Provider>
       </CollectionsProvider>
     </QueryClientProvider>
