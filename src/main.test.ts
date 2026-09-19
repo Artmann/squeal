@@ -102,11 +102,11 @@ vi.mock('electron', () => ({
     }
 
     loadFile() {
-      return undefined
+      return Promise.resolve()
     }
 
     loadURL() {
-      return undefined
+      return Promise.resolve()
     }
   },
   dialog: {

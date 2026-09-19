@@ -7,7 +7,11 @@ export function formatCellValue(value: unknown): string {
     return JSON.stringify(value)
   }
 
-  return String(value)
+  // Every branch above has ruled out the shapes `String` renders as
+  // `[object Object]`, which the cast is what says.
+  return String(
+    value as string | number | bigint | boolean | symbol | undefined
+  )
 }
 
 export function escapeCsvField(value: string): string {

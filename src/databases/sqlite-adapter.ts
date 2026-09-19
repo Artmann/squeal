@@ -76,7 +76,8 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     try {
       const result = await client.execute('select sqlite_version() as version')
-      const rawVersion = String(result.rows[0]?.version ?? '')
+      const version = result.rows[0]?.version
+      const rawVersion = typeof version === 'string' ? version : ''
 
       return requireServerVersion(
         formatSqliteServerVersion(rawVersion),
@@ -172,7 +173,7 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     return result.rows.map((row) => ({
       columnName: row.from as string,
-      constraintName: `fk_${tableName}_${row.id}`,
+      constraintName: `fk_${tableName}_${row.id as number}`,
       referencedColumnName: row.to as string,
       referencedTableName: row.table as string,
       referencedTableSchema: 'main'

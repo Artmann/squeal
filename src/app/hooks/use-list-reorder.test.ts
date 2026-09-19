@@ -206,7 +206,7 @@ describe('useListReorder', () => {
       Object.entries(result.current.dndContextProps)
         .filter(([name]) => name.startsWith('onDrag'))
         .map(([name, value]) => [name, typeof value])
-        .sort()
+        .sort(([first], [second]) => first.localeCompare(second))
     ).toEqual([
       ['onDragCancel', 'function'],
       ['onDragEnd', 'function'],

@@ -171,6 +171,14 @@ from older databases. A new table or column goes in both
   the workspace TypeScript will not find a language server. Nothing here imports
   the API; `@effect/language-service` is loaded by the editor's own TypeScript,
   not this one.
+- Linting is type-aware (`oxlint --type-aware`, backed by `oxlint-tsgolint`),
+  which is what enforces the "No Floating Promises" and "No any" rules above —
+  so `.oxlintrc.json` needs the tsconfigs to typecheck before it can say
+  anything, and a `tsconfig-error` in its output is a config problem rather than
+  a lint one. `typescript/unbound-method` is off for test files only:
+  `expect(client.close).toHaveBeenCalled()` reads a method without calling it,
+  which is what vitest asks for. It stays on for source, where it found a real
+  one.
 - `.oxfmtrc.json` holds the formatter's `ignorePatterns`, and
   `src/format-ignore.test.ts` fails when they disagree with
   `doctor.config.json`'s `ignore.files` — that guard exists because a
@@ -408,10 +416,17 @@ app with `yarn start`, then drive the renderer with
 [agent-browser](https://github.com/vercel-labs/agent-browser):
 
 ```bash
+tail -f /dev/null | yarn start &
 agent-browser --cdp 9222 snapshot -i
 agent-browser --cdp 9222 click @e1
 agent-browser --cdp 9222 screenshot
 ```
+
+`electron-forge start` exits a few seconds after launching when stdin is not a
+TTY, which takes the Vite dev server with it and leaves an orphaned Electron
+still answering CDP with a blank window — hence the `tail -f /dev/null` holding
+stdin open. The tell is the CDP target's title: `localhost:5173` rather than
+`Squeal`.
 
 Use `--cdp 9222` (not `--auto-connect`) so it attaches to the Electron window
 rather than the user's regular Chrome. Refs invalidate after navigation or DOM

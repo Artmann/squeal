@@ -93,4 +93,8 @@ async function main() {
   console.log('Done!')
 }
 
-main()
+main().catch((error: unknown) => {
+  console.error(error)
+
+  process.exit(1)
+})

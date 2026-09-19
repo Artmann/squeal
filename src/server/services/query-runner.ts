@@ -477,9 +477,13 @@ function toStoredQueryResult(value: unknown): QueryResult | null {
   }
 
   return {
-    fields: candidate.fields.map((field) => ({
-      name: String((field as { name?: unknown } | null)?.name ?? '')
-    })),
+    // A stored blob can hold anything; `String` on a non-string name answers
+    // `[object Object]`, so a name that is not one is treated as absent.
+    fields: candidate.fields.map((field) => {
+      const name = (field as { name?: unknown } | null)?.name
+
+      return { name: typeof name === 'string' ? name : '' }
+    }),
     rowCount:
       typeof candidate.rowCount === 'number'
         ? candidate.rowCount

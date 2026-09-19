@@ -202,13 +202,18 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
-  } else {
-    window.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
-    )
-  }
+  // The load stays fire-and-forget because this function is synchronous, but
+  // a rejection leaves a blank frameless window with nothing on it to say why,
+  // so it is logged rather than dropped.
+  const load = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ? window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+    : window.loadFile(
+        path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
+      )
+
+  load.catch((error: unknown) => {
+    log.error(`The window failed to load the app: ${String(error)}`)
+  })
 }
 
 // The packaged app gets its icon from the bundle, but in development macOS
