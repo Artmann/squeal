@@ -16,7 +16,6 @@ import { ReactElement, useCallback } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 
-import { useCollections } from '../collections-context'
 import { useConfirm } from './ConfirmDialogProvider'
 import {
   useDatabases,

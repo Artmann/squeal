@@ -1,13 +1,12 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "baseUrl": ".",
     "esModuleInterop": true,
     "lib": ["ESNext", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "noEmit": true,
     "noImplicitAny": true,
-    "outDir": "dist",
     "paths": {
       "@/*": ["./src/*"]
     },

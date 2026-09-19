@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["import", "oxc", "typescript", "unicorn"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "typescript/no-explicit-any": "error"
+  },
+  "overrides": [
+    {
+      // `expect(client.close).toHaveBeenCalled()` is the assertion vitest asks
+      // for, and it reads the method without calling it every single time — so
+      // in test files this rule reports the framework rather than a defect. It
+      // stays on everywhere else, where it found a real one in
+      // `probeServerVersion`.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "vitest.setup.ts"],
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    }
+  ]
+}

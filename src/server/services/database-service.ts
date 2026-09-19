@@ -109,17 +109,15 @@ export class DatabaseService extends Effect.Service<DatabaseService>()(
 
       const transformDatabase = (record: DatabaseRow) =>
         parseConnectionInfo(record.connectionInfo).pipe(
-          Effect.map(
-            (connectionInfo): DatabaseDto => ({
-              connectionInfo: toPublicConnectionInfo(connectionInfo),
-              createdAt: record.createdAt,
-              environmentId: record.environmentId ?? null,
-              id: record.id,
-              name: record.name,
-              sortOrder: record.sortOrder ?? null,
-              type: record.type as DatabaseType
-            })
-          )
+          Effect.map((connectionInfo): DatabaseDto => ({
+            connectionInfo: toPublicConnectionInfo(connectionInfo),
+            createdAt: record.createdAt,
+            environmentId: record.environmentId ?? null,
+            id: record.id,
+            name: record.name,
+            sortOrder: record.sortOrder ?? null,
+            type: record.type as DatabaseType
+          }))
         )
 
       const toUnreadableDatabase = (record: DatabaseRow): DatabaseDto => ({
@@ -617,7 +615,6 @@ function toPublicConnectionInfo(
     return connectionInfo
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { password: _password, ...publicInfo } = connectionInfo
 
   return publicInfo

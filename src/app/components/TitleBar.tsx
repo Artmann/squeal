@@ -7,15 +7,15 @@ import { cn } from '@/app/lib/utils'
 const isMac = navigator.platform.toLowerCase().includes('mac')
 
 const handleClose = () => {
-  window.electron.windowClose()
+  void window.electron.windowClose()
 }
 
 const handleMaximize = () => {
-  window.electron.windowMaximize()
+  void window.electron.windowMaximize()
 }
 
 const handleMinimize = () => {
-  window.electron.windowMinimize()
+  void window.electron.windowMinimize()
 }
 
 export function TitleBar(): ReactElement {

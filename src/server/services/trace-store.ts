@@ -143,18 +143,16 @@ export class TraceStore extends Effect.Service<TraceStore>()('TraceStore', {
         `)
       )
 
-      return rows.map(
-        (row): TraceSummaryDto => ({
-          durationMs: row.durationMs,
-          errorMessage: row.errorMessage,
-          hasError: row.hasError === 1,
-          name: row.name,
-          serviceName: row.serviceName,
-          spanCount: row.spanCount,
-          startedAt: row.startedAt,
-          traceId: row.traceId
-        })
-      )
+      return rows.map((row): TraceSummaryDto => ({
+        durationMs: row.durationMs,
+        errorMessage: row.errorMessage,
+        hasError: row.hasError === 1,
+        name: row.name,
+        serviceName: row.serviceName,
+        spanCount: row.spanCount,
+        startedAt: row.startedAt,
+        traceId: row.traceId
+      }))
     })
 
     return { getTrace, ingestSpans, listTraces } as const
