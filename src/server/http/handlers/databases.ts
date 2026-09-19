@@ -141,13 +141,13 @@ function loadSchema(adapter: DatabaseAdapter, databaseName: string) {
 function probeServerVersion(
   adapter: DatabaseAdapter
 ): Effect.Effect<string | undefined> {
-  const getServerVersion = adapter.getServerVersion
+  const getServerVersion = adapter.getServerVersion?.bind(adapter)
 
   if (getServerVersion === undefined) {
     return Effect.succeed(undefined)
   }
 
-  return Effect.tryPromise(() => getServerVersion.call(adapter)).pipe(
+  return Effect.tryPromise(() => getServerVersion()).pipe(
     Effect.timeout(serverVersionTimeout),
     Effect.catchAllCause((cause) =>
       // Only the pretty message: a full Effect stack trace on every timeout is

@@ -387,9 +387,6 @@ at the code to change.
       `src/glue`, but `tsconfig.renderer.json` inherits only `noImplicitAny`
       from `tsconfig.base.json` — so across `src/app` the "no non-null
       assertion" and "prefer nullish coalescing" rules still can't be enforced.
-- [ ] **Turn on oxlint's type-aware rules.** `no-floating-promises` and the rest
-      of the type-aware set need `oxlint-tsgolint`; `.oxlintrc.json` runs the
-      syntax-only rules today.
 - [ ] **Fix the test scripts and add coverage.** `"test": "vitest"` still runs
       watch mode (hangs contributors; CI gets away with it only because vitest
       detects `CI`). Add `"test": "vitest run"` + `"test:watch"`, install
