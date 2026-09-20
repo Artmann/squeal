@@ -2,8 +2,9 @@ import CodeMirror from '@uiw/react-codemirror'
 import { Sparkles } from 'lucide-react'
 import { ReactElement } from 'react'
 
-import type { DatabaseType } from '@/glue/api/schemas'
+import type { DatabaseType, SchemaInfoDto } from '@/glue/api/schemas'
 import { type Statement } from '../sql-parser'
+import type { WorksheetSchemaStatus } from '../worksheet-schema-status'
 import { useWorksheetEditor } from './use-worksheet-editor'
 import { type CursorPosition } from './worksheet-editor-cursor'
 
@@ -11,6 +12,8 @@ export interface WorksheetEditorProps {
   activeStatementIndex: number | null
   content: string
   databaseType?: DatabaseType
+  schema?: SchemaInfoDto
+  schemaStatus: WorksheetSchemaStatus
   statements: Statement[]
   onChange?: (value: string) => void
   onCursorChange?: (position: CursorPosition) => void
@@ -22,6 +25,8 @@ export function WorksheetEditor({
   activeStatementIndex,
   content,
   databaseType,
+  schema,
+  schemaStatus,
   statements,
   onChange,
   onCursorChange,
@@ -37,6 +42,8 @@ export function WorksheetEditor({
   const editor = useWorksheetEditor({
     activeStatement,
     databaseType,
+    schema,
+    schemaStatus,
     onChange,
     onCursorChange,
     onCursorPositionChange,
