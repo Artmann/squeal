@@ -1,65 +1,13 @@
 import type { Completion } from '@codemirror/autocomplete'
 
-import { listStatementTokens } from './sql-statement-tokens'
+import {
+  isNameToken,
+  isWord,
+  listStatementTokens,
+  notATableAlias,
+  toName
+} from './sql-statement-tokens'
 import type { Token } from '../sql-parser/tokenizer'
-
-// Words that can follow a table reference without being its alias: the ones
-// that continue the `FROM` clause, and the ones that end it. Without this,
-// `FROM (SELECT 1) WHERE x` would read `WHERE` as the subquery's name.
-const notAnAlias = new Set([
-  'AS',
-  'CROSS',
-  'EXCEPT',
-  'FULL',
-  'GROUP',
-  'HAVING',
-  'INNER',
-  'INTERSECT',
-  'JOIN',
-  'LEFT',
-  'LIMIT',
-  'NATURAL',
-  'OFFSET',
-  'ON',
-  'ORDER',
-  'OUTER',
-  'RETURNING',
-  'RIGHT',
-  'SET',
-  'UNION',
-  'USING',
-  'WHERE',
-  'WINDOW'
-])
-
-// Matched against the token's text rather than its type. The tokenizer's
-// keyword set covers what statement splitting needs and no more — `WITH` and
-// `USING` both tokenize as identifiers — so asking what a token *says* is the
-// only question that answers reliably here.
-function isWord(token: Token | undefined, word: string): boolean {
-  if (!token) {
-    return false
-  }
-
-  return (
-    (token.type === 'identifier' || token.type === 'keyword') &&
-    token.value.toUpperCase() === word
-  )
-}
-
-// The tokenizer types a quoted identifier as an `identifier` and keeps the
-// quotes in its value, so this one check covers both spellings.
-function isNameToken(token: Token | undefined): boolean {
-  return token?.type === 'identifier'
-}
-
-// ...which is why the quotes come off here, before the name reaches a
-// completion.
-function toName(token: Token): string {
-  const quoted = /^([`"[])(.*)([`"\]])$/.exec(token.value)
-
-  return quoted ? quoted[2] : token.value
-}
 
 /**
  * Names introduced by `WITH x AS (...)`.
@@ -139,7 +87,7 @@ function listSubqueryAliases(tokens: Token[]): string[] {
 
     const alias = tokens[next]
 
-    if (isNameToken(alias) && !notAnAlias.has(alias.value.toUpperCase())) {
+    if (isNameToken(alias) && !notATableAlias.has(alias.value.toUpperCase())) {
       names.push(toName(alias))
     }
 

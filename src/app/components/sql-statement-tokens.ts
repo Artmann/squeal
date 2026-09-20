@@ -1,11 +1,77 @@
 import { tokenize, type Token } from '../sql-parser/tokenizer'
 
+/**
+ * Words that can follow a table reference without being its alias: the ones
+ * that continue the `FROM` clause, and the ones that end it. Without this,
+ * `FROM (SELECT 1) WHERE x` reads `WHERE` as the subquery's name.
+ */
+export const notATableAlias = new Set([
+  'AS',
+  'CROSS',
+  'EXCEPT',
+  'FULL',
+  'GROUP',
+  'HAVING',
+  'INNER',
+  'INTERSECT',
+  'JOIN',
+  'LEFT',
+  'LIMIT',
+  'NATURAL',
+  'OFFSET',
+  'ON',
+  'ORDER',
+  'OUTER',
+  'RETURNING',
+  'RIGHT',
+  'SET',
+  'UNION',
+  'USING',
+  'WHERE',
+  'WINDOW'
+])
+
 function isSignificant(token: Token): boolean {
   return token.type !== 'whitespace' && token.type !== 'comment'
 }
 
 function isSemicolon(token: Token): boolean {
   return token.type === 'punctuation' && token.value === ';'
+}
+
+/**
+ * Whether a token is the given word, matched on what it says rather than on
+ * its type.
+ *
+ * The tokenizer's keyword set covers what statement splitting needs and no
+ * more — `WITH`, `USING` and `INNER` all arrive as identifiers — so asking
+ * what a token *says* is the only question that answers reliably.
+ */
+export function isWord(token: Token | undefined, word: string): boolean {
+  if (!token) {
+    return false
+  }
+
+  return (
+    (token.type === 'identifier' || token.type === 'keyword') &&
+    token.value.toUpperCase() === word
+  )
+}
+
+/**
+ * Whether a token can name something. The tokenizer types a quoted identifier
+ * as an `identifier` and keeps the quotes in its value, so this one check
+ * covers both spellings.
+ */
+export function isNameToken(token: Token | undefined): boolean {
+  return token?.type === 'identifier'
+}
+
+/** The name a token carries, with the quotes taken off a quoted identifier. */
+export function toName(token: Token): string {
+  const quoted = /^([`"[])(.*)([`"\]])$/.exec(token.value)
+
+  return quoted ? quoted[2] : token.value
 }
 
 /**
