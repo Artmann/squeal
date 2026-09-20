@@ -2,7 +2,13 @@ import type { Completion } from '@codemirror/autocomplete'
 import type { SQLDialect } from '@codemirror/lang-sql'
 
 import { quoteIdentifier } from './sql-namespace'
-import { listStatementTokens } from './sql-statement-tokens'
+import {
+  isNameToken,
+  isWord,
+  listStatementTokens,
+  notATableAlias,
+  toName
+} from './sql-statement-tokens'
 import type { Token } from '../sql-parser/tokenizer'
 import type { ForeignKeyInfo, TableInfo } from '@/databases/adapter'
 import type { SchemaInfoDto } from '@/glue/api/schemas'
@@ -21,75 +27,18 @@ export interface JoinContext {
   sources: TableReference[]
 }
 
-const clauseEnders = new Set([
-  'CROSS',
-  'EXCEPT',
-  'FULL',
-  'GROUP',
-  'HAVING',
-  'INNER',
-  'INTERSECT',
-  'JOIN',
-  'LEFT',
-  'LIMIT',
-  'NATURAL',
-  'OFFSET',
-  'ON',
-  'ORDER',
-  'OUTER',
-  'RETURNING',
-  'RIGHT',
-  'SET',
-  'UNION',
-  'USING',
-  'WHERE',
-  'WINDOW'
-])
-
-// Matched on what the token says rather than its type: the tokenizer's keyword
-// set is tuned for statement splitting and does not carry every word this cares
-// about — `USING` and `INNER` both arrive as identifiers.
-function isWord(token: Token | undefined, word: string): boolean {
-  if (!token) {
-    return false
-  }
-
-  return (
-    (token.type === 'identifier' || token.type === 'keyword') &&
-    token.value.toUpperCase() === word
-  )
-}
-
-// The tokenizer types a quoted identifier as an `identifier` and keeps the
-// quotes in its value, so this one check covers both spellings.
-function isNameToken(token: Token | undefined): boolean {
-  return token?.type === 'identifier'
-}
-
-// ...which is why the quotes come off here, before the name is compared against
-// the schema.
-function toName(token: Token): string {
-  const quoted = /^([`"[])(.*)([`"\]])$/.exec(token.value)
-
-  return quoted ? quoted[2] : token.value
-}
-
 interface ParsedReference {
   end: number
   reference: TableReference
 }
 
-// Reads `schema.table [AS] alias` starting at `start`, or nothing when the
-// clause names a subquery instead of a table — a subquery has no foreign keys
-// to read, so there is nothing to suggest from it.
-function readTableReference(
+// Reads `schema.table` — or `catalog.schema.table`, of which only the last two
+// parts are ever used. Returns where it stopped so the caller can look for an
+// alias there.
+function readDottedName(
   tokens: Token[],
   start: number
-): ParsedReference | undefined {
-  if (!isNameToken(tokens[start])) {
-    return undefined
-  }
-
+): { end: number; parts: string[] } {
   const parts = [toName(tokens[start])]
   let index = start + 1
 
@@ -98,21 +47,46 @@ function readTableReference(
     index += 2
   }
 
-  if (isWord(tokens[index], 'AS')) {
-    index++
+  return { end: index, parts }
+}
+
+// Reads the alias a table reference was given, with or without the optional
+// `AS`. A word that continues or ends the clause is not one.
+function readAlias(
+  tokens: Token[],
+  start: number
+): { alias: string | undefined; end: number } {
+  const index = isWord(tokens[start], 'AS') ? start + 1 : start
+  const token = tokens[index]
+
+  if (!isNameToken(token) || notATableAlias.has(token.value.toUpperCase())) {
+    return { alias: undefined, end: start }
   }
 
-  const aliasToken = tokens[index]
+  return { alias: toName(token), end: index + 1 }
+}
 
-  const hasAlias =
-    isNameToken(aliasToken) && !clauseEnders.has(aliasToken.value.toUpperCase())
+// Reads `schema.table [AS] alias`, or nothing when the clause names a subquery
+// instead of a table — a subquery has no foreign keys to read, so there is
+// nothing to suggest from it.
+function readTableReference(
+  tokens: Token[],
+  start: number
+): ParsedReference | undefined {
+  if (!isNameToken(tokens[start])) {
+    return undefined
+  }
+
+  const name = readDottedName(tokens, start)
+  const alias = readAlias(tokens, name.end)
 
   return {
-    end: hasAlias ? index + 1 : index,
+    end: alias.end,
     reference: {
-      alias: hasAlias ? toName(aliasToken) : undefined,
-      name: parts[parts.length - 1],
-      schema: parts.length > 1 ? parts[parts.length - 2] : undefined
+      alias: alias.alias,
+      name: name.parts[name.parts.length - 1],
+      schema:
+        name.parts.length > 1 ? name.parts[name.parts.length - 2] : undefined
     }
   }
 }
