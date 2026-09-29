@@ -1,10 +1,17 @@
 - [x] Add Worksheets
 - [x] Store the editor content in the worksheet
 - [x] Add a Getting Started screen
-- [ ] Persist the editor cursor, scroll position and selection. Open tabs, the
+- [x] Persist the editor cursor, scroll position and selection. Open tabs, the
       active tab (`ui:tabs:v1`, `store/tabs-storage.ts`), the sidebar width and
       the results height (`hooks/use-persisted-size.ts`) already survive a
-      restart — the caret does not.
+      restart — the caret does not. Fixed: `WorksheetViewMemory` in
+      `components/worksheet-editor-view.ts` keeps each worksheet's selection
+      (every range and the main index) and scroll position across tab switches
+      and restarts, stored under `ui:editor-views:v1` by
+      `components/worksheet-editor-view-storage.ts` (the 50 most recently
+      touched worksheets, clamped to the current content on restore). The editor
+      also gained `min-h-0`, without which a long worksheet could not be
+      scrolled at all.
 - [x] Support for multiple queries in the editor
 - [x] List Databases
 - [x] Add Database

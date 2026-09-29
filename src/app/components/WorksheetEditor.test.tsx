@@ -37,6 +37,7 @@ function editor(content: string, schema?: SchemaInfoDto): ReactElement {
       // is: the editor owes CodeMirror a stable configuration regardless.
       schemaStatus={{ databaseName: 'Pagila', state: 'ready' }}
       statements={createAstFromSql(content).statements}
+      worksheetId="worksheet-1"
       // Deliberately unstable, the way a parent that forgot to memoise would
       // be: the component owes CodeMirror a stable callback regardless.
       onChange={() => undefined}

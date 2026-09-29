@@ -15,6 +15,7 @@ export interface WorksheetEditorProps {
   schema?: SchemaInfoDto
   schemaStatus: WorksheetSchemaStatus
   statements: Statement[]
+  worksheetId: string | undefined
   onChange?: (value: string) => void
   onCursorChange?: (position: CursorPosition) => void
   onCursorPositionChange?: (position: number) => void
@@ -28,6 +29,7 @@ export function WorksheetEditor({
   schema,
   schemaStatus,
   statements,
+  worksheetId,
   onChange,
   onCursorChange,
   onCursorPositionChange,
@@ -41,9 +43,11 @@ export function WorksheetEditor({
   // editor. See `use-worksheet-editor` for what that costs.
   const editor = useWorksheetEditor({
     activeStatement,
+    content,
     databaseType,
     schema,
     schemaStatus,
+    worksheetId,
     onChange,
     onCursorChange,
     onCursorPositionChange,
@@ -61,14 +65,21 @@ export function WorksheetEditor({
         <Sparkles className="size-3.5" />
       </button>
 
+      {/* `min-h-0` lets the editor shrink to the pane instead of growing to its
+          content. Without it the wrapper is as tall as the document, the
+          overflow-hidden box above clips it, and a long worksheet cannot be
+          scrolled with the wheel at all -- CodeMirror's own scroller never
+          has anything to scroll. */}
       <CodeMirror
         ref={editor.editorRef}
         basicSetup={editor.basicSetup}
+        className="min-h-0"
         extensions={editor.extensions}
         height="100%"
         theme="none"
         value={content}
         onChange={editor.handleChange}
+        onCreateEditor={editor.handleCreateEditor}
         onUpdate={editor.handleUpdate}
       />
       <button
