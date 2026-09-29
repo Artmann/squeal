@@ -114,6 +114,61 @@ describe('QueryResultContent', () => {
     ).toBeInTheDocument()
   })
 
+  it('keeps the column headers over an empty SELECT and says no rows came back', () => {
+    render(
+      <QueryResultContent
+        databaseName="Pagila"
+        query={{ ...baseQuery, result: { rowCount: 0, truncated: false } }}
+        result={{
+          fields: [{ name: 'title' }],
+          rowCount: 0,
+          rows: [],
+          truncated: false
+        }}
+      />
+    )
+
+    expect(
+      screen.getByRole('columnheader', { name: 'title' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('No rows returned.')).toBeInTheDocument()
+  })
+
+  it('shows no table for a statement that returns no result set', () => {
+    render(
+      <QueryResultContent
+        databaseName="Pagila"
+        query={{
+          ...baseQuery,
+          content: "UPDATE film SET title = 'Alien' WHERE film_id < 4",
+          result: { rowCount: 3, truncated: false }
+        }}
+        result={{ fields: [], rowCount: 3, rows: [], truncated: false }}
+      />
+    )
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByText('No rows returned.')).toBeInTheDocument()
+    expect(screen.getByText('3 rows affected.')).toBeInTheDocument()
+  })
+
+  it('leaves out the affected count when the statement changed nothing', () => {
+    render(
+      <QueryResultContent
+        databaseName="Pagila"
+        query={{
+          ...baseQuery,
+          content: 'CREATE TABLE notes (id integer)',
+          result: { rowCount: 0, truncated: false }
+        }}
+        result={{ fields: [], rowCount: 0, rows: [], truncated: false }}
+      />
+    )
+
+    expect(screen.getByText('No rows returned.')).toBeInTheDocument()
+    expect(screen.queryByText(/affected/)).not.toBeInTheDocument()
+  })
+
   it('splits a driver error into a title and its detail', () => {
     render(
       <QueryResultContent

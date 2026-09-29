@@ -510,6 +510,26 @@ describe('QueryResultTable find', () => {
     expect(container.querySelectorAll('mark')).toHaveLength(0)
   })
 
+  // An empty result has nothing to search, so the filter has nothing to add.
+  it('says no rows came back rather than no matches when the result is empty', () => {
+    const empty = {
+      fields: [{ name: 'email' }],
+      rowCount: 0,
+      rows: [],
+      truncated: false
+    }
+
+    render(
+      <QueryResultTable
+        result={empty}
+        search={searchFor(empty, 'mia', { isFiltering: true })}
+      />
+    )
+
+    expect(screen.getByText('No rows returned.')).toBeInTheDocument()
+    expect(screen.queryByText(/No matches/)).not.toBeInTheDocument()
+  })
+
   it('marks nothing while the find bar is open but empty', () => {
     const { container } = render(
       <QueryResultTable

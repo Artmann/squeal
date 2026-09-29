@@ -272,11 +272,15 @@ at the code to change.
 
 > Partly delivered by the redesign; check the current components first.
 
-- [ ] **Add a "No rows returned" state.** Idle is handled
+- [x] **Add a "No rows returned" state.** Idle is handled
       (`QueryResultEmpty.tsx`) and DML feedback lands in the Messages tab, but a
       `SELECT` that returns zero rows still renders column headers over an empty
       `<tbody>` (`QueryResultContent.tsx:41-43` → `QueryResultTable`). Show an
-      explicit empty state instead.
+      explicit empty state instead. Fixed: an empty `SELECT` keeps its headers
+      (they show the query's shape) over a "No rows returned." row
+      (`QueryResultTable.tsx:255`), and a statement with no fields and no rows
+      gets no grid at all — `NoResultSet` (`QueryResultContent.tsx:105`) says
+      "No rows returned." plus the affected-row count when there is one.
 - [ ] **Add schema loading/error states in the explorer.**
       `DatabaseExplorer.tsx:201-202` tracks `isLoadingSchemas` only while
       searching. Expanding a database shows nothing while its schema loads and
