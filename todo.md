@@ -152,12 +152,15 @@ at the code to change.
       issue in the backend `QueryDto` — `src/main/queries/index.ts:19,100`.)
       Fixed: zero `any` in non-test `src/`. The table takes `QueryResultDto` and
       the backend shape is Effect Schema (`src/glue/api/schemas.ts:207-237`).
-- [ ] **Don't wrap every result cell in its own `<ContextMenu>`.** Still
+- [x] **Don't wrap every result cell in its own `<ContextMenu>`.** Still
       per-cell at `QueryResultTable.tsx:131`, but much smaller than first
       written: the table virtualizes, so the cost is the visible window (~20
       rows) rather than ~2,000 Radix subtrees for a 100×20 result. Now a polish
       item — render one shared menu and set the target cell/row in state
-      `onContextMenu`.
+      `onContextMenu`. Fixed: `ResultCellContextMenu`
+      (`QueryResultTable.tsx:410`) is the one menu, triggered on the `<tbody>`;
+      a right-click reads the cell's `data-row-index`/`data-column-index` into
+      state, and the gutter opens nothing.
 - [ ] **Narrow worksheet subscriptions.** Five components subscribe to the whole
       worksheets collection via `useWorksheets()` (`App`, `AppShell`,
       `WorksheetTabs`, `WorksheetExplorer`, `ConnectionPicker`), so every

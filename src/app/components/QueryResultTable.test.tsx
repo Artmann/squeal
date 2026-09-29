@@ -261,6 +261,66 @@ describe('QueryResultTable', () => {
     expect(await navigator.clipboard.readText()).toEqual('name')
   })
 
+  // One menu for the whole grid rather than a Radix subtree per rendered cell.
+  it('mounts a single context menu trigger for all cells', () => {
+    const { container } = render(<QueryResultTable result={result} />)
+
+    expect(
+      container.querySelectorAll('[data-slot="context-menu-trigger"]').length
+    ).toEqual(1)
+  })
+
+  // The menu is shared by every cell, so the second right-click has to move
+  // it to the new cell rather than keep the first one's target.
+  it('copies the cell of the latest right-click', async () => {
+    const user = userEvent.setup()
+    render(<QueryResultTable result={result} />)
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByText('Alice')
+    })
+    await user.keyboard('{Escape}')
+
+    const [, , secondRow] = screen.getAllByRole('row')
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: within(secondRow).getAllByRole('cell')[1]
+    })
+    await user.click(screen.getByRole('menuitem', { name: 'Copy' }))
+
+    expect(await navigator.clipboard.readText()).toEqual('2')
+  })
+
+  it('copies the row of the cell it was opened on as CSV', async () => {
+    const user = userEvent.setup()
+    render(<QueryResultTable result={result} />)
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByText('Bob')
+    })
+    await user.hover(screen.getByRole('menuitem', { name: 'Copy Row' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'As CSV' }))
+
+    expect(await navigator.clipboard.readText()).toEqual('id,name\n2,Bob')
+  })
+
+  it('opens no menu on the row number gutter', async () => {
+    const user = userEvent.setup()
+    render(<QueryResultTable result={result} />)
+
+    const [, firstRow] = screen.getAllByRole('row')
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: within(firstRow).getAllByRole('cell')[0]
+    })
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
   describe('alignment', () => {
     const numericResult = {
       fields: [{ name: 'name' }, { name: 'total' }],
