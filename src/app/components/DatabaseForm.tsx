@@ -3,6 +3,8 @@ import {
   CheckCircle2Icon,
   ChevronRightIcon,
   ClipboardPasteIcon,
+  EyeIcon,
+  EyeOffIcon,
   Loader2Icon,
   XCircleIcon
 } from 'lucide-react'
@@ -246,6 +248,7 @@ function buildDefaultValues(
 }
 
 interface ServerOnlySectionsProps {
+  databaseId?: string
   form: DatabaseFormApi
   isEditMode: boolean
   showAdvanced: boolean
@@ -256,6 +259,7 @@ interface ServerOnlySectionsProps {
 // server and travels over no network. One gate rather than one per section, so
 // the two cannot come apart.
 function ServerOnlySections({
+  databaseId,
   form,
   isEditMode,
   showAdvanced,
@@ -264,6 +268,7 @@ function ServerOnlySections({
   return (
     <>
       <AuthenticationSection
+        databaseId={databaseId}
         form={form}
         isEditMode={isEditMode}
       />
@@ -384,6 +389,7 @@ export function DatabaseForm({
 
           {databaseType !== 'sqlite' && (
             <ServerOnlySections
+              databaseId={databaseId}
               form={form}
               isEditMode={isEditMode}
               showAdvanced={showAdvanced}
@@ -1043,12 +1049,21 @@ function ConnectionDetailsSection({
 }
 
 function AuthenticationSection({
+  databaseId,
   form,
   isEditMode
 }: {
+  databaseId?: string
   form: DatabaseFormApi
   isEditMode: boolean
 }): ReactElement {
+  // Remembers which connection the reveal was asked for, rather than a plain
+  // boolean, so a form handed another connection starts hidden again without
+  // an effect to reset it. A new connection has no id, hence the fallback.
+  const connectionKey = databaseId ?? 'new-connection'
+  const [revealedFor, setRevealedFor] = useState<string | null>(null)
+  const isPasswordRevealed = revealedFor === connectionKey
+
   return (
     <FormSection>
       <FormSectionHeader>
@@ -1085,18 +1100,46 @@ function AuthenticationSection({
           render={({ field }) => (
             <FormItem className="flex-1">
               <FormLabel>Password</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder={
-                    isEditMode
-                      ? 'Leave blank to keep current password'
-                      : 'password'
+              {/* The button sits outside `FormControl`, a Radix `Slot` that
+                  has to wrap the input alone for the label to point at it.
+                  Revealing only ever shows what was typed here: a saved
+                  connection's password never reaches the renderer, so its
+                  field starts empty. */}
+              <div className="relative">
+                <FormControl>
+                  <Input
+                    className="pr-8"
+                    placeholder={
+                      isEditMode
+                        ? 'Leave blank to keep current password'
+                        : 'password'
+                    }
+                    type={isPasswordRevealed ? 'text' : 'password'}
+                    {...field}
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+
+                <Button
+                  aria-label={
+                    isPasswordRevealed ? 'Hide password' : 'Show password'
                   }
-                  type="password"
-                  {...field}
-                  value={field.value ?? ''}
-                />
-              </FormControl>
+                  className="absolute top-1/2 right-[5px] -translate-y-1/2 text-text2 hover:text-text"
+                  size="icon-sm"
+                  title={isPasswordRevealed ? 'Hide password' : 'Show password'}
+                  type="button"
+                  variant="ghost"
+                  onClick={() =>
+                    setRevealedFor(isPasswordRevealed ? null : connectionKey)
+                  }
+                >
+                  {isPasswordRevealed ? (
+                    <EyeOffIcon className="size-3.5" />
+                  ) : (
+                    <EyeIcon className="size-3.5" />
+                  )}
+                </Button>
+              </div>
               <FormMessage />
             </FormItem>
           )}

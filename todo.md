@@ -305,8 +305,11 @@ at the code to change.
       `ConnectionTestBanner` (`DatabaseForm.tsx:1184`) shows the verdict and
       message above the actions in place of the toasts, and is retired by the
       same connection fingerprint as the icon (`:649`), so an edit clears it.
-- [ ] **Add a password reveal toggle** to the connection form
-      (`DatabaseForm.tsx:758`, a bare `type="password"`).
+- [x] **Add a password reveal toggle** to the connection form
+      (`DatabaseForm.tsx:758`, a bare `type="password"`). Fixed:
+      `AuthenticationSection` (`DatabaseForm.tsx`) puts a Show/Hide password
+      button inside the field, and remembers the reveal per connection so
+      another connection starts hidden.
 
 ## ⚪ Accessibility
 

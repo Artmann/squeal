@@ -307,6 +307,87 @@ describe('DatabaseForm', () => {
     })
   })
 
+  describe('password reveal', () => {
+    it('shows and hides the typed password', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm()
+
+      const password = screen.getByLabelText('Password')
+
+      await user.type(password, 'hunter2')
+
+      expect(password).toHaveAttribute('type', 'password')
+
+      await user.click(screen.getByRole('button', { name: 'Show password' }))
+
+      expect(password).toHaveAttribute('type', 'text')
+      expect(password).toHaveValue('hunter2')
+
+      // The name says what the next press does, so it carries the state and
+      // there is no aria-pressed to contradict it.
+      await user.click(screen.getByRole('button', { name: 'Hide password' }))
+
+      expect(password).toHaveAttribute('type', 'password')
+      expect(
+        screen.getByRole('button', { name: 'Show password' })
+      ).not.toHaveAttribute('aria-pressed')
+    })
+
+    // The app never sends a stored password to the renderer, so revealing the
+    // field of a saved connection shows nothing but what the user typed.
+    it('reveals an empty field for a saved connection', async () => {
+      const user = userEvent.setup()
+
+      renderDatabaseForm({
+        databaseId: 'db-123',
+        defaultValues: {
+          connectionInfo: {
+            database: 'mydb',
+            host: 'localhost',
+            port: 5432,
+            username: 'postgres'
+          },
+          name: 'My Database',
+          type: 'postgres'
+        }
+      })
+
+      await user.click(screen.getByRole('button', { name: 'Show password' }))
+
+      expect(screen.getByLabelText('Password')).toHaveValue('')
+    })
+
+    // The same form instance, handed another connection: nothing remounts, so
+    // this is the component forgetting the reveal rather than React doing it.
+    it('hides the password again for another connection', async () => {
+      const user = userEvent.setup()
+      const queryClient = new QueryClient()
+      const collections = createCollections(queryClient)
+
+      const renderFor = (databaseId: string) => (
+        <QueryClientProvider client={queryClient}>
+          <CollectionsProvider collections={collections}>
+            <DatabaseForm databaseId={databaseId} />
+          </CollectionsProvider>
+        </QueryClientProvider>
+      )
+
+      const { rerender } = render(renderFor('db-1'))
+
+      await user.click(screen.getByRole('button', { name: 'Show password' }))
+
+      expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'text')
+
+      rerender(renderFor('db-2'))
+
+      expect(screen.getByLabelText('Password')).toHaveAttribute(
+        'type',
+        'password'
+      )
+    })
+  })
+
   it('calls onCancel when cancel button is clicked', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()
