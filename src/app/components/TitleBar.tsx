@@ -25,8 +25,12 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ sidebarToggle }: TitleBarProps): ReactElement {
+  // `pointer-events-auto` because a modal Radix dialog sets `pointer-events:
+  // none` on `<body>` while it is open. The editor screen is one, and it stops
+  // short of the title bar on purpose, so the window buttons and the theme
+  // toggle have to keep working under it.
   return (
-    <div className="title-bar relative h-10 flex items-center bg-panel2 border-b border-border select-none">
+    <div className="title-bar pointer-events-auto relative h-10 flex items-center bg-panel2 border-b border-border select-none">
       <div className="flex-1 drag-region h-full" />
 
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

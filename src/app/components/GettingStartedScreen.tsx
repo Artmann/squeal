@@ -1,5 +1,5 @@
 import { LockIcon, XIcon } from 'lucide-react'
-import { ReactElement } from 'react'
+import { ReactElement, useId } from 'react'
 
 import { useAppDispatch } from '../store'
 import { uiActions } from '../store/ui-slice'
@@ -8,11 +8,19 @@ import { Button } from './ui/button'
 
 export function GettingStartedScreen(): ReactElement {
   const dispatch = useAppDispatch()
+  const headingId = useId()
 
   const dismiss = () => {
     dispatch(uiActions.dismissGettingStarted())
   }
 
+  // A page, not a dialog. It takes the slot's place rather than covering
+  // anything — App does not mount the workspace behind it — so there is nothing
+  // to trap focus away from and nothing for Escape to return to. And dismissing
+  // it is persisted, so a stray Escape or backdrop click would skip first-run
+  // setup for good. It is a named region instead, so a screen reader can find
+  // it by its heading.
+  //
   // Fills the screen slot below the title bar rather than the viewport: the
   // window is frameless, so covering the title bar would leave Windows and
   // Linux users with no drag region and no close button while the app is
@@ -24,7 +32,10 @@ export function GettingStartedScreen(): ReactElement {
   // the scroll origin is then unreachable. Auto margins collapse to zero once
   // the free space is gone, so all of the overflow lands below instead.
   return (
-    <div className="relative flex-1 min-h-0 bg-panel2 flex justify-center items-start overflow-y-auto py-10">
+    <section
+      aria-labelledby={headingId}
+      className="relative flex-1 min-h-0 bg-panel2 flex justify-center items-start overflow-y-auto py-10"
+    >
       {/* Both ways out of a screen that is otherwise a dead end until a
           connection is saved: the X for someone who just wants to look around,
           and the link below the form for anyone reading top to bottom. */}
@@ -44,7 +55,12 @@ export function GettingStartedScreen(): ReactElement {
             Squeal
           </div>
 
-          <h1 className="text-3xl font-semibold mb-2">Connect a database</h1>
+          <h1
+            className="text-3xl font-semibold mb-2"
+            id={headingId}
+          >
+            Connect a database
+          </h1>
 
           <p className="text-text2">
             Squeal is a SQL client built for humans — write queries, explore
@@ -72,6 +88,6 @@ export function GettingStartedScreen(): ReactElement {
           </p>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
