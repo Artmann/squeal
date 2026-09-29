@@ -613,20 +613,177 @@ describe('DatabaseExplorer', () => {
       ).toBeInTheDocument()
     })
 
-    it('asks again when the retry is taken', async () => {
-      const user = userEvent.setup()
-
+    it('says what to do about it', async () => {
       vi.mocked(apiClient.getDatabaseSchema).mockRejectedValue(
         new Error(failureMessage)
       )
 
       renderWithProviders(<DatabaseExplorer />, expandedOptions)
 
+      expect(
+        await screen.findByText(
+          'Check that the server is running and reachable, then retry. If the connection details have changed, edit the connection.'
+        )
+      ).toBeInTheDocument()
+    })
+
+    it('shows the tables once the retry succeeds', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.getDatabaseSchema).mockRejectedValueOnce(
+        new Error(failureMessage)
+      )
+
+      renderWithProviders(<DatabaseExplorer />, expandedOptions)
+
+      const retryButton = await screen.findByRole('button', { name: 'Retry' })
+
+      let resolveSchema: (schema: SchemaInfo) => void = () => undefined
+
+      vi.mocked(apiClient.getDatabaseSchema).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSchema = resolve
+        })
+      )
+
+      await user.click(retryButton)
+
+      // The retry is visible while it runs, rather than the old reason
+      // sitting there as if nothing happened.
+      expect(
+        await screen.findByRole('status', { name: 'Loading tables' })
+      ).toBeInTheDocument()
+      expect(screen.queryByText(failureMessage)).not.toBeInTheDocument()
+
+      act(() => {
+        resolveSchema(testSchema)
+      })
+
+      expect(await screen.findByText('users')).toBeInTheDocument()
+      expect(screen.getByText('posts')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('img', { name: failureMessage })
+      ).not.toBeInTheDocument()
+    })
+
+    it('asks again for that database only, without a toast', async () => {
+      const user = userEvent.setup()
+      const otherDatabase = { ...testDatabase, id: 'db-other', name: 'Other' }
+
+      vi.mocked(apiClient.getDatabaseSchema).mockImplementation(
+        async (databaseId) => {
+          if (databaseId === 'db-other') {
+            return testSchema
+          }
+
+          throw new Error(failureMessage)
+        }
+      )
+
+      renderWithProviders(<DatabaseExplorer />, {
+        ...expandedOptions,
+        databases: [testDatabase, otherDatabase]
+      })
+
       await user.click(await screen.findByRole('button', { name: 'Retry' }))
 
       await waitFor(() => {
-        expect(apiClient.getDatabaseSchema).toHaveBeenCalledTimes(2)
+        expect(vi.mocked(apiClient.getDatabaseSchema).mock.calls).toEqual([
+          ['db-123'],
+          ['db-other'],
+          ['db-123']
+        ])
       })
+
+      // The reason is already on screen, in the place the tables would be.
+      expect(await screen.findByText(failureMessage)).toBeInTheDocument()
+      expect(screen.queryByText(/Failed to refresh/)).not.toBeInTheDocument()
+      expect(apiClient.getDatabases).not.toHaveBeenCalled()
+    })
+
+    it('opens the connection form from the notice', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.getDatabaseSchema).mockRejectedValue(
+        new Error(failureMessage)
+      )
+
+      const { store } = renderWithProviders(
+        <DatabaseExplorer />,
+        expandedOptions
+      )
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Edit connection' })
+      )
+
+      expect(store.getState().ui.editorScreen).toEqual({
+        databaseId: 'db-123',
+        type: 'edit-database'
+      })
+    })
+  })
+
+  describe('a schema that is still loading', () => {
+    it('shows a placeholder in place of the tables', async () => {
+      vi.mocked(apiClient.getDatabaseSchema).mockReturnValue(
+        new Promise(() => undefined)
+      )
+
+      renderWithProviders(<DatabaseExplorer />, {
+        databaseExplorer: {
+          expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+        },
+        databases: [testDatabase]
+      })
+
+      expect(
+        await screen.findByRole('status', { name: 'Loading tables' })
+      ).toBeInTheDocument()
+    })
+
+    it('shows nothing extra while the row is collapsed', () => {
+      vi.mocked(apiClient.getDatabaseSchema).mockReturnValue(
+        new Promise(() => undefined)
+      )
+
+      renderWithProviders(<DatabaseExplorer />, {
+        databases: [testDatabase]
+      })
+
+      expect(
+        screen.queryByRole('status', { name: 'Loading tables' })
+      ).not.toBeInTheDocument()
+    })
+
+    it('keeps the loaded tables on screen during a refresh', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.getDatabases).mockResolvedValue([testDatabase])
+      vi.mocked(apiClient.getDatabaseSchema).mockReturnValue(
+        new Promise(() => undefined)
+      )
+
+      renderWithProviders(<DatabaseExplorer />, {
+        databaseExplorer: {
+          expandedDatabases: { 'db-123': { isExpanded: true, query: '' } }
+        },
+        databases: [testDatabase],
+        schemas: { 'db-123': testSchema }
+      })
+
+      await user.click(
+        screen.getByRole('button', { name: 'Refresh databases' })
+      )
+
+      await waitFor(() => {
+        expect(apiClient.getDatabaseSchema).toHaveBeenCalledWith('db-123')
+      })
+
+      expect(screen.getByText('users')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('status', { name: 'Loading tables' })
+      ).not.toBeInTheDocument()
     })
   })
 

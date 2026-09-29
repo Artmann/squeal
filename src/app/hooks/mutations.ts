@@ -319,6 +319,24 @@ export function useRefreshDatabases() {
   })
 }
 
+// Asks again for one database's schema after it failed to load. Unlike a
+// refresh it leaves the connection list alone and reports nothing itself: the
+// caller already shows why the schema is missing, in place, and a failed retry
+// just puts that reason back.
+export function useRetryDatabaseSchema(): (databaseId: string) => void {
+  const queryClient = useQueryClient()
+
+  return useCallback(
+    (databaseId: string) => {
+      void queryClient.refetchQueries({
+        exact: true,
+        queryKey: queryKeys.schema(databaseId)
+      })
+    },
+    [queryClient]
+  )
+}
+
 export function useReorderDatabases() {
   const { databases } = useCollections()
   const queryClient = useQueryClient()
