@@ -235,6 +235,7 @@ export function WorksheetExplorer(): ReactElement {
 
       <div className="mx-3 mb-2 flex-none">
         <SearchInput
+          clearOnEscape
           placeholder="Filter worksheets"
           value={worksheetSearchQuery}
           onChange={(newValue) =>
