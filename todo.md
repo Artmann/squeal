@@ -398,18 +398,22 @@ at the code to change.
       `pg`/`@libsql` packaging regressions are caught on PR rather than at
       release, where `release.yml` already runs all three. Consider `husky` +
       `lint-staged`.
-- [ ] **Add macOS signing/notarization** to `forge.config.ts` (gated on secrets)
+- [x] **Add macOS signing/notarization** to `forge.config.ts` (gated on secrets)
       — released builds are unsigned and Gatekeeper-blocked. (The version-scheme
       half of this item is obsolete: release-please owns versions now, so the
-      `npm pkg set version=${GITHUB_REF_NAME#v}.0` line is gone.)
-- [ ] **Add a committed `.env.example`** documenting `POSTGRES_URL` /
+      `npm pkg set version=${GITHUB_REF_NAME#v}.0` line is gone.) Fixed:
+      `forge.config.ts` sets `osxSign` and `osxNotarize` when
+      `signsWithAppleIdentity` finds the Apple secrets.
+- [x] **Add a committed `.env.example`** documenting `POSTGRES_URL` /
       `SQLITE_PATH` (used by `src/database/index.ts` and `scripts/seed.ts`) and
       reference it in `CONTRIBUTING.md`. (The orphaned `vite.renderer.config.ts`
-      this item also named has been deleted.)
-- [ ] **Fix the dangling `CODE_STYLE.md` reference.** `CLAUDE.md:152` still says
+      this item also named has been deleted.) Fixed: `.env.example` exists and
+      `CONTRIBUTING.md` tells contributors to copy it.
+- [x] **Fix the dangling `CODE_STYLE.md` reference.** `CLAUDE.md:152` still says
       "Refer to @CODE_STYLE.md", but that file was deleted in `42ba6f0` when its
       content was folded into `CLAUDE.md`'s own "Code Style" section — so the
       pointer resolves to nothing for every agent that reads it. Drop the line.
+      Fixed: `CLAUDE.md` no longer mentions `CODE_STYLE.md`.
 
 ## ✅ Already solid (leave alone)
 
