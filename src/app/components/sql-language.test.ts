@@ -120,7 +120,11 @@ async function listCompletionsAt(
     position
   )
 
-  const results = await Promise.all(sources.map((source) => source(context)))
+  // A source may answer synchronously, so each call is wrapped to hand
+  // `Promise.all` a promise either way.
+  const results = await Promise.all(
+    sources.map(async (source) => source(context))
+  )
 
   return results.flatMap((result) =>
     result && 'options' in result ? [...result.options] : []
