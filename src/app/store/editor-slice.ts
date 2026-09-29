@@ -14,7 +14,7 @@ export interface WorksheetRenameSession {
   worksheetId: string
 }
 
-// Which worksheet is open lives in the tabs slice — `tabOpened` both opens and
+// Which worksheet is open lives in the tabs slice — `openTab` both opens and
 // activates it. `worksheetSelection` is a different thing: the rows the sidebar
 // list acts on together, which is usually the open one and only differs once
 // the user command- or shift-clicks. `null` is the ordinary case of nothing
@@ -37,10 +37,13 @@ const editorSlice = createSlice({
   name: 'editor',
   initialState,
   reducers: {
-    databaseSearchQueryUpdated: (state, action: PayloadAction<string>) => {
+    endWorksheetRename: (state) => {
+      state.worksheetRename = null
+    },
+    setDatabaseSearchQuery: (state, action: PayloadAction<string>) => {
       state.databaseSearchQuery = action.payload
     },
-    worksheetRenameDraftUpdated: (state, action: PayloadAction<string>) => {
+    setWorksheetRenameDraft: (state, action: PayloadAction<string>) => {
       // A keystroke can only come from an input that is already open, so this
       // is the narrowing TypeScript needs rather than a case that happens.
       // Dropping the draft is still the right answer if it ever does: a
@@ -51,18 +54,7 @@ const editorSlice = createSlice({
 
       state.worksheetRename.draftName = action.payload
     },
-    worksheetRenameEnded: (state) => {
-      state.worksheetRename = null
-    },
-    // Starting a rename anywhere replaces the session, so the surface that had
-    // it loses its input rather than leaving two open at once.
-    worksheetRenameStarted: (
-      state,
-      action: PayloadAction<WorksheetRenameSession>
-    ) => {
-      state.worksheetRename = action.payload
-    },
-    worksheetSearchQueryUpdated: (state, action: PayloadAction<string>) => {
+    setWorksheetSearchQuery: (state, action: PayloadAction<string>) => {
       state.worksheetSearchQuery = action.payload
 
       // Filtered rows cannot be dragged and hidden ones cannot be seen, so a
@@ -74,22 +66,23 @@ const editorSlice = createSlice({
     // range a shift-click covers depends on the order the rows are in and on
     // which one is open, neither of which is in this slice. `null` is nothing
     // picked out.
-    worksheetSelectionChanged: (
+    setWorksheetSelection: (
       state,
       action: PayloadAction<ListSelection | null>
     ) => {
       state.worksheetSelection = action.payload
+    },
+    // Starting a rename anywhere replaces the session, so the surface that had
+    // it loses its input rather than leaving two open at once.
+    startWorksheetRename: (
+      state,
+      action: PayloadAction<WorksheetRenameSession>
+    ) => {
+      state.worksheetRename = action.payload
     }
   }
 })
 
-export const {
-  databaseSearchQueryUpdated,
-  worksheetRenameDraftUpdated,
-  worksheetRenameEnded,
-  worksheetRenameStarted,
-  worksheetSearchQueryUpdated,
-  worksheetSelectionChanged
-} = editorSlice.actions
+export const editorActions = editorSlice.actions
 
 export default editorSlice.reducer

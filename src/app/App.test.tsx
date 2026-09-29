@@ -154,7 +154,7 @@ describe('editor content', () => {
     expect(screen.getByRole('status')).toHaveTextContent('EDITED')
 
     act(() => {
-      store.dispatch(tabsActions.tabActivated('ws-2'))
+      store.dispatch(tabsActions.activateTab('ws-2'))
     })
 
     expect(screen.getByRole('status')).toHaveTextContent('SELECT 9;')

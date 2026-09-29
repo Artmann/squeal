@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import reducer, {
-  DatabaseExplorerState,
-  expandTable,
-  setDatabaseExpanded
+  databaseExplorerActions,
+  DatabaseExplorerState
 } from './database-explorer-slice'
 
 describe('databaseExplorerSlice', () => {
@@ -16,7 +15,7 @@ describe('databaseExplorerSlice', () => {
     it('should record an explicit expand for a database with no entry', () => {
       const state = reducer(
         initialState,
-        setDatabaseExpanded({
+        databaseExplorerActions.setDatabaseExpanded({
           databaseId: 'db-123',
           isExpanded: true,
           query: ''
@@ -31,7 +30,7 @@ describe('databaseExplorerSlice', () => {
     it('should record an explicit collapse for a database with no entry', () => {
       const state = reducer(
         initialState,
-        setDatabaseExpanded({
+        databaseExplorerActions.setDatabaseExpanded({
           databaseId: 'db-123',
           isExpanded: false,
           query: ''
@@ -48,7 +47,7 @@ describe('databaseExplorerSlice', () => {
     it('should stamp the query the decision was made under', () => {
       const state = reducer(
         initialState,
-        setDatabaseExpanded({
+        databaseExplorerActions.setDatabaseExpanded({
           databaseId: 'db-123',
           isExpanded: false,
           query: 'user'
@@ -68,7 +67,7 @@ describe('databaseExplorerSlice', () => {
 
       const state = reducer(
         expandedState,
-        setDatabaseExpanded({
+        databaseExplorerActions.setDatabaseExpanded({
           databaseId: 'db-123',
           isExpanded: false,
           query: ''
@@ -88,7 +87,7 @@ describe('databaseExplorerSlice', () => {
 
       const state = reducer(
         collapsedState,
-        setDatabaseExpanded({
+        databaseExplorerActions.setDatabaseExpanded({
           databaseId: 'db-123',
           isExpanded: true,
           query: 'user'
@@ -103,11 +102,19 @@ describe('databaseExplorerSlice', () => {
     it('should handle multiple databases independently', () => {
       let state = reducer(
         initialState,
-        setDatabaseExpanded({ databaseId: 'db-1', isExpanded: true, query: '' })
+        databaseExplorerActions.setDatabaseExpanded({
+          databaseId: 'db-1',
+          isExpanded: true,
+          query: ''
+        })
       )
       state = reducer(
         state,
-        setDatabaseExpanded({ databaseId: 'db-2', isExpanded: true, query: '' })
+        databaseExplorerActions.setDatabaseExpanded({
+          databaseId: 'db-2',
+          isExpanded: true,
+          query: ''
+        })
       )
 
       expect(state.expandedDatabases).toEqual({
@@ -117,7 +124,7 @@ describe('databaseExplorerSlice', () => {
 
       state = reducer(
         state,
-        setDatabaseExpanded({
+        databaseExplorerActions.setDatabaseExpanded({
           databaseId: 'db-1',
           isExpanded: false,
           query: ''
@@ -131,9 +138,12 @@ describe('databaseExplorerSlice', () => {
     })
   })
 
-  describe('expandTable', () => {
+  describe('toggleTableExpanded', () => {
     it('should set table as expanded when not expanded', () => {
-      const state = reducer(initialState, expandTable('db-123-users'))
+      const state = reducer(
+        initialState,
+        databaseExplorerActions.toggleTableExpanded('db-123-users')
+      )
 
       expect(state.expandedTables).toEqual({ 'db-123-users': true })
     })
@@ -144,15 +154,27 @@ describe('databaseExplorerSlice', () => {
         expandedTables: { 'db-123-users': true }
       }
 
-      const state = reducer(expandedState, expandTable('db-123-users'))
+      const state = reducer(
+        expandedState,
+        databaseExplorerActions.toggleTableExpanded('db-123-users')
+      )
 
       expect(state.expandedTables).toEqual({ 'db-123-users': false })
     })
 
     it('should handle multiple tables independently', () => {
-      let state = reducer(initialState, expandTable('db-1-users'))
-      state = reducer(state, expandTable('db-1-posts'))
-      state = reducer(state, expandTable('db-2-comments'))
+      let state = reducer(
+        initialState,
+        databaseExplorerActions.toggleTableExpanded('db-1-users')
+      )
+      state = reducer(
+        state,
+        databaseExplorerActions.toggleTableExpanded('db-1-posts')
+      )
+      state = reducer(
+        state,
+        databaseExplorerActions.toggleTableExpanded('db-2-comments')
+      )
 
       expect(state.expandedTables).toEqual({
         'db-1-posts': true,
@@ -160,7 +182,10 @@ describe('databaseExplorerSlice', () => {
         'db-2-comments': true
       })
 
-      state = reducer(state, expandTable('db-1-users'))
+      state = reducer(
+        state,
+        databaseExplorerActions.toggleTableExpanded('db-1-users')
+      )
 
       expect(state.expandedTables).toEqual({
         'db-1-posts': true,

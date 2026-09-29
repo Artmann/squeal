@@ -169,7 +169,7 @@ export function useDeleteWorksheet() {
     onSuccess: (_, worksheetId) => {
       writeIfReady(worksheets, (utils) => utils.writeDelete(worksheetId))
 
-      // No tab bookkeeping here on purpose: `tabsReconciled` runs on every
+      // No tab bookkeeping here on purpose: `reconcileTabs` runs on every
       // worksheets update and drops tabs whose worksheet is gone, picking the
       // next one to focus.
     }

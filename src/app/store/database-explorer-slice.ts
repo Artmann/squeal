@@ -32,18 +32,6 @@ const databaseExplorerSlice = createSlice({
   name: 'databaseExplorer',
   initialState,
   reducers: {
-    // Deliberately a plain toggle, unlike `setDatabaseExpanded` below: nothing
-    // ever forces a table open, because matching is on database and table
-    // names only and never column names (see `computeDatabaseMatch`), so a
-    // table row's rendered state is always the stored one and flipping it is
-    // safe. If matching ever reaches columns, search would want to force
-    // tables open too and this toggle would reproduce the swallowed click of
-    // #61 one level down — it would then need the same query-scoped treatment.
-    expandTable: (state, action: PayloadAction<string>) => {
-      const tableKey = action.payload
-
-      state.expandedTables[tableKey] = !state.expandedTables[tableKey]
-    },
     // Writes the value the caller means rather than flipping the stored one.
     // While a search forces a row open, the stored value and what the user
     // sees can differ, so a blind flip would move a bit nobody is looking at.
@@ -58,11 +46,22 @@ const databaseExplorerSlice = createSlice({
       const { databaseId, isExpanded, query } = action.payload
 
       state.expandedDatabases[databaseId] = { isExpanded, query }
+    },
+    // Deliberately a plain toggle, unlike `setDatabaseExpanded` above: nothing
+    // ever forces a table open, because matching is on database and table
+    // names only and never column names (see `computeDatabaseMatch`), so a
+    // table row's rendered state is always the stored one and flipping it is
+    // safe. If matching ever reaches columns, search would want to force
+    // tables open too and this toggle would reproduce the swallowed click of
+    // #61 one level down — it would then need the same query-scoped treatment.
+    toggleTableExpanded: (state, action: PayloadAction<string>) => {
+      const tableKey = action.payload
+
+      state.expandedTables[tableKey] = !state.expandedTables[tableKey]
     }
   }
 })
 
-export const { expandTable, setDatabaseExpanded } =
-  databaseExplorerSlice.actions
+export const databaseExplorerActions = databaseExplorerSlice.actions
 
 export default databaseExplorerSlice.reducer

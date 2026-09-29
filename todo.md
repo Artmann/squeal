@@ -198,12 +198,15 @@ at the code to change.
       `use-worksheet-commands.ts` and `use-worksheet-rename.ts`).
       `useWorksheetAutosave.ts` keeps its own `.then().catch()`, since it acts
       on success as well as failure.
-- [ ] **Unify Redux slice conventions.** Four slices, three export styles:
+- [x] **Unify Redux slice conventions.** Four slices, three export styles:
       `database-explorer-slice` exports named actions, `tabs-slice`/`ui-slice`
       export a bundled `tabsActions`/`uiActions`, and `editor-slice` exports
       named actions with past-tense names (`databaseSearchQueryUpdated`).
       `expandDatabase`/`expandTable` (`database-explorer-slice.ts:17,22`) still
-      toggle rather than expand — rename to match. Pick one style.
+      toggle rather than expand — rename to match. Pick one style. Fixed: every
+      slice exports a bundled `<slice>Actions` object with imperative names
+      (`databaseExplorerActions.toggleTableExpanded`,
+      `editorActions.setDatabaseSearchQuery`, `tabsActions.openTab`).
 - [x] **Keymap `run` returns `undefined` in the else path.**
       `WorksheetEditor.tsx:68-75` should `return false`. Fixed:
       `WorksheetEditor.tsx:130-138` returns `false` when there is no run

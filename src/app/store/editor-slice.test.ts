@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import reducer, {
-  databaseSearchQueryUpdated,
-  EditorState,
-  worksheetRenameDraftUpdated,
-  worksheetRenameEnded,
-  worksheetRenameStarted,
-  worksheetSearchQueryUpdated,
-  worksheetSelectionChanged
-} from './editor-slice'
+import reducer, { editorActions, EditorState } from './editor-slice'
 
 const initialState: EditorState = {
   databaseSearchQuery: '',
@@ -40,27 +32,33 @@ describe('editorSlice', () => {
     })
   })
 
-  describe('databaseSearchQueryUpdated', () => {
+  describe('setDatabaseSearchQuery', () => {
     it('stores the query', () => {
-      const state = reducer(initialState, databaseSearchQueryUpdated('pagila'))
+      const state = reducer(
+        initialState,
+        editorActions.setDatabaseSearchQuery('pagila')
+      )
 
       expect(state).toEqual({ ...initialState, databaseSearchQuery: 'pagila' })
     })
   })
 
-  describe('worksheetSearchQueryUpdated', () => {
+  describe('setWorksheetSearchQuery', () => {
     it('stores the query', () => {
-      const state = reducer(initialState, worksheetSearchQueryUpdated('rev'))
+      const state = reducer(
+        initialState,
+        editorActions.setWorksheetSearchQuery('rev')
+      )
 
       expect(state).toEqual({ ...initialState, worksheetSearchQuery: 'rev' })
     })
   })
 
-  describe('worksheetRenameStarted', () => {
+  describe('startWorksheetRename', () => {
     it('opens the session on the given surface', () => {
       const state = reducer(
         initialState,
-        worksheetRenameStarted({
+        editorActions.startWorksheetRename({
           draftName: 'Revenue',
           scope: 'explorer',
           worksheetId: 'ws-1'
@@ -75,7 +73,7 @@ describe('editorSlice', () => {
     it('replaces a session the other surface had open', () => {
       const state = reducer(
         renaming,
-        worksheetRenameStarted({
+        editorActions.startWorksheetRename({
           draftName: 'Signups',
           scope: 'tabs',
           worksheetId: 'ws-2'
@@ -93,9 +91,12 @@ describe('editorSlice', () => {
     })
   })
 
-  describe('worksheetRenameDraftUpdated', () => {
+  describe('setWorksheetRenameDraft', () => {
     it('keeps the scope and the worksheet while the name changes', () => {
-      const state = reducer(renaming, worksheetRenameDraftUpdated('Q3 Revenue'))
+      const state = reducer(
+        renaming,
+        editorActions.setWorksheetRenameDraft('Q3 Revenue')
+      )
 
       expect(state).toEqual({
         ...initialState,
@@ -108,15 +109,18 @@ describe('editorSlice', () => {
     })
 
     it('invents no session when none is open', () => {
-      const state = reducer(initialState, worksheetRenameDraftUpdated('Q3'))
+      const state = reducer(
+        initialState,
+        editorActions.setWorksheetRenameDraft('Q3')
+      )
 
       expect(state).toEqual(initialState)
     })
   })
 
-  describe('worksheetRenameEnded', () => {
+  describe('endWorksheetRename', () => {
     it('closes the session', () => {
-      const state = reducer(renaming, worksheetRenameEnded())
+      const state = reducer(renaming, editorActions.endWorksheetRename())
 
       expect(state).toEqual(initialState)
     })
@@ -129,7 +133,7 @@ describe('editorSlice', () => {
           worksheetSearchQuery: 'rev',
           worksheetSelection: null
         },
-        worksheetRenameEnded()
+        editorActions.endWorksheetRename()
       )
 
       expect(state).toEqual({
@@ -141,11 +145,14 @@ describe('editorSlice', () => {
     })
   })
 
-  describe('worksheetSelectionChanged', () => {
+  describe('setWorksheetSelection', () => {
     it('stores the rows the list acts on together', () => {
       const state = reducer(
         initialState,
-        worksheetSelectionChanged({ anchorId: 'ws-1', ids: ['ws-1', 'ws-2'] })
+        editorActions.setWorksheetSelection({
+          anchorId: 'ws-1',
+          ids: ['ws-1', 'ws-2']
+        })
       )
 
       expect(state).toEqual(selecting)
@@ -155,7 +162,10 @@ describe('editorSlice', () => {
     // "nothing is picked out" travels through the same action rather than a
     // second one that would have to be kept in step with it.
     it('clears the selection when handed nothing', () => {
-      const state = reducer(selecting, worksheetSelectionChanged(null))
+      const state = reducer(
+        selecting,
+        editorActions.setWorksheetSelection(null)
+      )
 
       expect(state).toEqual(initialState)
     })
@@ -166,7 +176,10 @@ describe('editorSlice', () => {
     // a selection surviving the change would act on rows the user is no longer
     // looking at.
     it('clears the selection when the worksheet filter changes', () => {
-      const state = reducer(selecting, worksheetSearchQueryUpdated('rev'))
+      const state = reducer(
+        selecting,
+        editorActions.setWorksheetSearchQuery('rev')
+      )
 
       expect(state).toEqual({ ...initialState, worksheetSearchQuery: 'rev' })
     })

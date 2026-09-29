@@ -46,7 +46,7 @@ function useOpenTabs(
   return openWorksheetIds.flatMap((id) => {
     const worksheet = worksheets.find((entry) => entry.id === id)
 
-    // A tab whose worksheet has gone is dropped by `tabsReconciled`; skip it in
+    // A tab whose worksheet has gone is dropped by `reconcileTabs`; skip it in
     // the meantime rather than rendering a nameless tab.
     return worksheet ? [worksheet] : []
   })
@@ -197,26 +197,26 @@ export function WorksheetTabs(): ReactElement {
 
   const handleActivate = useCallback(
     (worksheetId: string) => {
-      dispatch(tabsActions.tabActivated(worksheetId))
+      dispatch(tabsActions.activateTab(worksheetId))
     },
     [dispatch]
   )
 
   const handleClose = useCallback(
     (worksheetId: string) => {
-      dispatch(tabsActions.tabClosed(worksheetId))
+      dispatch(tabsActions.closeTab(worksheetId))
     },
     [dispatch]
   )
 
   const handleReorder = useCallback(
     (worksheetIds: string[]) => {
-      dispatch(tabsActions.tabsReordered(worksheetIds))
+      dispatch(tabsActions.reorderTabs(worksheetIds))
     },
     [dispatch]
   )
 
-  // `tabsReordered` ignores an order that is not exactly the open tabs, so the
+  // `reorderTabs` ignores an order that is not exactly the open tabs, so the
   // reorder runs over every open id — including one whose worksheet has gone
   // and has no tab on screen. The indicator is asked for by id, so the tabs
   // rendered from `openTabs` only have to be a subsequence of that.

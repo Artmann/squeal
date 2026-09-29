@@ -17,34 +17,31 @@ function stateOf(
 }
 
 describe('tabsSlice', () => {
-  describe('tabOpened', () => {
+  describe('openTab', () => {
     it('opens and activates a worksheet that is not open yet', () => {
-      const state = reducer(initialTabsState, tabsActions.tabOpened('a'))
+      const state = reducer(initialTabsState, tabsActions.openTab('a'))
 
       expect(state).toEqual(stateOf(['a'], 'a', 'restored'))
     })
 
     it('activates an already open worksheet without duplicating the tab', () => {
-      const state = reducer(
-        stateOf(['a', 'b'], 'b'),
-        tabsActions.tabOpened('a')
-      )
+      const state = reducer(stateOf(['a', 'b'], 'b'), tabsActions.openTab('a'))
 
       expect(state).toEqual(stateOf(['a', 'b'], 'a'))
     })
 
     it('appends new tabs to the end', () => {
-      const state = reducer(stateOf(['a'], 'a'), tabsActions.tabOpened('b'))
+      const state = reducer(stateOf(['a'], 'a'), tabsActions.openTab('b'))
 
       expect(state).toEqual(stateOf(['a', 'b'], 'b'))
     })
   })
 
-  describe('tabActivated', () => {
+  describe('activateTab', () => {
     it('activates an open tab', () => {
       const state = reducer(
         stateOf(['a', 'b'], 'a'),
-        tabsActions.tabActivated('b')
+        tabsActions.activateTab('b')
       )
 
       expect(state).toEqual(stateOf(['a', 'b'], 'b'))
@@ -53,18 +50,18 @@ describe('tabsSlice', () => {
     it('ignores a worksheet that is not open', () => {
       const state = reducer(
         stateOf(['a', 'b'], 'a'),
-        tabsActions.tabActivated('c')
+        tabsActions.activateTab('c')
       )
 
       expect(state).toEqual(stateOf(['a', 'b'], 'a'))
     })
   })
 
-  describe('tabClosed', () => {
+  describe('closeTab', () => {
     it('activates the last remaining tab when the active one closes', () => {
       const state = reducer(
         stateOf(['a', 'b', 'c'], 'b'),
-        tabsActions.tabClosed('b')
+        tabsActions.closeTab('b')
       )
 
       expect(state).toEqual(stateOf(['a', 'c'], 'c'))
@@ -73,30 +70,30 @@ describe('tabsSlice', () => {
     it('keeps the active tab when a background tab closes', () => {
       const state = reducer(
         stateOf(['a', 'b', 'c'], 'c'),
-        tabsActions.tabClosed('a')
+        tabsActions.closeTab('a')
       )
 
       expect(state).toEqual(stateOf(['b', 'c'], 'c'))
     })
 
     it('allows closing the final tab and leaves nothing active', () => {
-      const state = reducer(stateOf(['a'], 'a'), tabsActions.tabClosed('a'))
+      const state = reducer(stateOf(['a'], 'a'), tabsActions.closeTab('a'))
 
       expect(state).toEqual(stateOf([], undefined))
     })
 
     it('ignores a worksheet that is not open', () => {
-      const state = reducer(stateOf(['a'], 'a'), tabsActions.tabClosed('b'))
+      const state = reducer(stateOf(['a'], 'a'), tabsActions.closeTab('b'))
 
       expect(state).toEqual(stateOf(['a'], 'a'))
     })
   })
 
-  describe('tabsReconciled', () => {
+  describe('reconcileTabs', () => {
     it('drops tabs whose worksheets no longer exist', () => {
       const state = reducer(
         stateOf(['a', 'b', 'c'], 'a'),
-        tabsActions.tabsReconciled({ availableIds: ['a', 'c'] })
+        tabsActions.reconcileTabs({ availableIds: ['a', 'c'] })
       )
 
       expect(state).toEqual(stateOf(['a', 'c'], 'a'))
@@ -105,7 +102,7 @@ describe('tabsSlice', () => {
     it('activates the last survivor when the active worksheet is gone', () => {
       const state = reducer(
         stateOf(['a', 'b', 'c'], 'b'),
-        tabsActions.tabsReconciled({ availableIds: ['a', 'c'] })
+        tabsActions.reconcileTabs({ availableIds: ['a', 'c'] })
       )
 
       expect(state).toEqual(stateOf(['a', 'c'], 'c'))
@@ -114,7 +111,7 @@ describe('tabsSlice', () => {
     it('falls back to the pick when nothing survives', () => {
       const state = reducer(
         stateOf(['a', 'b'], 'a'),
-        tabsActions.tabsReconciled({ availableIds: ['z'], fallbackId: 'z' })
+        tabsActions.reconcileTabs({ availableIds: ['z'], fallbackId: 'z' })
       )
 
       expect(state).toEqual(stateOf(['z'], 'z'))
@@ -125,7 +122,7 @@ describe('tabsSlice', () => {
     it('leaves nothing open when nothing survives and there is no fallback', () => {
       const state = reducer(
         stateOf(['a', 'b'], 'a'),
-        tabsActions.tabsReconciled({ availableIds: [] })
+        tabsActions.reconcileTabs({ availableIds: [] })
       )
 
       expect(state).toEqual(stateOf([], undefined, 'restored'))
@@ -134,7 +131,7 @@ describe('tabsSlice', () => {
     it('adopts an active tab when the stored one was missing', () => {
       const state = reducer(
         stateOf(['a', 'b'], undefined),
-        tabsActions.tabsReconciled({ availableIds: ['a', 'b'] })
+        tabsActions.reconcileTabs({ availableIds: ['a', 'b'] })
       )
 
       expect(state).toEqual(stateOf(['a', 'b'], 'b'))
@@ -146,7 +143,7 @@ describe('tabsSlice', () => {
     it('leaves the tabs closed once they have been reconciled', () => {
       const state = reducer(
         stateOf([], undefined),
-        tabsActions.tabsReconciled({ availableIds: ['a'], fallbackId: 'a' })
+        tabsActions.reconcileTabs({ availableIds: ['a'], fallbackId: 'a' })
       )
 
       expect(state).toEqual(stateOf([], undefined))
@@ -158,7 +155,7 @@ describe('tabsSlice', () => {
     it('keeps the surviving restored tabs rather than the fallback', () => {
       const state = reducer(
         stateOf(['a', 'b'], 'b', 'restored'),
-        tabsActions.tabsReconciled({
+        tabsActions.reconcileTabs({
           availableIds: ['a', 'c'],
           fallbackId: 'c'
         })
@@ -171,7 +168,7 @@ describe('tabsSlice', () => {
     it('opens the fallback while the tabs are still only restored', () => {
       const state = reducer(
         stateOf([], undefined, 'restored'),
-        tabsActions.tabsReconciled({ availableIds: ['a'], fallbackId: 'a' })
+        tabsActions.reconcileTabs({ availableIds: ['a'], fallbackId: 'a' })
       )
 
       expect(state).toEqual(stateOf(['a'], 'a'))
@@ -182,7 +179,7 @@ describe('tabsSlice', () => {
     it('opens the fallback when the prune itself took the last tab', () => {
       const state = reducer(
         stateOf(['a'], 'a'),
-        tabsActions.tabsReconciled({ availableIds: ['b'], fallbackId: 'b' })
+        tabsActions.reconcileTabs({ availableIds: ['b'], fallbackId: 'b' })
       )
 
       expect(state).toEqual(stateOf(['b'], 'b'))
@@ -193,7 +190,7 @@ describe('tabsSlice', () => {
     it('records the reconciliation even when the tabs did not change', () => {
       const state = reducer(
         stateOf(['a'], 'a', 'restored'),
-        tabsActions.tabsReconciled({ availableIds: ['a'] })
+        tabsActions.reconcileTabs({ availableIds: ['a'] })
       )
 
       expect(state).toEqual(stateOf(['a'], 'a'))
@@ -205,30 +202,30 @@ describe('tabsSlice', () => {
     it('opens a worksheet again after the list emptied and refilled', () => {
       const emptied = reducer(
         stateOf(['a'], 'a'),
-        tabsActions.tabsReconciled({ availableIds: [] })
+        tabsActions.reconcileTabs({ availableIds: [] })
       )
 
       // The effect fires once more on the write above, still with nothing to
       // offer. This is the pass that used to overwrite the status.
       const settled = reducer(
         emptied,
-        tabsActions.tabsReconciled({ availableIds: [] })
+        tabsActions.reconcileTabs({ availableIds: [] })
       )
 
       const refilled = reducer(
         settled,
-        tabsActions.tabsReconciled({ availableIds: ['a'], fallbackId: 'a' })
+        tabsActions.reconcileTabs({ availableIds: ['a'], fallbackId: 'a' })
       )
 
       expect(refilled).toEqual(stateOf(['a'], 'a'))
     })
   })
 
-  describe('tabsReordered', () => {
+  describe('reorderTabs', () => {
     it('reorders the open tabs', () => {
       const state = reducer(
         stateOf(['a', 'b', 'c'], 'a'),
-        tabsActions.tabsReordered(['c', 'a', 'b'])
+        tabsActions.reorderTabs(['c', 'a', 'b'])
       )
 
       expect(state).toEqual(stateOf(['c', 'a', 'b'], 'a'))
@@ -237,7 +234,7 @@ describe('tabsSlice', () => {
     it('ignores an order that does not describe exactly the open tabs', () => {
       const state = reducer(
         stateOf(['a', 'b', 'c'], 'a'),
-        tabsActions.tabsReordered(['c', 'a'])
+        tabsActions.reorderTabs(['c', 'a'])
       )
 
       expect(state).toEqual(stateOf(['a', 'b', 'c'], 'a'))

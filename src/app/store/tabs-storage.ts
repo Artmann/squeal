@@ -11,14 +11,14 @@ function isStringArray(value: unknown): value is string[] {
 /**
  * Reads the persisted tabs. Anything unreadable falls back to the empty state
  * rather than throwing — a corrupt value must not stop the app from booting.
- * Ids that no longer exist are dropped later by `tabsReconciled`, once the
+ * Ids that no longer exist are dropped later by `reconcileTabs`, once the
  * worksheets have loaded.
  *
  * A payload the app actually wrote comes back `reconciled`, so the user's own
  * arrangement survives the restart — including having closed every tab. The
  * fallbacks come back `restored`, so a fresh install still gets a worksheet
  * picked for it. Stored tabs whose worksheets are all gone are safe either way:
- * that is a prune, and `tabsReconciled` opens the fallback regardless.
+ * that is a prune, and `reconcileTabs` opens the fallback regardless.
  */
 export function readStoredTabs(): TabsState {
   try {

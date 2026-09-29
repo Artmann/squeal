@@ -124,7 +124,7 @@ const tabsSlice = createSlice({
   name: 'tabs',
   initialState: initialTabsState,
   reducers: {
-    tabActivated: (state, action: PayloadAction<string>) => {
+    activateTab: (state, action: PayloadAction<string>) => {
       if (!state.openWorksheetIds.includes(action.payload)) {
         return
       }
@@ -132,7 +132,7 @@ const tabsSlice = createSlice({
       state.activeWorksheetId = action.payload
     },
 
-    tabClosed: (state, action: PayloadAction<string>) => {
+    closeTab: (state, action: PayloadAction<string>) => {
       const wasActive = state.activeWorksheetId === action.payload
 
       state.openWorksheetIds = state.openWorksheetIds.filter(
@@ -145,7 +145,7 @@ const tabsSlice = createSlice({
       }
     },
 
-    tabOpened: (state, action: PayloadAction<string>) => {
+    openTab: (state, action: PayloadAction<string>) => {
       if (!state.openWorksheetIds.includes(action.payload)) {
         state.openWorksheetIds.push(action.payload)
       }
@@ -157,7 +157,7 @@ const tabsSlice = createSlice({
      * Drops tabs for worksheets that no longer exist — deleted here or in
      * another window — and falls back to a pick when nothing survives.
      */
-    tabsReconciled: (state, action: PayloadAction<TabsReconciliation>) => {
+    reconcileTabs: (state, action: PayloadAction<TabsReconciliation>) => {
       const { availableIds, fallbackId } = action.payload
 
       const openWorksheetIds = resolveOpenTabs(state, availableIds, fallbackId)
@@ -180,7 +180,7 @@ const tabsSlice = createSlice({
       state.status = next.status
     },
 
-    tabsReordered: (state, action: PayloadAction<string[]>) => {
+    reorderTabs: (state, action: PayloadAction<string[]>) => {
       const open = new Set(state.openWorksheetIds)
 
       const reordered = action.payload.filter((id) => open.has(id))
