@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { WorksheetDto } from '@/glue/worksheets'
 
-import { getNextUntitledName } from './worksheet-naming'
+import { getDuplicateName, getNextUntitledName } from './worksheet-naming'
 
 function worksheet(name: string): WorksheetDto {
   return {
@@ -54,5 +54,56 @@ describe('getNextUntitledName', () => {
     expect(
       getNextUntitledName([worksheet('Untitled'), worksheet('Untitled 9')])
     ).toEqual('Untitled 10')
+  })
+})
+
+describe('getDuplicateName', () => {
+  it('adds copy to the name', () => {
+    expect(getDuplicateName([worksheet('Revenue')], 'Revenue')).toEqual(
+      'Revenue copy'
+    )
+  })
+
+  it('numbers the copy when one already exists', () => {
+    expect(
+      getDuplicateName(
+        [worksheet('Revenue'), worksheet('Revenue copy')],
+        'Revenue'
+      )
+    ).toEqual('Revenue copy 2')
+  })
+
+  it('goes past the highest copy, not the count', () => {
+    expect(
+      getDuplicateName(
+        [worksheet('Revenue'), worksheet('Revenue copy 4')],
+        'Revenue'
+      )
+    ).toEqual('Revenue copy 5')
+  })
+
+  // "Revenue copy copy" says nothing "Revenue copy 2" does not.
+  it('numbers a copy of a copy instead of stacking the word', () => {
+    expect(
+      getDuplicateName(
+        [worksheet('Revenue'), worksheet('Revenue copy')],
+        'Revenue copy'
+      )
+    ).toEqual('Revenue copy 2')
+  })
+
+  it('ignores worksheets that only start with the same name', () => {
+    expect(
+      getDuplicateName(
+        [worksheet('Revenue'), worksheet('Revenue copy of old')],
+        'Revenue'
+      )
+    ).toEqual('Revenue copy')
+  })
+
+  it('keeps a name that is nothing but the word copy', () => {
+    expect(getDuplicateName([worksheet(' copy')], ' copy')).toEqual(
+      ' copy copy'
+    )
   })
 })

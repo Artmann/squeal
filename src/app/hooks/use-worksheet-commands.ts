@@ -6,7 +6,7 @@ import { WorksheetDto } from '@/glue/worksheets'
 import { useCollections } from '../collections-context'
 import { useAppDispatch, useAppSelector } from '../store'
 import { selectActiveWorksheetId, tabsActions } from '../store/tabs-slice'
-import { getNextUntitledName } from '../worksheet-naming'
+import { getDuplicateName, getNextUntitledName } from '../worksheet-naming'
 import { pickDatabaseForNewWorksheet } from '../worksheet-selection'
 import { useCreateWorksheet } from './mutations'
 
@@ -62,6 +62,63 @@ export function useCreateAndOpenWorksheet(
       }
     )
   }, [activeWorksheetId, createWorksheet, onCreated, openWorksheet, worksheets])
+}
+
+/**
+ * Duplicating is a create that copies the content and the database from an
+ * existing worksheet. It goes through the ordinary create route, so the copy
+ * lands at the top of the list like any new worksheet, and it opens so the
+ * user sees what they made.
+ */
+export function useDuplicateAndOpenWorksheet(): (worksheetId: string) => void {
+  const createWorksheet = useCreateWorksheet()
+  const openWorksheet = useOpenWorksheet()
+  const { worksheets } = useCollections()
+
+  return useCallback(
+    (worksheetId: string) => {
+      // Read at click time rather than from the row that rendered the menu:
+      // autosave writes the editor content into the collection, so this is
+      // the newest content the app has.
+      const source = worksheets.get(worksheetId)
+
+      if (source === undefined) {
+        toast.error('Failed to duplicate worksheet', {
+          description:
+            'The worksheet no longer exists. It may have been deleted in another window.'
+        })
+
+        return
+      }
+
+      const existing = Array.from(worksheets.values())
+
+      createWorksheet.mutate(
+        {
+          content: source.content,
+          // Optional rather than nullable, so an unset one is left out.
+          ...(source.databaseId === null
+            ? {}
+            : { databaseId: source.databaseId }),
+          name: getDuplicateName(existing, source.name)
+        },
+        {
+          onError: (error: unknown) => {
+            const message =
+              error instanceof Error ? error.message : 'Unknown error'
+
+            toast.error('Failed to duplicate worksheet', {
+              description: message
+            })
+          },
+          onSuccess: (worksheet) => {
+            openWorksheet(worksheet.id)
+          }
+        }
+      )
+    },
+    [createWorksheet, openWorksheet, worksheets]
+  )
 }
 
 /**

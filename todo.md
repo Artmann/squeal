@@ -209,13 +209,18 @@ at the code to change.
 > so check the current components before starting anything here — several of
 > these items are narrower than they read.
 
-- [ ] **Add worksheet delete and duplicate.** `WorksheetExplorer.tsx` has
+- [x] **Add worksheet delete and duplicate.** `WorksheetExplorer.tsx` has
       create + rename but no delete, and there is no route to call: the contract
       (`src/glue/api/groups/worksheets.ts`) exposes only list / create / reorder
       / update. Needs a `DELETE /worksheets/:id` endpoint, a soft delete in
       `WorksheetService` mirroring `deleteDatabase`
       (`database-service.ts:218-245`), tab eviction in `tabs-slice`, and a
-      right-click menu (Rename / Duplicate / Delete) with confirmation.
+      right-click menu (Rename / Duplicate / Delete) with confirmation. Fixed:
+      delete had already landed (`DELETE /worksheets/:id`,
+      `WorksheetService.remove`, `tabsReconciled` pruning the tab). Duplicate is
+      `useDuplicateAndOpenWorksheet` in `hooks/use-worksheet-commands.ts`, which
+      copies content and database through the create route under a name from
+      `getDuplicateName` in `worksheet-naming.ts`.
 - [x] **Add a "Remove database" action.** `DatabaseExplorer.tsx:195-203` offers
       only "Edit". Fixed: the row context menu has Delete
       (`DatabaseExplorer.tsx:442-445`) behind a confirmation that spells out the
