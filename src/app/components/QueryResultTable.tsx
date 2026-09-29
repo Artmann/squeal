@@ -198,7 +198,11 @@ export const QueryResultTable = memo(function QueryResultTable({
               </tr>
             )}
 
-            {isFiltering && visibleRowCount === 0 && (
+            {result.rows.length === 0 && (
+              <NoRowsRow columnCount={columns.length + 1} />
+            )}
+
+            {isFiltering && visibleRowCount === 0 && result.rows.length > 0 && (
               <NoMatchesRow
                 columnCount={columns.length + 1}
                 query={search?.query ?? ''}
@@ -244,6 +248,24 @@ function NoMatchesRow({
             the rest.
           </span>
         )}
+      </td>
+    </tr>
+  )
+}
+
+/**
+ * What the grid says when the query came back with columns and no rows. The
+ * headers stay above it on purpose: they show the shape of what was asked
+ * for, which is often why the query was run.
+ */
+function NoRowsRow({ columnCount }: { columnCount: number }): ReactElement {
+  return (
+    <tr>
+      <td
+        className="px-[14px] py-4 text-[12.5px] text-text2"
+        colSpan={columnCount}
+      >
+        No rows returned.
       </td>
     </tr>
   )

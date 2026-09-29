@@ -48,6 +48,13 @@ export function QueryResultContent({
 
   if (query?.result) {
     if (result !== undefined) {
+      // DML and DDL come back with no fields and no rows. There are no columns
+      // to head a grid with, so say what happened instead of drawing an empty
+      // one.
+      if (result.fields.length === 0 && result.rows.length === 0) {
+        return <NoResultSet rowCount={result.rowCount} />
+      }
+
       return (
         <QueryResultTable
           result={result}
@@ -114,6 +121,26 @@ function FailedQuery({
       {durationMs !== null && (
         <p className="mt-[10px] text-[11.5px] text-text3">
           Failed after {Intl.NumberFormat().format(durationMs)} ms
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A statement that ran and returned no result set. For DML the adapters put
+ * the affected-row count in `rowCount`, so that is shown when there is one.
+ */
+function NoResultSet({ rowCount }: { rowCount: number }): ReactElement {
+  const noun = rowCount === 1 ? 'row' : 'rows'
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-[6px] p-6 text-center">
+      <p className="text-[12.5px] text-text2">No rows returned.</p>
+
+      {rowCount > 0 && (
+        <p className="text-[11.5px] text-text3">
+          {Intl.NumberFormat().format(rowCount)} {noun} affected.
         </p>
       )}
     </div>
