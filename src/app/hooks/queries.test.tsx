@@ -3,10 +3,15 @@ import { ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { canceledQueryMessage } from '@/glue/queries'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { renderWithProviders } from '../test-utils'
-import { useQueriesList, useQueryResultSync } from './queries'
+import {
+  unavailableResultMessage,
+  useQueriesList,
+  useQueryResult,
+  useQueryResultSync
+} from './queries'
 import { useStartQuery } from './use-start-query'
 
 vi.mock('../api-client', () => ({
@@ -15,13 +20,14 @@ vi.mock('../api-client', () => ({
     getDatabases: vi.fn(async () => []),
     getQueries: vi.fn(async () => []),
     getQuery: vi.fn(),
+    getQueryStatus: vi.fn(),
     getWorksheets: vi.fn(async () => [])
   }
 }))
 
 import { apiClient } from '../api-client'
 
-const runningQuery: QueryDto = {
+const runningQuery: QuerySummaryDto = {
   content: 'SELECT 1;',
   databaseId: 'database-1',
   error: null,
@@ -76,7 +82,7 @@ function finishWith(error: string | null): void {
     query: { ...runningQuery, id: request.id ?? runningQuery.id }
   }))
 
-  vi.mocked(apiClient.getQuery).mockImplementation(async (queryId) => ({
+  vi.mocked(apiClient.getQueryStatus).mockImplementation(async (queryId) => ({
     ...runningQuery,
     error,
     finishedAt: 2,
@@ -136,5 +142,124 @@ describe('useQueryResultSync', () => {
     expect(await screen.findByText('finished')).toBeInTheDocument()
 
     expect(screen.queryByText('Query failed')).not.toBeInTheDocument()
+  })
+
+  // The poll carries the size of the result and nothing more; the rows are a
+  // separate read, made once the query has finished.
+  it('writes the polled summary into the collection without asking for rows', async () => {
+    vi.mocked(apiClient.createQuery).mockImplementation(async (request) => ({
+      query: { ...runningQuery, id: request.id ?? runningQuery.id }
+    }))
+    vi.mocked(apiClient.getQueryStatus).mockImplementation(async (queryId) => ({
+      ...runningQuery,
+      finishedAt: 2,
+      id: queryId,
+      result: { rowCount: 1, truncated: false }
+    }))
+
+    renderWithProviders(<SyncProbe notifyOnError />, { queries: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'start' }))
+
+    expect(await screen.findByText('finished')).toBeInTheDocument()
+    expect(vi.mocked(apiClient.getQuery).mock.calls).toEqual([])
+  })
+})
+
+const finishedResult = {
+  fields: [{ name: 'value' }],
+  rowCount: 1,
+  rows: [{ value: 1 }],
+  truncated: false
+}
+
+const finishedQuery: QuerySummaryDto = {
+  ...runningQuery,
+  finishedAt: 2,
+  result: { rowCount: 1, truncated: false }
+}
+
+function ResultProbe({
+  query
+}: {
+  query: QuerySummaryDto | undefined
+}): ReactElement {
+  const { error, result } = useQueryResult(query)
+
+  return (
+    <output>
+      {JSON.stringify({ error: error ?? null, result: result ?? null })}
+    </output>
+  )
+}
+
+function readProbe(): unknown {
+  return JSON.parse(screen.getByRole('status').textContent ?? '')
+}
+
+describe('useQueryResult', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('reads the rows of a finished query', async () => {
+    vi.mocked(apiClient.getQuery).mockImplementation(async () => ({
+      ...finishedQuery,
+      result: finishedResult
+    }))
+
+    renderWithProviders(<ResultProbe query={finishedQuery} />, {
+      queries: []
+    })
+
+    await screen.findByText(/"rows"/)
+
+    expect(readProbe()).toEqual({ error: null, result: finishedResult })
+    expect(vi.mocked(apiClient.getQuery).mock.calls).toEqual([['q-1']])
+  })
+
+  it.each([
+    ['a running query', runningQuery],
+    ['a failed query', { ...runningQuery, error: 'boom', finishedAt: 2 }],
+    ['a query with no result', { ...runningQuery, finishedAt: 2 }]
+  ])('asks nothing for %s', (_, query) => {
+    renderWithProviders(<ResultProbe query={query} />, { queries: [] })
+
+    expect(readProbe()).toEqual({ error: null, result: null })
+    expect(vi.mocked(apiClient.getQuery).mock.calls).toEqual([])
+  })
+
+  it('explains what to do when the rows will not load', async () => {
+    vi.mocked(apiClient.getQuery).mockRejectedValue(new Error('offline'))
+
+    renderWithProviders(<ResultProbe query={finishedQuery} />, {
+      queries: []
+    })
+
+    await screen.findByText(/Could not load/)
+
+    expect(readProbe()).toEqual({
+      error: unavailableResultMessage,
+      result: null
+    })
+  })
+
+  it('passes on the reason a stored result could not be read', async () => {
+    vi.mocked(apiClient.getQuery).mockImplementation(async () => ({
+      ...finishedQuery,
+      error: 'Stored result could not be read.',
+      result: null
+    }))
+
+    renderWithProviders(<ResultProbe query={finishedQuery} />, {
+      queries: []
+    })
+
+    await screen.findByText(/Stored result/)
+
+    expect(readProbe()).toEqual({
+      error: 'Stored result could not be read.',
+      result: null
+    })
   })
 })

@@ -2,7 +2,7 @@ import { ActivityIcon, SettingsIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
 import { isQueryFinished } from '@/glue/queries'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 import type { DatabaseDto } from '@/glue/databases'
 import { findEnvironment } from '@/glue/environments'
 
@@ -21,7 +21,7 @@ interface StatusBarProps {
   /** The worksheet's connection, or undefined when it has none this app knows. */
   database: DatabaseDto | undefined
   hasSaveFailed: boolean
-  query: QueryDto | undefined
+  query: QuerySummaryDto | undefined
 }
 
 const healthColors: Record<ConnectionHealth, string> = {
@@ -39,7 +39,9 @@ const healthTitles: Record<ConnectionHealth, string> = {
   unknown: 'No queries run yet'
 }
 
-function getConnectionHealth(query: QueryDto | undefined): ConnectionHealth {
+function getConnectionHealth(
+  query: QuerySummaryDto | undefined
+): ConnectionHealth {
   if (!isQueryFinished(query)) {
     return 'unknown'
   }
@@ -47,7 +49,9 @@ function getConnectionHealth(query: QueryDto | undefined): ConnectionHealth {
   return query.error === null ? 'succeeded' : 'failed'
 }
 
-function formatRunSummary(query: QueryDto | undefined): string | undefined {
+function formatRunSummary(
+  query: QuerySummaryDto | undefined
+): string | undefined {
   if (!isQueryFinished(query)) {
     return undefined
   }

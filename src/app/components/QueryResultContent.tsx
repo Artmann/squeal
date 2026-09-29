@@ -2,7 +2,7 @@ import { BanIcon } from 'lucide-react'
 import { ReactElement, useEffect, useState } from 'react'
 
 import { canceledQueryMessage, isQueryInFlight } from '@/glue/queries'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QueryResultDto, QuerySummaryDto } from '@/glue/api/schemas'
 
 import { QueryResultEmpty } from './QueryResultEmpty'
 import { QueryResultTable } from './QueryResultTable'
@@ -11,13 +11,19 @@ import { toQueryErrorParts } from './query-error-parts'
 
 interface QueryResultContentProps {
   databaseName: string | undefined
-  query: QueryDto | undefined
+  query: QuerySummaryDto | undefined
+  /** The query's rows, which arrive separately from the query itself. */
+  result?: QueryResultDto
+  /** Why the rows could not be loaded, when they could not. */
+  resultError?: string
   search?: ResultSearchView
 }
 
 export function QueryResultContent({
   databaseName,
   query,
+  result,
+  resultError,
   search
 }: QueryResultContentProps): ReactElement {
   if (isQueryInFlight(query)) {
@@ -41,15 +47,38 @@ export function QueryResultContent({
   }
 
   if (query?.result) {
-    return (
-      <QueryResultTable
-        result={query.result}
-        search={search}
-      />
-    )
+    if (result !== undefined) {
+      return (
+        <QueryResultTable
+          result={result}
+          search={search}
+        />
+      )
+    }
+
+    if (resultError !== undefined) {
+      return (
+        <FailedQuery
+          error={resultError}
+          durationMs={null}
+        />
+      )
+    }
+
+    return <LoadingResult />
   }
 
   return <QueryResultEmpty />
+}
+
+function LoadingResult(): ReactElement {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3">
+      <div className="size-5 animate-spin rounded-full border-2 border-border border-t-accent" />
+
+      <p className="text-[12.5px] text-text2">Loading results…</p>
+    </div>
+  )
 }
 
 function FailedQuery({

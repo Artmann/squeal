@@ -62,7 +62,13 @@ describe('reconcileColumns', () => {
       worksheetsTable
     ])
 
-    expect(added).toEqual(['queries.databaseId', 'worksheets.databaseId'])
+    // The size columns came later still, so the same database misses them too.
+    expect(added).toEqual([
+      'queries.databaseId',
+      'queries.resultRowCount',
+      'queries.resultTruncated',
+      'worksheets.databaseId'
+    ])
 
     expect(await columnNames(database, 'worksheets')).toEqual(
       schemaColumnNames(worksheetsTable)
@@ -115,6 +121,8 @@ describe('reconcileColumns', () => {
         id: 'query-1',
         queriedAt: 2,
         result: null,
+        resultRowCount: null,
+        resultTruncated: null,
         worksheetId: 'worksheet-1'
       }
     ])

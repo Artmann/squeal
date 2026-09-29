@@ -291,7 +291,15 @@ describe('apiClient', () => {
       expect((await capturedFetch()).headers.traceparent).toBeUndefined()
     })
 
-    it('does not send a traceparent for the result poller', async () => {
+    it('does not send a traceparent for the status poller', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ query: queryDto }))
+
+      await apiClient.getQueryStatus('query-1')
+
+      expect((await capturedFetch()).headers.traceparent).toBeUndefined()
+    })
+
+    it('does not send a traceparent for the result read', async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({ query: queryDto }))
 
       await apiClient.getQuery('query-1')

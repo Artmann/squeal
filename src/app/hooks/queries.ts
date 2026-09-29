@@ -15,6 +15,8 @@ import { consumeErrorNotice } from './use-start-query'
 import type {
   EnvironmentDto,
   QueryDto,
+  QueryResultDto,
+  QuerySummaryDto,
   SchemaInfoDto,
   SecretStorageResponse,
   UpdateStatusResponse
@@ -255,22 +257,23 @@ export function useUpdateStatus() {
 }
 
 // The backend finishes queries out-of-band, so while the given query is
-// unfinished this polls the single row and writes the terminal result into
-// the queries collection, where the rest of the app reads it.
-export function useQueryResultSync(query: QueryDto | undefined): void {
+// unfinished this polls its status and writes the terminal state into the
+// queries collection, where the rest of the app reads it. The status carries
+// the result's size but not its rows — `useQueryResult` reads those.
+export function useQueryResultSync(query: QuerySummaryDto | undefined): void {
   const { queries } = useCollections()
 
   const queryId = query?.id
   const isRunning = isQueryInFlight(query)
 
-  const polled = useQuery<QueryDto>({
-    queryKey: queryId ? queryKeys.query(queryId) : ['query', 'noop'],
+  const polled = useQuery<QuerySummaryDto>({
+    queryKey: queryId ? queryKeys.queryStatus(queryId) : ['query', 'noop'],
     queryFn: () => {
       if (!queryId) {
         throw new Error('Query id is required')
       }
 
-      return apiClient.getQuery(queryId)
+      return apiClient.getQueryStatus(queryId)
     },
     enabled: Boolean(queryId) && isRunning,
     refetchInterval: (pollQuery) => {
@@ -314,4 +317,63 @@ export function useQueryResultSync(query: QueryDto | undefined): void {
       queries.utils.writeUpsert(finished)
     })
   }, [finished, isRunning, queries])
+}
+
+export const unavailableResultMessage =
+  'Could not load the rows for this query. Run it again to see them.'
+
+export interface QueryResultRead {
+  /** Why the rows could not be shown, when they could not. */
+  error: string | undefined
+  /** Undefined while loading, and for a query that has no rows to show. */
+  result: QueryResultDto | undefined
+}
+
+// The rows of one finished query. The history list and the status poll carry
+// only a result's size, so the rows are asked for here, once per query:
+// a finished query never changes, hence `staleTime: Infinity`. Nothing is
+// asked for a query that is running, failed, or produced no result.
+export function useQueryResult(
+  query: QuerySummaryDto | undefined
+): QueryResultRead {
+  const queryId =
+    isQueryFinished(query) && query.error === null && query.result !== null
+      ? query.id
+      : undefined
+
+  const fetched = useQuery<QueryDto>({
+    queryKey: queryId ? queryKeys.query(queryId) : ['query', 'noop'],
+    queryFn: () => {
+      if (!queryId) {
+        throw new Error('Query id is required')
+      }
+
+      return apiClient.getQuery(queryId)
+    },
+    enabled: queryId !== undefined,
+    staleTime: Infinity,
+    // A result that will not load belongs in the results pane, not on the
+    // app's error screen.
+    throwOnError: false
+  })
+
+  if (queryId === undefined) {
+    return { error: undefined, result: undefined }
+  }
+
+  if (fetched.data !== undefined) {
+    const { error, result } = fetched.data
+
+    if (result === null) {
+      return { error: error ?? unavailableResultMessage, result: undefined }
+    }
+
+    return { error: undefined, result }
+  }
+
+  if (fetched.isError) {
+    return { error: unavailableResultMessage, result: undefined }
+  }
+
+  return { error: undefined, result: undefined }
 }

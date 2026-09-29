@@ -28,6 +28,15 @@ export const QueriesLive = HttpApiBuilder.group(
           return { query }
         }).pipe(orDieInternal)
       )
+      .handle('status', ({ path }) =>
+        Effect.gen(function* () {
+          const runner = yield* QueryRunner
+
+          const query = yield* runner.status(path.id)
+
+          return { query }
+        }).pipe(orDieInternal)
+      )
       .handle('create', ({ payload }) =>
         Effect.gen(function* () {
           const runner = yield* QueryRunner

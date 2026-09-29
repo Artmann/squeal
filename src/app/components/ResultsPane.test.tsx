@@ -135,7 +135,11 @@ describe('ResultsPane', () => {
         query={successfulQuery}
         worksheetId="ws-1"
       />,
-      { openWorksheetId: 'ws-1', queries: [successfulQuery] }
+      {
+        openWorksheetId: 'ws-1',
+        queries: [successfulQuery],
+        queryResults: [successfulQuery]
+      }
     )
 
     expect(screen.getByText(/100 rows/)).toBeInTheDocument()
@@ -166,7 +170,11 @@ describe('ResultsPane', () => {
         query={successfulQuery}
         worksheetId="ws-1"
       />,
-      { openWorksheetId: 'ws-1', queries: [successfulQuery] }
+      {
+        openWorksheetId: 'ws-1',
+        queries: [successfulQuery],
+        queryResults: [successfulQuery]
+      }
     )
 
     await user.click(screen.getByRole('tab', { name: 'Messages' }))
@@ -316,7 +324,12 @@ function renderFindablePane(
       query={findableQuery}
       worksheetId="ws-1"
     />,
-    { openWorksheetId: 'ws-1', queries: [], ...options }
+    {
+      openWorksheetId: 'ws-1',
+      queries: [],
+      queryResults: [findableQuery],
+      ...options
+    }
   )
 }
 
@@ -420,13 +433,17 @@ describe('ResultsPane find in results', () => {
   it('says how far the search reached when the result was cut off', async () => {
     const user = userEvent.setup()
 
+    const truncatedQuery = query({
+      result: { ...findableResult, truncated: true }
+    })
+
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        query={query({ result: { ...findableResult, truncated: true } })}
+        query={truncatedQuery}
         worksheetId="ws-1"
       />,
-      { openWorksheetId: 'ws-1', queries: [] }
+      { openWorksheetId: 'ws-1', queries: [], queryResults: [truncatedQuery] }
     )
 
     await user.keyboard('{Meta>}f{/Meta}')
@@ -508,15 +525,17 @@ describe('ResultsPane find in results', () => {
   it('opens onto an empty result and says there is nothing to search', async () => {
     const user = userEvent.setup()
 
+    const emptyQuery = query({
+      result: { fields: [], rowCount: 0, rows: [], truncated: false }
+    })
+
     renderWithProviders(
       <ResultsPane
         databaseName="Pagila"
-        query={query({
-          result: { fields: [], rowCount: 0, rows: [], truncated: false }
-        })}
+        query={emptyQuery}
         worksheetId="ws-1"
       />,
-      { openWorksheetId: 'ws-1', queries: [] }
+      { openWorksheetId: 'ws-1', queries: [], queryResults: [emptyQuery] }
     )
 
     await user.keyboard('{Meta>}f{/Meta}')
@@ -562,6 +581,7 @@ describe('ResultsPane find in results', () => {
 
     renderWithProviders(<SwitchableResultPane />, {
       queries: [],
+      queryResults: [findableQuery],
       tabs: { openWorksheetIds: ['ws-1', 'ws-2'] }
     })
 

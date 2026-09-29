@@ -70,6 +70,62 @@ describe('query routes', () => {
     })
   })
 
+  it('answers the status poll and the list with the result size but not its rows', async () => {
+    const { list, status } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const runner = yield* QueryRunner
+
+        yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        yield* client.queries.create({ payload: queryInput })
+        yield* runner.awaitIdle
+
+        const status = yield* client.queries.status({
+          path: { id: queryInput.id }
+        })
+        const list = yield* client.queries.list()
+
+        return { list, status }
+      })
+    )
+
+    const summary = {
+      content: 'select 1',
+      databaseId: expect.any(String),
+      error: null,
+      finishedAt: expect.any(Number),
+      id: 'query-1',
+      queriedAt: 1_000,
+      result: { rowCount: 1, truncated: false },
+      worksheetId: 'worksheet-1'
+    }
+
+    expect(status).toEqual({ query: summary })
+    expect(list).toEqual({ queries: [summary] })
+  })
+
+  it('answers 404 from the status poll for an unknown query', async () => {
+    const error = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+
+        return yield* client.queries
+          .status({ path: { id: 'missing' } })
+          .pipe(Effect.flip)
+      })
+    )
+
+    expect(error).toEqual(
+      expect.objectContaining({
+        _tag: 'QueryNotFoundError',
+        queryId: 'missing'
+      })
+    )
+  })
+
   it('answers 400 when no database is available', async () => {
     const error = await run(
       Effect.gen(function* () {

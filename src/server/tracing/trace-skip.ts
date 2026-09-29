@@ -1,12 +1,13 @@
 // Deliberately untraced requests, mirroring the renderer's shouldTrace list:
 // /health (noise), everything under /traces (self-tracing feedback loop),
-// the 250ms result poller (GET /queries/:id) which would drown the trace
-// list, and the update-status poll, which answers from memory every minute
-// for the life of the app and would quietly eat a fifth of the span
-// retention budget. POST /updates/install stays traced — it happens once and
-// is worth seeing. CORS preflights are skipped outright; the browser makes them,
-// not the renderer, so they are not in that list.
-const queryPollPattern = /^\/queries\/[^/]+$/
+// the 250ms status poller (GET /queries/:id/status) which would drown the
+// trace list, the result read that follows it (GET /queries/:id), and the
+// update-status poll, which answers from memory every minute for the life of
+// the app and would quietly eat a fifth of the span retention budget. POST
+// /updates/install stays traced — it happens once and is worth seeing. CORS
+// preflights are skipped outright; the browser makes them, not the renderer,
+// so they are not in that list.
+const queryPollPattern = /^\/queries\/[^/]+(\/status)?$/
 
 export function shouldSkipTracing(method: string, path: string): boolean {
   // A preflight is not a request the user made, and it carries no traceparent,

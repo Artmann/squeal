@@ -1,10 +1,11 @@
 import { SearchIcon } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 import { isQueryFinished } from '@/glue/queries'
 
 import { getFindShortcut } from '../find-shortcut'
+import { useQueryResult } from '../hooks/queries'
 import { usePerWorksheetState } from '../hooks/use-per-worksheet-state'
 import { usePersistedSizes } from '../hooks/use-persisted-sizes'
 import { useResultsFind } from '../hooks/use-results-find'
@@ -30,7 +31,7 @@ const maximumRememberedHeights = 50
 
 interface ResultsPaneProps {
   databaseName: string | undefined
-  query: QueryDto | undefined
+  query: QuerySummaryDto | undefined
   worksheetId: string | undefined
 }
 
@@ -81,8 +82,10 @@ export function ResultsPane({
 
   const showResults = useCallback(() => selectTab('results'), [selectTab])
 
+  const { error: resultError, result } = useQueryResult(query)
+
   const find = useResultsFind({
-    result: query?.result,
+    result,
     worksheetId,
     onShowResults: showResults
   })
@@ -136,7 +139,7 @@ export function ResultsPane({
             {isFindShowing ? (
               <ResultsFindBar find={find} />
             ) : (
-              query?.result && (
+              result && (
                 <button
                   aria-label="Find in results"
                   className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
@@ -169,6 +172,8 @@ export function ResultsPane({
             <QueryResultContent
               databaseName={databaseName}
               query={query}
+              result={result}
+              resultError={resultError}
               search={find.search}
             />
           )}
@@ -178,7 +183,11 @@ export function ResultsPane({
   )
 }
 
-function ResultsMeta({ query }: { query: QueryDto | undefined }): ReactElement {
+function ResultsMeta({
+  query
+}: {
+  query: QuerySummaryDto | undefined
+}): ReactElement {
   if (!isQueryFinished(query)) {
     return <></>
   }

@@ -4,7 +4,7 @@ import { QueryClient } from '@tanstack/react-query'
 
 import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { apiClient } from './api-client'
 import { queryKeys } from './query-keys'
@@ -55,7 +55,7 @@ export function createCollections(queryClient: QueryClient) {
 
   const queries = createCollection(
     queryCollectionOptions({
-      getKey: (item: QueryDto) => item.id,
+      getKey: (item: QuerySummaryDto) => item.id,
       onInsert: async ({ transaction }) => {
         await Promise.all(
           transaction.mutations.map(async (mutation) => {

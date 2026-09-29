@@ -198,11 +198,17 @@ from older databases. A new table or column goes in both
   renderer discriminates on `_tag`. Errors internal to the backend
   (`src/server/errors.ts`) are never in the contract — they become defects and
   surface as a 500.
-- Query execution is async: POST creates query, poll GET `/queries/:id` for
-  results. The background fiber lives in a `FiberMap` owned by the runtime
-  scope, so shutdown interrupts it; user cancel goes through the adapter
-  (`pg_cancel_backend`), never fiber interruption, and there is deliberately no
-  timeout on user queries.
+- Query execution is async: POST creates query, poll GET `/queries/:id/status`
+  until `finishedAt` is set, then GET `/queries/:id` once for the rows
+  (`useQueryResult`, `staleTime: Infinity`). The status poll and the history
+  list (GET `/queries`) return `QuerySummaryDto` — the result's `rowCount` and
+  `truncated`, never its rows — projected in SQL from the `resultRowCount` /
+  `resultTruncated` columns `saveResult` writes, so neither reads the `result`
+  blob. Rows saved before those columns existed are summarized from the blob
+  with SQLite's JSON functions. The background fiber lives in a `FiberMap` owned
+  by the runtime scope, so shutdown interrupts it; user cancel goes through the
+  adapter (`pg_cancel_backend`), never fiber interruption, and there is
+  deliberately no timeout on user queries.
 - Database `connectionInfo` is encrypted at rest with Electron `safeStorage`
   once the user has granted permission (`enc:v1:` prefix in the `databases`
   table; see Secret storage below). API responses never include passwords —
@@ -402,7 +408,8 @@ tracer stays hand-rolled and batches spans to `POST /traces/spans`.
   `HTTP POST /queries` → `POST /queries` (server) → `QueryRunner.createAndRun` →
   `query.execute` → `query.loadConnection` / `db.query` / `query.saveResult`.
   The background fiber inherits the request span as its parent automatically.
-- Deliberately untraced: `/health`, `/traces*`, and the 250ms result poller
+- Deliberately untraced: `/health`, `/traces*`, the 250ms status poller
+  (`GET /queries/:id/status`), and the result read that follows it
   (`GET /queries/:id`) — see `src/server/tracing/trace-skip.ts`. Service methods
   on those paths use an unnamed `Effect.fn` so they do not emit parentless root
   traces. Uncaught renderer errors and unhandled rejections appear as

@@ -10,7 +10,7 @@ import {
   type CreateEnvironmentRequest,
   type CreateWorksheetRequest,
   type EnvironmentDto,
-  type QueryDto,
+  type QuerySummaryDto,
   UpdateDatabaseRequest,
   type UpdateEnvironmentRequest
 } from '@/glue/api/schemas'
@@ -35,7 +35,9 @@ export interface CancelQuery {
  * clears the moment the real terminal row lands and cannot outlive the query
  * it belongs to.
  */
-export function useCancelQuery(query: QueryDto | undefined): CancelQuery {
+export function useCancelQuery(
+  query: QuerySummaryDto | undefined
+): CancelQuery {
   const [cancelingQueryId, setCancelingQueryId] = useState<string>()
 
   // A rejection lands long after the click that built its handler, so it cannot

@@ -32,6 +32,7 @@ import type {
   HealthResponse,
   ListTracesUrlParams,
   QueryDto,
+  QuerySummaryDto,
   ReorderDatabasesResponse,
   ReorderWorksheetsResponse,
   SchemaInfoDto,
@@ -458,7 +459,7 @@ export const apiClient = {
     return run(Effect.flatMap(client, (api) => api.health.get()))
   },
 
-  async getQueries(): Promise<QueryDto[]> {
+  async getQueries(): Promise<QuerySummaryDto[]> {
     const data = await traced(
       'HTTP GET /queries',
       { method: 'GET', path: '/queries' },
@@ -469,11 +470,23 @@ export const apiClient = {
     return data.queries
   },
 
-  // Untraced: this is the 250ms result poller.
+  // Untraced, like the status poll it follows: the rows of a finished query,
+  // read once per query the results pane shows.
   async getQuery(queryId: string): Promise<QueryDto> {
     const data = await run(
       Effect.flatMap(client, (api) =>
         api.queries.get({ path: { id: queryId } })
+      )
+    )
+
+    return data.query
+  },
+
+  // Untraced: this is the 250ms status poller.
+  async getQueryStatus(queryId: string): Promise<QuerySummaryDto> {
+    const data = await run(
+      Effect.flatMap(client, (api) =>
+        api.queries.status({ path: { id: queryId } })
       )
     )
 

@@ -1,4 +1,4 @@
-import { desc, eq, isNull } from 'drizzle-orm'
+import { desc, eq, isNull, sql } from 'drizzle-orm'
 import { Cause, Clock, Effect, FiberMap, Option } from 'effect'
 import invariant from 'tiny-invariant'
 
@@ -9,7 +9,11 @@ import {
   type QueryResult
 } from '@/databases/adapter'
 import { NoDatabaseAvailableError, QueryNotFoundError } from '@/glue/api/errors'
-import type { CreateQueryRequest, QueryDto } from '@/glue/api/schemas'
+import type {
+  CreateQueryRequest,
+  QueryDto,
+  QuerySummaryDto
+} from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
 import { QueryExecutionError } from '../errors'
 import { AdapterFactory } from './adapter-factory'
@@ -154,7 +158,12 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
         .execute((client) =>
           client
             .update(queriesTable)
-            .set({ finishedAt: Date.now(), result: JSON.stringify(result) })
+            .set({
+              finishedAt: Date.now(),
+              result: JSON.stringify(result),
+              resultRowCount: result.rowCount,
+              resultTruncated: result.truncated
+            })
             .where(eq(queriesTable.id, query.id))
         )
         .pipe(
@@ -360,9 +369,9 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
       return transformQueryRow(insertedRow)
     })
 
-    // No named span here: this is the 250ms result poller's path, which is
-    // excluded from request tracing — a span would become a parentless root
-    // trace on every poll.
+    // No named span here, the same as `status`: `GET /queries/:id` is excluded
+    // from request tracing, so a span would become a parentless root trace on
+    // every read. The renderer asks this once per finished query, for the rows.
     const get = Effect.fn(function* (id: string) {
       const rows = yield* appDatabase.execute((client) =>
         client
@@ -387,13 +396,37 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
     const list = Effect.fn('QueryRunner.list')(function* () {
       const rows = yield* appDatabase.execute((client) =>
         client
-          .select()
+          .select(summaryColumns)
           .from(queriesTable)
           .orderBy(desc(queriesTable.queriedAt))
           .limit(250)
       )
 
-      return rows.map(transformQueryRow)
+      return rows.map(transformSummaryRow)
+    })
+
+    // No named span here: this is the 250ms status poller's path, which is
+    // excluded from request tracing — a span would become a parentless root
+    // trace on every poll.
+    const status = Effect.fn(function* (id: string) {
+      const rows = yield* appDatabase.execute((client) =>
+        client
+          .select(summaryColumns)
+          .from(queriesTable)
+          .where(eq(queriesTable.id, id))
+          .limit(1)
+      )
+
+      const row = rows[0]
+
+      if (row === undefined) {
+        return yield* new QueryNotFoundError({
+          message: 'Query not found',
+          queryId: id
+        })
+      }
+
+      return transformSummaryRow(row)
     })
 
     return {
@@ -402,7 +435,8 @@ export class QueryRunner extends Effect.Service<QueryRunner>()('QueryRunner', {
       cancel,
       createAndRun,
       get,
-      list
+      list,
+      status
     } as const
   })
 }) {}
@@ -493,6 +527,101 @@ function toStoredQueryResult(value: unknown): QueryResult | null {
   }
 }
 
+const unreadableResultMessage = 'Stored result could not be read.'
+
+// The history list and the status poll, projected in SQL so neither reads the
+// `result` blob for a row saved with its size beside it.
+//
+// Rows saved before `resultRowCount` existed have only the blob, so their size
+// is read from it with SQLite's JSON functions, applying the same rules as
+// `toStoredQueryResult`. Every branch is a CASE, because it is the one
+// construct SQLite promises to evaluate lazily: that is what keeps the blob
+// untouched for a current row, and what keeps `json_type` from raising on
+// malformed JSON, which it does rather than answering null.
+const storedResult = queriesTable.result
+
+const resultState = sql<'absent' | 'readable' | 'unreadable'>`CASE
+  WHEN ${storedResult} IS NULL OR ${storedResult} = '' THEN 'absent'
+  WHEN ${queriesTable.resultRowCount} IS NOT NULL THEN 'readable'
+  WHEN NOT json_valid(${storedResult}) THEN 'unreadable'
+  WHEN json_type(${storedResult}, '$.fields') IS NOT 'array'
+    OR json_type(${storedResult}, '$.rows') IS NOT 'array' THEN 'unreadable'
+  WHEN EXISTS (
+    SELECT 1 FROM json_each(${storedResult}, '$.rows') AS entry
+    WHERE entry.type IS NOT 'object'
+  ) THEN 'unreadable'
+  ELSE 'readable'
+END`
+
+const resultRowCount = sql<number | null>`CASE
+  WHEN ${queriesTable.resultRowCount} IS NOT NULL
+    THEN ${queriesTable.resultRowCount}
+  WHEN json_valid(${storedResult}) THEN CASE
+    WHEN json_type(${storedResult}, '$.rowCount') IN ('integer', 'real')
+      THEN json_extract(${storedResult}, '$.rowCount')
+    ELSE json_array_length(${storedResult}, '$.rows')
+  END
+END`
+
+// An integer, not a boolean: this is raw SQL, so the column's boolean mode
+// does not apply to it.
+const resultTruncated = sql<number | null>`CASE
+  WHEN ${queriesTable.resultRowCount} IS NOT NULL
+    THEN ${queriesTable.resultTruncated}
+  WHEN json_valid(${storedResult})
+    THEN json_type(${storedResult}, '$.truncated') = 'true'
+END`
+
+const summaryColumns = {
+  content: queriesTable.content,
+  databaseId: queriesTable.databaseId,
+  error: queriesTable.error,
+  finishedAt: queriesTable.finishedAt,
+  id: queriesTable.id,
+  queriedAt: queriesTable.queriedAt,
+  resultRowCount,
+  resultState,
+  resultTruncated,
+  worksheetId: queriesTable.worksheetId
+}
+
+interface QuerySummaryRow {
+  content: string
+  databaseId: string
+  error: string | null
+  finishedAt: number | null
+  id: string
+  queriedAt: number
+  resultRowCount: number | null
+  resultState: 'absent' | 'readable' | 'unreadable'
+  resultTruncated: number | null
+  worksheetId: string
+}
+
+function transformSummaryRow(row: QuerySummaryRow): QuerySummaryDto {
+  const rowCount = row.resultState === 'readable' ? row.resultRowCount : null
+  const isUnreadable = row.resultState !== 'absent' && rowCount === null
+
+  return {
+    content: row.content,
+    databaseId: row.databaseId,
+    error: row.error ?? (isUnreadable ? unreadableResultMessage : null),
+    finishedAt: row.finishedAt,
+    id: row.id,
+    queriedAt: row.queriedAt,
+    result:
+      rowCount === null
+        ? null
+        : {
+            rowCount,
+            // SQLite answers a comparison with 1 or 0, and a stored boolean
+            // the same way.
+            truncated: row.resultTruncated === 1
+          },
+    worksheetId: row.worksheetId
+  }
+}
+
 function transformQueryRow(row: QueryRow): QueryDto {
   let parsed: QueryResult | null = null
   let parseError: string | null = null
@@ -503,10 +632,10 @@ function transformQueryRow(row: QueryRow): QueryDto {
       parsed = toStoredQueryResult(JSON.parse(row.result))
 
       if (parsed === null) {
-        parseError = 'Stored result could not be read.'
+        parseError = unreadableResultMessage
       }
     } catch {
-      parseError = 'Stored result could not be read.'
+      parseError = unreadableResultMessage
     }
   }
 

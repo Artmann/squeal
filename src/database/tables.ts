@@ -36,6 +36,8 @@ const statements: SQL[] = [
       finishedAt INTEGER,
       queriedAt INTEGER NOT NULL,
       result TEXT,
+      resultRowCount INTEGER,
+      resultTruncated INTEGER,
       worksheetId TEXT NOT NULL
     )
   `,

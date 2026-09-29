@@ -7,6 +7,7 @@ import {
   CreateQueryResponse,
   GetQueriesResponse,
   GetQueryResponse,
+  GetQueryStatusResponse,
   QueryId
 } from '../schemas'
 import { Authorization } from '../security'
@@ -14,12 +15,19 @@ import { Authorization } from '../security'
 const idParam = HttpApiSchema.param('id', QueryId)
 
 // Query execution is async: create returns the row immediately with a null
-// finishedAt, and the renderer polls `get` until it is set.
+// finishedAt, and the renderer polls `status` until it is set. `list` and
+// `status` carry the result's size but not its rows; `get` is the one route
+// that returns the rows, and the renderer asks it once per finished query.
 export const queriesGroup = HttpApiGroup.make('queries')
   .add(HttpApiEndpoint.get('list', '/').addSuccess(GetQueriesResponse))
   .add(
     HttpApiEndpoint.get('get')`/${idParam}`
       .addSuccess(GetQueryResponse)
+      .addError(QueryNotFoundError)
+  )
+  .add(
+    HttpApiEndpoint.get('status')`/${idParam}/status`
+      .addSuccess(GetQueryStatusResponse)
       .addError(QueryNotFoundError)
   )
   .add(
