@@ -428,6 +428,106 @@ describe('WorksheetExplorer', () => {
       expect(await screen.findByDisplayValue('Second Worksheet')).toBeVisible()
     })
   })
+
+  describe('duplicating', () => {
+    const connectedWorksheet: WorksheetDto = {
+      ...testWorksheet,
+      databaseId: 'db-123'
+    }
+
+    const copiedWorksheet: WorksheetDto = {
+      ...connectedWorksheet,
+      id: 'ws-copy',
+      name: 'Test Worksheet copy'
+    }
+
+    it('creates a copy with the same content and database, and opens it', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.createWorksheet).mockResolvedValue(copiedWorksheet)
+
+      const { store } = renderWithProviders(<WorksheetExplorer />, {
+        databases: [testDatabase],
+        openWorksheetId: 'ws-123',
+        worksheets: [connectedWorksheet]
+      })
+
+      fireEvent.contextMenu(screen.getByText('Test Worksheet'))
+
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Duplicate' })
+      )
+
+      await waitFor(() => {
+        expect(store.getState().tabs).toEqual({
+          activeWorksheetId: 'ws-copy',
+          openWorksheetIds: ['ws-123', 'ws-copy'],
+          status: 'reconciled'
+        })
+      })
+
+      expect(apiClient.createWorksheet).toHaveBeenCalledWith({
+        content: 'SELECT * FROM users',
+        databaseId: 'db-123',
+        name: 'Test Worksheet copy'
+      })
+      expect(await screen.findByText('Test Worksheet copy')).toBeVisible()
+    })
+
+    it('numbers the copy when the name is taken', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.createWorksheet).mockResolvedValue({
+        ...copiedWorksheet,
+        id: 'ws-copy-2',
+        name: 'Test Worksheet copy 2'
+      })
+
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [testWorksheet, { ...copiedWorksheet, databaseId: null }]
+      })
+
+      fireEvent.contextMenu(screen.getByText('Test Worksheet'))
+
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Duplicate' })
+      )
+
+      await waitFor(() => {
+        expect(apiClient.createWorksheet).toHaveBeenCalledWith({
+          content: 'SELECT * FROM users',
+          name: 'Test Worksheet copy 2'
+        })
+      })
+    })
+
+    it('says so when the copy cannot be saved', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(apiClient.createWorksheet).mockRejectedValue(
+        new Error('Database is locked')
+      )
+
+      const { store } = renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        openWorksheetId: 'ws-123',
+        worksheets: [testWorksheet]
+      })
+
+      fireEvent.contextMenu(screen.getByText('Test Worksheet'))
+
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Duplicate' })
+      )
+
+      expect(
+        await screen.findByText('Failed to duplicate worksheet')
+      ).toBeVisible()
+      expect(await screen.findByText('Database is locked')).toBeVisible()
+      expect(store.getState().tabs.activeWorksheetId).toEqual('ws-123')
+    })
+  })
   describe('selecting several worksheets', () => {
     // Explicit sort orders, so the rows sit in the order the tests name them:
     // the list falls back to newest-first for worksheets without one.
@@ -587,7 +687,7 @@ describe('WorksheetExplorer', () => {
 
       // Renaming three worksheets at once means nothing, so the menu does not
       // offer it rather than quietly renaming the one that was right-clicked.
-      it('offers no rename while several rows are selected', async () => {
+      it('offers no rename or duplicate while several rows are selected', async () => {
         renderWithProviders(<WorksheetExplorer />, {
           databases: [],
           editor: selectingTwo,
@@ -601,6 +701,9 @@ describe('WorksheetExplorer', () => {
 
         expect(
           screen.queryByRole('menuitem', { name: 'Rename' })
+        ).not.toBeInTheDocument()
+        expect(
+          screen.queryByRole('menuitem', { name: 'Duplicate' })
         ).not.toBeInTheDocument()
       })
 

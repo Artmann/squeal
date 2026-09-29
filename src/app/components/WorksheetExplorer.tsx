@@ -1,7 +1,7 @@
 import { DndContext } from '@dnd-kit/core'
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FileBracesIcon, Pencil, PlusIcon, Trash2 } from 'lucide-react'
+import { Copy, FileBracesIcon, Pencil, PlusIcon, Trash2 } from 'lucide-react'
 import { ReactElement, ReactNode, useCallback } from 'react'
 import { toast } from 'sonner'
 
@@ -14,6 +14,7 @@ import {
 } from '../hooks/use-list-reorder'
 import {
   useCreateAndOpenWorksheet,
+  useDuplicateAndOpenWorksheet,
   useOpenWorksheet
 } from '../hooks/use-worksheet-commands'
 import { useWorksheetRename } from '../hooks/use-worksheet-rename'
@@ -135,6 +136,7 @@ export function WorksheetExplorer(): ReactElement {
   const handleSelectWorksheet = useOpenWorksheet()
 
   const handleDeleteWorksheet = useConfirmedWorksheetDeletion()
+  const handleDuplicateWorksheet = useDuplicateAndOpenWorksheet()
 
   // The list order comes from the useWorksheets live query (sortOrder, then
   // newest first).
@@ -298,6 +300,7 @@ export function WorksheetExplorer(): ReactElement {
                     onContextMenu={handleRowContextMenu}
                     onDelete={handleDeleteWorksheet}
                     onDoubleClick={startEditing}
+                    onDuplicate={handleDuplicateWorksheet}
                     onSelect={handleRowClick}
                   />
                 )}
@@ -372,6 +375,7 @@ interface WorksheetListItemProps {
   onContextMenu: (worksheetId: string) => void
   onDelete: (worksheets: WorksheetDto[]) => void
   onDoubleClick: (worksheet: WorksheetDto) => void
+  onDuplicate: (worksheetId: string) => void
   onSelect: (event: React.MouseEvent, worksheetId: string) => void
 }
 
@@ -385,6 +389,7 @@ function WorksheetListItem({
   onContextMenu,
   onDelete,
   onDoubleClick,
+  onDuplicate,
   onSelect
 }: WorksheetListItemProps): ReactElement {
   // The app is built around always having a worksheet open, and the list
@@ -441,6 +446,18 @@ function WorksheetListItem({
           >
             <Pencil className="size-3" />
             Rename
+          </ContextMenuItem>
+        )}
+
+        {/* Like Rename, one row at a time: a multi-row duplicate would open a
+            tab for each copy and pick none of them to show. */}
+        {isRenamable && (
+          <ContextMenuItem
+            className="flex items-center gap-2 min-w-32 text-xs"
+            onClick={() => onDuplicate(worksheet.id)}
+          >
+            <Copy className="size-3" />
+            Duplicate
           </ContextMenuItem>
         )}
 
