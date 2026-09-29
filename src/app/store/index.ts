@@ -9,6 +9,7 @@ import {
   readGettingStartedDismissed,
   writeGettingStartedDismissed
 } from './getting-started-storage'
+import { readSidebarCollapsed, writeSidebarCollapsed } from './sidebar-storage'
 import tabsReducer, { TabsState } from './tabs-slice'
 import { readStoredTabs, writeStoredTabs } from './tabs-storage'
 import uiReducer, { UiState } from './ui-slice'
@@ -24,7 +25,10 @@ export function createStore() {
   const store = configureStore({
     preloadedState: {
       tabs: readStoredTabs(),
-      ui: { gettingStartedDismissed: readGettingStartedDismissed() }
+      ui: {
+        gettingStartedDismissed: readGettingStartedDismissed(),
+        sidebarCollapsed: readSidebarCollapsed()
+      }
     },
     reducer: {
       databaseExplorer: databaseExplorerReducer,
@@ -39,6 +43,7 @@ export function createStore() {
   // unrelated dispatch from writing to localStorage.
   let persistedTabs = store.getState().tabs
   let persistedDismissal = store.getState().ui.gettingStartedDismissed
+  let persistedSidebarCollapsed = store.getState().ui.sidebarCollapsed
 
   store.subscribe(() => {
     const { tabs, ui } = store.getState()
@@ -48,12 +53,17 @@ export function createStore() {
       writeStoredTabs(tabs)
     }
 
-    // Only this one field of `ui` is persisted, so it is compared by value
+    // Only these fields of `ui` are persisted, so they are compared by value
     // rather than by slice reference — every editor screen opening would
-    // otherwise write it again.
+    // otherwise write them again.
     if (ui.gettingStartedDismissed !== persistedDismissal) {
       persistedDismissal = ui.gettingStartedDismissed
       writeGettingStartedDismissed(ui.gettingStartedDismissed ?? false)
+    }
+
+    if (ui.sidebarCollapsed !== persistedSidebarCollapsed) {
+      persistedSidebarCollapsed = ui.sidebarCollapsed
+      writeSidebarCollapsed(ui.sidebarCollapsed ?? false)
     }
   })
 
