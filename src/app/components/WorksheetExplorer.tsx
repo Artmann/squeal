@@ -405,6 +405,7 @@ function WorksheetListItem({
     <ContextMenu>
       <ContextMenuTrigger>
         <button
+          aria-current={isOpen ? 'true' : undefined}
           className={cn(
             'flex h-[var(--item-h)] w-full flex-none items-center gap-2 rounded-[6px] px-2 text-left hover:bg-hover',
             isOpen || isSelected ? 'bg-sel text-text' : 'text-text2'

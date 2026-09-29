@@ -118,6 +118,21 @@ describe('WorksheetExplorer', () => {
     })
   })
 
+  it('marks the active worksheet as current', () => {
+    renderWithProviders(<WorksheetExplorer />, {
+      databases: [],
+      tabs: { activeWorksheetId: 'ws-456', openWorksheetIds: ['ws-456'] },
+      worksheets: [testWorksheet, secondWorksheet]
+    })
+
+    expect(
+      screen.getByRole('button', { name: 'Second Worksheet' })
+    ).toHaveAttribute('aria-current', 'true')
+    expect(
+      screen.getByRole('button', { name: 'Test Worksheet' })
+    ).not.toHaveAttribute('aria-current')
+  })
+
   describe('database badge', () => {
     it('names the database a worksheet runs against', () => {
       renderWithProviders(<WorksheetExplorer />, {
