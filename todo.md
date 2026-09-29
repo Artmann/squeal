@@ -333,11 +333,14 @@ at the code to change.
       (`WorksheetEditor.tsx:205-210`) — or, better, take it out of the tab order
       entirely, since it exists only to catch clicks below the editor. (The
       pagination controls this item also named are gone with virtualization.)
-- [ ] **Expose the active worksheet** with `aria-current`. There is no
+- [x] **Expose the active worksheet** with `aria-current`. There is no
       `aria-current` anywhere in the app; it is now needed in two places — the
       explorer row (`WorksheetExplorer.tsx:378`) and the tab bar
       (`WorksheetTabs.tsx:125`), both of which signal the active worksheet
-      visually only.
+      visually only. Fixed: the explorer row in `WorksheetExplorer.tsx:402` sets
+      `aria-current` on the active worksheet. The tab bar already said it the
+      right way for its role: `WorksheetTabs.tsx:377` sets `aria-selected` on
+      each `role="tab"`, which is what a tab uses in place of `aria-current`.
 
 ## 🎨 Design & visual polish
 
