@@ -374,7 +374,10 @@ at the code to change.
       "null". `query-result-format.ts:2-3` returns the bare string `'null'` with
       no styling hook — return a marker (or render the null case in
       `QueryResultTable`) so it can be styled.
-- [ ] **Add a clear button to `SearchInput`** (`SearchInput.tsx`).
+- [x] **Add a clear button to `SearchInput`** (`SearchInput.tsx`). Fixed:
+      `SearchInput.tsx` shows a "Clear search" button while there is text, which
+      clears and refocuses the input; the two sidebar filters also clear on
+      Escape (`clearOnEscape`), while find in results keeps Escape for closing.
 - [ ] **Use `cursor-pointer`** on interactive tree rows —
       `DatabaseExplorer.tsx:412,520` are still `cursor-default` — and add
       tooltips to the `+` add buttons.

@@ -101,6 +101,111 @@ describe('SearchInput', () => {
     expect(onKeyDown.mock.calls[0][0]).toMatchObject({ key: 'Enter' })
   })
 
+  it('shows no clear button while the input is empty', () => {
+    render(
+      <SearchInput
+        placeholder="Filter tables"
+        value=""
+        onChange={vi.fn()}
+      />
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Clear search' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('clears the input and focuses it again when the clear button is clicked', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <SearchInput
+        placeholder="Filter tables"
+        value="actor"
+        onChange={onChange}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+
+    expect(onChange.mock.calls).toEqual([['']])
+    expect(screen.getByPlaceholderText('Filter tables')).toHaveFocus()
+  })
+
+  it('focuses the caller’s input ref when the clear button is clicked', async () => {
+    const user = userEvent.setup()
+    const inputRef = createRef<HTMLInputElement>()
+
+    render(
+      <SearchInput
+        inputRef={inputRef}
+        placeholder="Find in results"
+        value="actor"
+        onChange={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+
+    expect(document.activeElement).toEqual(inputRef.current)
+  })
+
+  it('clears on Escape when clearOnEscape is set', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <SearchInput
+        clearOnEscape
+        placeholder="Filter tables"
+        value="actor"
+        onChange={onChange}
+      />
+    )
+
+    await user.type(screen.getByPlaceholderText('Filter tables'), '{Escape}')
+
+    expect(onChange.mock.calls).toEqual([['']])
+  })
+
+  it('leaves an empty input alone on Escape', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <SearchInput
+        clearOnEscape
+        placeholder="Filter tables"
+        value=""
+        onChange={onChange}
+      />
+    )
+
+    await user.type(screen.getByPlaceholderText('Filter tables'), '{Escape}')
+
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  // Find in results closes on Escape and keeps its query for the next time it
+  // opens, so clearing there would throw the query away.
+  it('keeps the text on Escape without clearOnEscape', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <SearchInput
+        placeholder="Find in results"
+        value="actor"
+        onChange={onChange}
+      />
+    )
+
+    await user.type(screen.getByPlaceholderText('Find in results'), '{Escape}')
+
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('renders search icon', () => {
     const { container } = render(
       <SearchInput

@@ -361,6 +361,7 @@ export function DatabaseExplorer(): ReactElement {
 
       <div className="mx-3 mb-2 flex-none">
         <SearchInput
+          clearOnEscape
           placeholder="Filter tables"
           value={databaseSearchQuery}
           onChange={(newValue) =>

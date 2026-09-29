@@ -78,6 +78,46 @@ describe('WorksheetExplorer', () => {
     expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
   })
 
+  describe('filter', () => {
+    it('brings every worksheet back when the filter is cleared', async () => {
+      const user = userEvent.setup()
+
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [testWorksheet, secondWorksheet]
+      })
+
+      await user.type(
+        screen.getByPlaceholderText('Filter worksheets'),
+        'Second'
+      )
+
+      expect(screen.queryByText('Test Worksheet')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Clear search' }))
+
+      expect(screen.getByPlaceholderText('Filter worksheets')).toHaveValue('')
+      expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
+    })
+
+    it('clears the filter on Escape', async () => {
+      const user = userEvent.setup()
+
+      renderWithProviders(<WorksheetExplorer />, {
+        databases: [],
+        worksheets: [testWorksheet, secondWorksheet]
+      })
+
+      await user.type(
+        screen.getByPlaceholderText('Filter worksheets'),
+        'Second{Escape}'
+      )
+
+      expect(screen.getByText('Test Worksheet')).toBeInTheDocument()
+      expect(screen.getByText('Second Worksheet')).toBeInTheDocument()
+    })
+  })
+
   describe('database badge', () => {
     it('names the database a worksheet runs against', () => {
       renderWithProviders(<WorksheetExplorer />, {
