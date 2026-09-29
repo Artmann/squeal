@@ -55,6 +55,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import type { SchemaInfo, TableInfo } from '@/databases/adapter'
 import { DatabaseDto, isConnectionUnreadable } from '@/glue/databases'
 import { findEnvironment } from '@/glue/environments'
@@ -439,29 +440,41 @@ function DatabaseExplorerHeader({
         {/* Nothing to reload without a connection, and the empty state below
             already carries its own call to action. */}
         {hasDatabases && (
-          <button
-            aria-label="Refresh databases"
-            className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover disabled:opacity-50"
-            disabled={isRefreshing}
-            title={`Refresh databases (${getRefreshShortcut()})`}
-            type="button"
-            onClick={onRefresh}
-          >
-            <RefreshCwIcon
-              className={cn('size-3', isRefreshing && 'animate-spin')}
-            />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                aria-label="Refresh databases"
+                className="flex size-[22px] flex-none cursor-pointer items-center justify-center rounded-[5px] text-text2 hover:bg-hover disabled:opacity-50"
+                disabled={isRefreshing}
+                type="button"
+                onClick={onRefresh}
+              >
+                <RefreshCwIcon
+                  className={cn('size-3', isRefreshing && 'animate-spin')}
+                />
+              </button>
+            </TooltipTrigger>
+
+            <TooltipContent side="bottom">
+              Refresh databases ({getRefreshShortcut()})
+            </TooltipContent>
+          </Tooltip>
         )}
 
-        <button
-          aria-label="Add connection"
-          className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
-          title="Add connection"
-          type="button"
-          onClick={onCreate}
-        >
-          <Plus className="size-3" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              aria-label="Add connection"
+              className="flex size-[22px] flex-none cursor-pointer items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
+              type="button"
+              onClick={onCreate}
+            >
+              <Plus className="size-3" />
+            </button>
+          </TooltipTrigger>
+
+          <TooltipContent side="bottom">Add connection</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )
@@ -782,7 +795,7 @@ function DatabaseRowHeader({
           // control that opens nothing tells a screen reader to wait for a
           // subtree that never arrives.
           aria-expanded={isUnreadable ? undefined : isExpanded}
-          className="flex h-[var(--item-h)] w-full cursor-default items-center gap-[6px] rounded-[6px] px-[6px] text-left text-text2 hover:bg-hover"
+          className="flex h-[var(--item-h)] w-full cursor-pointer items-center gap-[6px] rounded-[6px] px-[6px] text-left text-text2 hover:bg-hover"
           type="button"
           onClick={onActivate}
         >
@@ -927,7 +940,7 @@ function DatabaseTableRow({
         <ContextMenuTrigger>
           <button
             aria-expanded={isExpanded}
-            className="flex h-[26px] w-full cursor-default items-center gap-[6px] rounded-[6px] pr-[6px] pl-5 text-left text-text2 hover:bg-hover"
+            className="flex h-[26px] w-full cursor-pointer items-center gap-[6px] rounded-[6px] pr-[6px] pl-5 text-left text-text2 hover:bg-hover"
             type="button"
             onClick={onToggle}
           >
