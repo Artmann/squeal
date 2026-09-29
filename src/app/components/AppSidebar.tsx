@@ -37,6 +37,8 @@ export function AppSidebar(): ReactElement {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         className="absolute top-0 -right-[2px] h-full w-[5px]"
+        maximum={maximumSidebarWidth}
+        minimum={minimumSidebarWidth}
         orientation="col"
         size={width}
         onResize={setWidth}

@@ -16,6 +16,10 @@ interface ResizeHandleProps {
   // panel's trailing edge grows toward 'end' (right or down); one on its
   // leading edge, like the results splitter, grows toward 'start'.
   growsToward?: ResizeGrowth
+  // The bounds the caller clamps to. The handle does not clamp itself; these
+  // are only announced, so a screen reader can tell how far it can go.
+  maximum: number
+  minimum: number
   onResize: (size: number) => void
   orientation: ResizeOrientation
   size: number
@@ -29,6 +33,8 @@ export function ResizeHandle({
   children,
   className,
   growsToward = 'end',
+  maximum,
+  minimum,
   onResize,
   orientation,
   size
@@ -124,8 +130,14 @@ export function ResizeHandle({
     <div
       aria-label={ariaLabel}
       aria-orientation={orientation === 'col' ? 'vertical' : 'horizontal'}
+      aria-valuemax={maximum}
+      aria-valuemin={minimum}
+      aria-valuenow={size}
       className={cn(
         'group z-10 flex flex-none items-center justify-center',
+        // The handle is a few pixels wide and has no border of its own, so
+        // focus fills it with the accent rather than drawing a ring around it.
+        'outline-none focus-visible:bg-accent',
         orientation === 'col' ? 'cursor-col-resize' : 'cursor-row-resize',
         className
       )}

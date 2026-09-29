@@ -99,6 +99,8 @@ export function ResultsPane({
         ariaLabel="Resize results panel"
         className="h-[7px] -my-[3px]"
         growsToward="start"
+        maximum={maximumHeight}
+        minimum={minimumHeight}
         orientation="row"
         size={height}
         onResize={(size) => setSize(worksheetId, size)}
