@@ -21,8 +21,7 @@ import type {
   CreateDatabaseRequest,
   DatabaseType,
   SslMode,
-  UpdateDatabaseConnection,
-  UpdateDatabaseRequest
+  UpdateDatabaseConnection
 } from '@/glue/api/schemas'
 // The form is validated client-side with zod through react-hook-form's
 // resolver; the API contract itself is Effect Schema.
@@ -66,7 +65,17 @@ import { Separator } from './ui/separator'
 
 // The form is typed off the update schema (optional password); create mode
 // swaps in the create resolver so the password is still required there.
-type FormInput = z.input<typeof updateDatabaseSchema>
+//
+// The schema pairs `type` with its connection info, but the form's fields hold
+// them as two separate values: the type select writes one and then the other,
+// and the fields read `connectionInfo.host` whichever type is showing. So the
+// input is the schema's union flattened into independent fields, and the
+// resolver is what checks that they agree before anything is submitted.
+type SchemaInput = z.input<typeof updateDatabaseSchema>
+type FormInput = Omit<SchemaInput, 'connectionInfo' | 'type'> & {
+  connectionInfo: SchemaInput['connectionInfo']
+  type: SchemaInput['type']
+}
 type FormOutput = z.output<typeof updateDatabaseSchema>
 
 export interface DatabaseFormResult {
@@ -437,9 +446,7 @@ function useSaveDatabase({
 
       if (isEditMode && databaseId) {
         updateDatabase.mutate(
-          // The resolver validated connectionInfo, which zod's transform
-          // output types as optional.
-          { id: databaseId, request: values as UpdateDatabaseRequest },
+          { id: databaseId, request: values },
           {
             onSuccess: handleSuccess,
             onError: handleFailure

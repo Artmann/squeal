@@ -46,28 +46,13 @@ const sqliteConnectionInfoSchema = z.object({
   path: z.string().min(1, 'File path is required.')
 })
 
-const connectionInfoSchema = z.union([
-  serverConnectionInfoSchema,
-  sqliteConnectionInfoSchema
-])
-
 // Updates may omit the password to mean "use the stored one" — the main
 // process merges it back in server-side.
 const updateServerConnectionInfoSchema = serverConnectionInfoSchema.extend({
   password: z.string().optional()
 })
 
-const updateConnectionInfoSchema = z.union([
-  updateServerConnectionInfoSchema,
-  sqliteConnectionInfoSchema
-])
-
 export { databaseTypeSchema }
-
-// These validate `type` and `connectionInfo` independently, which is fine for a
-// form whose type selector resets connectionInfo on every change. The pairing
-// is enforced where it matters — `DatabaseConnection` in the contract, which
-// every request decodes against.
 
 // Nullable rather than optional: the select always has an answer, and "None"
 // is a real one. The contract's `undefined` — meaning "leave whatever is
@@ -75,16 +60,37 @@ export { databaseTypeSchema }
 // shows the current value.
 const environmentIdSchema = z.string().nullable()
 
-export const createDatabaseSchema = z.object({
-  connectionInfo: connectionInfoSchema,
+const sharedFields = {
   environmentId: environmentIdSchema,
-  name: z.string().min(1, 'Name is required.'),
-  type: databaseTypeSchema
+  name: z.string().min(1, 'Name is required.')
+}
+
+const serverType = z.enum(['mysql', 'postgres'])
+
+const sqliteDatabaseSchema = z.object({
+  ...sharedFields,
+  connectionInfo: sqliteConnectionInfoSchema,
+  type: z.literal('sqlite')
 })
 
-export const updateDatabaseSchema = z.object({
-  connectionInfo: updateConnectionInfoSchema,
-  environmentId: environmentIdSchema,
-  name: z.string().min(1, 'Name is required.'),
-  type: databaseTypeSchema
-})
+// Keyed on `type`, the same way `DatabaseConnection` in the contract is. With
+// the two shapes validated independently, a SQLite form carrying a host passed
+// here and was only caught by the server, and saving an edit needed a cast to
+// turn the form's values into a request.
+export const createDatabaseSchema = z.discriminatedUnion('type', [
+  z.object({
+    ...sharedFields,
+    connectionInfo: serverConnectionInfoSchema,
+    type: serverType
+  }),
+  sqliteDatabaseSchema
+])
+
+export const updateDatabaseSchema = z.discriminatedUnion('type', [
+  z.object({
+    ...sharedFields,
+    connectionInfo: updateServerConnectionInfoSchema,
+    type: serverType
+  }),
+  sqliteDatabaseSchema
+])
