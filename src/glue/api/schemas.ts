@@ -341,9 +341,6 @@ const QueryResultSummaryDto = Schema.Struct({
   rowCount: Schema.Number,
   truncated: Schema.Boolean
 })
-export type QueryResultSummaryDto = Schema.Schema.Type<
-  typeof QueryResultSummaryDto
->
 
 // A `QueryDto` is also a `QuerySummaryDto`: the full result has both fields.
 const QuerySummaryDto = Schema.Struct({
