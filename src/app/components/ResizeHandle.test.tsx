@@ -16,6 +16,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={vi.fn()}
       />
@@ -27,6 +29,27 @@ describe('ResizeHandle', () => {
     expect(handle).toHaveClass('cursor-col-resize')
   })
 
+  it('announces the current size and its bounds', () => {
+    render(
+      <ResizeHandle
+        ariaLabel="Resize sidebar"
+        maximum={380}
+        minimum={200}
+        orientation="col"
+        size={264}
+        onResize={vi.fn()}
+      />
+    )
+
+    const handle = screen.getByRole('separator', { name: 'Resize sidebar' })
+
+    expect({
+      max: handle.getAttribute('aria-valuemax'),
+      min: handle.getAttribute('aria-valuemin'),
+      now: handle.getAttribute('aria-valuenow')
+    }).toEqual({ max: '380', min: '200', now: '264' })
+  })
+
   it('reports the new size while dragging along the x axis', () => {
     const onResize = vi.fn()
 
@@ -34,6 +57,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={onResize}
       />
@@ -57,6 +82,8 @@ describe('ResizeHandle', () => {
         ariaLabel="Resize results panel"
         growsToward="start"
         orientation="row"
+        maximum={620}
+        minimum={120}
         size={400}
         onResize={onResize}
       />
@@ -80,6 +107,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={onResize}
       />
@@ -104,6 +133,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={onResize}
       />
@@ -123,6 +154,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={onResize}
       />
@@ -142,6 +175,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={vi.fn()}
       />
@@ -161,6 +196,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={vi.fn()}
       />
@@ -185,6 +222,8 @@ describe('ResizeHandle', () => {
         <ResizeHandle
           ariaLabel="Resize sidebar"
           orientation="col"
+          maximum={380}
+          minimum={200}
           size={264}
           onResize={vi.fn()}
         />
@@ -192,6 +231,8 @@ describe('ResizeHandle', () => {
           ariaLabel="Resize results panel"
           growsToward="start"
           orientation="row"
+          maximum={620}
+          minimum={120}
           size={400}
           onResize={vi.fn()}
         />
@@ -227,6 +268,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={onResize}
       />
@@ -259,6 +302,8 @@ describe('ResizeHandle', () => {
         ariaLabel="Resize results panel"
         growsToward="start"
         orientation="row"
+        maximum={620}
+        minimum={120}
         size={400}
         onResize={onResize}
       />
@@ -282,6 +327,8 @@ describe('ResizeHandle', () => {
       <ResizeHandle
         ariaLabel="Resize sidebar"
         orientation="col"
+        maximum={380}
+        minimum={200}
         size={264}
         onResize={onResize}
       />

@@ -312,10 +312,12 @@ at the code to change.
       backdrop-close. Rebuild on Radix Dialog. Also give the close button an
       accessible name: `EditorScreen.tsx:61-67` is still an icon-only `Button`
       wrapping a bare `<XIcon />`, the one site the item above missed.
-- [ ] **Finish the resize separator.** `ResizeHandle.tsx:110-125` now has
+- [x] **Finish the resize separator.** `ResizeHandle.tsx:110-125` now has
       `role="separator"`, `aria-label`, `aria-orientation`, `tabIndex` and arrow
       keys, but still no `aria-valuenow`/`valuemin`/`valuemax` (so the current
-      size is unannounced) and no `focus-visible` style.
+      size is unannounced) and no `focus-visible` style. Fixed: `ResizeHandle`
+      takes the caller's `minimum`/`maximum` and announces them with the current
+      size, and fills with the accent on `focus-visible`.
 - [ ] **Add a focus-visible ring** to the focus-editor overlay button
       (`WorksheetEditor.tsx:205-210`) — or, better, take it out of the tab order
       entirely, since it exists only to catch clicks below the editor. (The
