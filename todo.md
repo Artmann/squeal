@@ -289,10 +289,13 @@ at the code to change.
       limit. Fixed: the adapters report a single `truncated` flag on
       `QueryResultDto`, and `ResultsPane.tsx:28-37`, `StatusBar.tsx:60` and the
       Messages log all format from `rowCount` + `truncated`.
-- [ ] **Show the connection-test failure reason inline.** A persistent
+- [x] **Show the connection-test failure reason inline.** A persistent
       success/failure icon exists (`DatabaseForm.tsx:399-423`), but the reason
       still only appears in a disappearing toast (`:381`). Render
-      `connectTestResult.message` in the form as a success/error banner.
+      `connectTestResult.message` in the form as a success/error banner. Fixed:
+      `ConnectionTestBanner` (`DatabaseForm.tsx:1184`) shows the verdict and
+      message above the actions in place of the toasts, and is retired by the
+      same connection fingerprint as the icon (`:649`), so an edit clears it.
 - [ ] **Add a password reveal toggle** to the connection form
       (`DatabaseForm.tsx:758`, a bare `type="password"`).
 

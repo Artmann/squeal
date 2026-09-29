@@ -350,6 +350,65 @@ describe('DatabaseForm', () => {
     })
   })
 
+  // The reason stays in the form rather than in a toast that disappears while
+  // the user is still reading the host it blamed.
+  it('shows the failure reason in the form', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ message: 'Connection refused', success: false })
+    )
+
+    renderDatabaseForm()
+
+    await fillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Connection failed. Connection refused'
+      )
+    })
+
+    expect(document.querySelector('[data-sonner-toast]')).toEqual(null)
+  })
+
+  it('says what to check when a failure comes without a reason', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: false }))
+
+    renderDatabaseForm()
+
+    await fillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Connection failed. The server gave no reason. Check the host, port and credentials, then test again.'
+      )
+    })
+  })
+
+  it('shows a success banner in the form', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ success: true }))
+
+    renderDatabaseForm()
+
+    await fillForm(user)
+    await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Connection successful.'
+      )
+    })
+
+    expect(document.querySelector('[data-sonner-toast]')).toEqual(null)
+  })
+
   // A test result describes the connection values it was produced from. Once
   // those change it is no longer about anything the form is holding, so it must
   // stop being shown rather than assert a connection that was never tried.
@@ -406,6 +465,28 @@ describe('DatabaseForm', () => {
       })
     })
 
+    // A reason that blamed the old values must not sit next to edited ones.
+    it('clears the failure reason when a connection field changes', async () => {
+      const user = userEvent.setup()
+
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ message: 'Connection refused', success: false })
+      )
+
+      renderDatabaseForm()
+
+      await fillForm(user)
+      await user.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+      })
+
+      await user.type(screen.getByLabelText('Host'), '.internal')
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
     // The display name is not part of the connection, so renaming the entry
     // does not invalidate a result.
     it('keeps the success icon when only the display name changes', async () => {
@@ -431,7 +512,7 @@ describe('DatabaseForm', () => {
 
     // The values can change while the request is in flight — the fields are not
     // disabled — so the verdict has to be dropped on arrival, not just hidden.
-    // The toast is part of that: it names the host that was tested.
+    // The banner is part of that: its message names the host that was tested.
     // The verdict is released by hand rather than on a timer. A timer races the
     // typing it is supposed to lose to: under load the response lands first,
     // the verdict is no longer late, and the test passes for the wrong reason
@@ -466,9 +547,7 @@ describe('DatabaseForm', () => {
       expect(
         screen.queryByTestId('connection-success-icon')
       ).not.toBeInTheDocument()
-      expect(
-        screen.queryByText('Connection successful!')
-      ).not.toBeInTheDocument()
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
     })
 
     // The testing flag is cleared in a `finally`, so nothing thrown while
