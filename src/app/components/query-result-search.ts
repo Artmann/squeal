@@ -4,8 +4,8 @@
 // raw driver value, so find agrees with the string the user can actually see --
 // dates as ISO strings, JSON columns stringified, `bytea` as
 // `{"type":"Buffer",...}`, and Postgres bigint/numeric/money as strings. The
-// same rule is why a search for `null` matches a null cell: `null` is what the
-// cell displays and what Copy copies.
+// same rule is why a search for `null` matches a null cell: `null` is what Copy
+// copies, and the grid's `NULL` is the same word in another case.
 import { formatCellValue } from './query-result-format'
 
 export interface CellTextSegment {

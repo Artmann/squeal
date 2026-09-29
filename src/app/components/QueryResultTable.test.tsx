@@ -9,6 +9,7 @@ import { stubElementSize } from '../test-element-size'
 import { getResultFieldNames } from './query-result-columns'
 import {
   escapeCsvField,
+  formatCellDisplay,
   formatCellValue,
   formatRowAsCsv,
   formatRowAsJson
@@ -53,6 +54,20 @@ describe('formatCellValue', () => {
 
   it('serializes arrays as JSON', () => {
     expect(formatCellValue([1, 2, 3])).toEqual('[1,2,3]')
+  })
+})
+
+describe('formatCellDisplay', () => {
+  it('shows NULL for null values', () => {
+    expect(formatCellDisplay(null)).toEqual('NULL')
+  })
+
+  it('shows the string "null" as it is', () => {
+    expect(formatCellDisplay('null')).toEqual('null')
+  })
+
+  it('shows everything else as formatCellValue does', () => {
+    expect(formatCellDisplay({ a: 1 })).toEqual('{"a":1}')
   })
 })
 
@@ -112,19 +127,36 @@ describe('QueryResultTable', () => {
     expect(within(secondRow).getAllByRole('cell')[0]).toHaveTextContent('2')
   })
 
-  it('renders NULL for null values', () => {
-    render(
-      <QueryResultTable
-        result={{
-          fields: [{ name: 'name' }],
-          rowCount: 1,
-          rows: [{ name: null }],
-          truncated: false
-        }}
-      />
-    )
+  describe('null values', () => {
+    const nullResult = {
+      fields: [{ name: 'name' }],
+      rowCount: 2,
+      rows: [{ name: null }, { name: 'null' }],
+      truncated: false
+    }
 
-    expect(screen.getByText('null')).toBeInTheDocument()
+    it('renders a SQL NULL apart from the string "null"', () => {
+      render(<QueryResultTable result={nullResult} />)
+
+      const sqlNull = screen.getByText('NULL')
+      const text = screen.getByText('null')
+
+      expect(sqlNull).toHaveClass('italic')
+      expect(text).not.toHaveClass('italic')
+    })
+
+    it('still copies a SQL NULL as null', async () => {
+      const user = userEvent.setup()
+      render(<QueryResultTable result={nullResult} />)
+
+      await user.pointer({
+        keys: '[MouseRight]',
+        target: screen.getByText('NULL')
+      })
+      await user.click(screen.getByRole('menuitem', { name: 'Copy' }))
+
+      expect(await navigator.clipboard.readText()).toEqual('null')
+    })
   })
 
   it('reserves scroll space in the same rows it paints', () => {
@@ -528,6 +560,28 @@ describe('QueryResultTable find', () => {
 
     expect(screen.getByText('No rows returned.')).toBeInTheDocument()
     expect(screen.queryByText(/No matches/)).not.toBeInTheDocument()
+  })
+
+  it('marks a SQL NULL found by searching for null', () => {
+    const nulls = {
+      fields: [{ name: 'name' }],
+      rowCount: 2,
+      rows: [{ name: null }, { name: 'null' }],
+      truncated: false
+    }
+
+    const { container } = render(
+      <QueryResultTable
+        result={nulls}
+        search={searchFor(nulls, 'null')}
+      />
+    )
+
+    expect(
+      Array.from(container.querySelectorAll('mark')).map(
+        (mark) => mark.textContent
+      )
+    ).toEqual(['NULL', 'null'])
   })
 
   it('marks nothing while the find bar is open but empty', () => {

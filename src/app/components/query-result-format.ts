@@ -1,3 +1,18 @@
+/**
+ * What a grid cell shows. The same as `formatCellValue` except for SQL NULL,
+ * which reads `NULL` (and is italicized by the grid) so it does not look like
+ * the string "null". Copy, Copy Row, column widths and find all keep using
+ * `formatCellValue`. Find still lines up: both spellings are four characters
+ * and match case-insensitively.
+ */
+export function formatCellDisplay(value: unknown): string {
+  if (value === null) {
+    return 'NULL'
+  }
+
+  return formatCellValue(value)
+}
+
 export function formatCellValue(value: unknown): string {
   if (value === null) {
     return 'null'
