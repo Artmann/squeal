@@ -65,7 +65,7 @@ at the code to change.
       `maxRows = 10000`. `SELECT * FROM huge_table` OOMs the main process. Push
       the limit into the driver (`LIMIT 10001` to detect truncation) or use a
       streaming cursor.
-- [ ] **Use a discriminated union for connection info.** The contract now lives
+- [x] **Use a discriminated union for connection info.** The contract now lives
       in Effect Schema, and the hole moved with it: `src/glue/api/schemas.ts:86`
       is `Schema.Union(ServerConnectionInfo, SqliteConnectionInfo)`, validated
       independently of `type`, and `src/databases/create-adapter.ts:19-23` casts
@@ -74,7 +74,14 @@ at the code to change.
       `path` undefined. Key the union on `type` (`Schema.Union` of two structs
       each carrying its own `type` literal, or a `Schema.TaggedStruct`) so the
       cast disappears. `src/databases/schemas.ts` is renderer-form zod only and
-      should follow whatever the contract does.
+      should follow whatever the contract does. Fixed: `DatabaseConnection` in
+      `src/glue/api/schemas.ts` pairs each shape with its own `type` literal and
+      `createAdapter` narrows it with a `switch` (#32); the form's
+      `createDatabaseSchema`/`updateDatabaseSchema` are now
+      `z.discriminatedUnion('type', …)` too, which dropped the update-submit
+      cast in `DatabaseForm.tsx`. Stored rows are still only JSON-parsed, so a
+      mismatched old row stays listed and answers "Edit the connection and
+      choose a file." when opened.
 - [x] **Protect connection cleanup.** Narrower than first written:
       `acquireConnection` and `cancel` already try/catch their teardown
       (`postgres-adapter.ts:50-54,85-89,205-213`). Still unguarded — an

@@ -440,6 +440,106 @@ describe('database routes', () => {
     expect(rows).toEqual([])
   })
 
+  it('rejects an update whose type and connection info disagree, and keeps the row', async () => {
+    const { layer } = makeTestApi({})
+
+    const { rows, status } = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const http = yield* HttpClient.HttpClient
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        const response = yield* http.execute(
+          HttpClientRequest.patch(`/databases/${created.database.id}`).pipe(
+            HttpClientRequest.setHeader(
+              'authorization',
+              `Bearer ${testApiToken}`
+            ),
+            HttpClientRequest.bodyUnsafeJson({
+              connectionInfo,
+              name: 'Mismatched',
+              type: 'sqlite'
+            })
+          )
+        )
+
+        const rows = yield* appDatabase.execute((db) =>
+          db
+            .select({ name: databasesTable.name, type: databasesTable.type })
+            .from(databasesTable)
+        )
+
+        return { rows, status: response.status }
+      }).pipe(Effect.scoped, Effect.provide(layer))
+    )
+
+    expect(status).toEqual(400)
+    expect(rows).toEqual([{ name: 'Pagila', type: 'postgres' }])
+  })
+
+  // Stored rows are never decoded against the paired schema, and must not be:
+  // an older build could have saved a SQLite row with server-shaped info, and
+  // a stricter read would turn the whole list into a 500. The row has to stay
+  // listed so the user can repair it, and opening it has to say how.
+  it('lists a stored SQLite row with server info and explains it on open', async () => {
+    const { databases, error } = await run(
+      Effect.gen(function* () {
+        const client = yield* makeAuthorizedClient
+        const appDatabase = yield* AppDatabase
+
+        const created = yield* client.databases.create({
+          payload: {
+            connectionInfo: { path: '/tmp/pagila.sqlite3' },
+            name: 'Local',
+            type: 'sqlite'
+          }
+        })
+
+        // The only row in a fresh test database, so no filter is needed.
+        yield* appDatabase.execute((db) =>
+          db.update(databasesTable).set({
+            connectionInfo: `${testEncryptionPrefix}${JSON.stringify(
+              connectionInfo
+            )}`
+          })
+        )
+
+        const { databases } = yield* client.databases.list()
+
+        const error = yield* client.databases
+          .schema({ path: { id: created.database.id } })
+          .pipe(Effect.flip)
+
+        return { databases, error }
+      })
+    )
+
+    expect(databases).toEqual([
+      expect.objectContaining({
+        connectionInfo: {
+          database: 'pagila',
+          host: 'localhost',
+          username: 'postgres'
+        },
+        name: 'Local',
+        type: 'sqlite'
+      })
+    ])
+
+    expect(error).toEqual(
+      expect.objectContaining({
+        _tag: 'SchemaLoadFailedError',
+        databaseName: 'Local',
+        message:
+          'This connection is saved as SQLite but has no database file. Edit the connection and choose a file.'
+      })
+    )
+  })
+
   it('builds a SQLite adapter from a SQLite pair', async () => {
     const { adapterState, layer } = makeTestApi({})
 
