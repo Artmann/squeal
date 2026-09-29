@@ -29,6 +29,16 @@ export default defineConfig({
     }
   },
   test: {
+    // Off unless asked for with `--coverage` (`yarn test:coverage`), so a plain
+    // `yarn test` stays as fast as it was.
+    coverage: {
+      exclude: ['**/*.test.{ts,tsx}', '**/test-*.{ts,tsx}'],
+      include: ['scripts/**/*.ts', 'src/**/*.{ts,tsx}'],
+      provider: 'v8',
+      // CI puts the totals on the run summary even when a test failed.
+      reportOnFailure: true,
+      reporter: ['html', 'json-summary', 'text-summary']
+    },
     globals: true,
     // The default 5s is generous for these tests in isolation but not under
     // load: with several vitest processes competing for CPU, unrelated tests

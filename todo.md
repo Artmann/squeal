@@ -446,10 +446,13 @@ at the code to change.
       `src/glue`, but `tsconfig.renderer.json` inherits only `noImplicitAny`
       from `tsconfig.base.json` — so across `src/app` the "no non-null
       assertion" and "prefer nullish coalescing" rules still can't be enforced.
-- [ ] **Fix the test scripts and add coverage.** `"test": "vitest"` still runs
+- [x] **Fix the test scripts and add coverage.** `"test": "vitest"` still runs
       watch mode (hangs contributors; CI gets away with it only because vitest
       detects `CI`). Add `"test": "vitest run"` + `"test:watch"`, install
-      `@vitest/coverage-v8`, and surface coverage in CI.
+      `@vitest/coverage-v8`, and surface coverage in CI. Fixed: the scripts are
+      `vitest run` and `test:watch`, `yarn test:coverage` runs the suite with
+      `@vitest/coverage-v8`, and the CI Test job writes the totals to the run
+      summary and uploads the HTML report as the `coverage-report` artifact.
 - [x] **Harden CI.** `.github/workflows/ci.yml` uses mutable `yarn install` in
       all five jobs (use `--frozen-lockfile`), builds only on ubuntu — add a
       `[ubuntu, macos, windows]` matrix to the `build` job so native
