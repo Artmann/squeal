@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { v7 } from 'uuid'
 
+import { onPersistFailure } from '../collection-writes'
 import { useCollections } from '../collections-context'
 import { finishQueryTrace, startQueryTrace } from '../tracing/query-traces'
 import type { QuerySummaryDto } from '@/glue/api/schemas'
@@ -73,7 +74,7 @@ export function useStartQuery(): (input: StartQueryInput) => void {
       const transaction = queriesCollection.insert(optimistic)
 
       // The optimistic row rolls back automatically if the create fails.
-      void transaction.isPersisted.promise.catch((error: unknown) => {
+      onPersistFailure(transaction, (error) => {
         const message =
           error instanceof Error ? error.message : 'Failed to run query'
 

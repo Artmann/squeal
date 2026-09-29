@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { apiClient } from '../api-client'
+import { writeIfReady } from '../collection-writes'
 import { useCollections } from '../collections-context'
 import { queryKeys } from '../query-keys'
 import {
@@ -120,9 +121,7 @@ export function useCreateWorksheet() {
     mutationFn: (request: CreateWorksheetRequest) =>
       apiClient.createWorksheet(request),
     onSuccess: (worksheet) => {
-      if (worksheets.status === 'ready') {
-        worksheets.utils.writeInsert(worksheet)
-      }
+      writeIfReady(worksheets, (utils) => utils.writeInsert(worksheet))
     }
   })
 }
@@ -134,15 +133,12 @@ export function useCreateDatabase() {
     mutationFn: (request: CreateDatabaseRequest) =>
       apiClient.createDatabase(request),
     onSuccess: (response) => {
-      // Manual writes reconcile already-synced state. A collection that has
-      // not started syncing will fetch fresh data, new row included, on first
-      // read instead.
-      if (databases.status === 'ready') {
-        databases.utils.writeInsert(response.database)
-      }
+      const { updatedWorksheet } = response
 
-      if (response.updatedWorksheet && worksheets.status === 'ready') {
-        worksheets.utils.writeUpsert(response.updatedWorksheet)
+      writeIfReady(databases, (utils) => utils.writeInsert(response.database))
+
+      if (updatedWorksheet) {
+        writeIfReady(worksheets, (utils) => utils.writeUpsert(updatedWorksheet))
       }
     }
   })
@@ -155,9 +151,7 @@ export function useDeleteDatabase() {
   return useMutation({
     mutationFn: (databaseId: string) => apiClient.deleteDatabase(databaseId),
     onSuccess: (_, databaseId) => {
-      if (databases.status === 'ready') {
-        databases.utils.writeDelete(databaseId)
-      }
+      writeIfReady(databases, (utils) => utils.writeDelete(databaseId))
 
       // The backend detaches worksheets that pointed at the database, and the
       // cached schema belongs to a connection that no longer exists.
@@ -173,9 +167,7 @@ export function useDeleteWorksheet() {
   return useMutation({
     mutationFn: (worksheetId: string) => apiClient.deleteWorksheet(worksheetId),
     onSuccess: (_, worksheetId) => {
-      if (worksheets.status === 'ready') {
-        worksheets.utils.writeDelete(worksheetId)
-      }
+      writeIfReady(worksheets, (utils) => utils.writeDelete(worksheetId))
 
       // No tab bookkeeping here on purpose: `tabsReconciled` runs on every
       // worksheets update and drops tabs whose worksheet is gone, picking the
@@ -329,16 +321,14 @@ export function useReorderDatabases() {
     onMutate: (databaseIds) => {
       // Optimistic partial upsert so the list re-sorts immediately instead of
       // snapping back while the request is in flight.
-      if (databases.status === 'ready') {
-        databases.utils.writeUpsert(
+      writeIfReady(databases, (utils) =>
+        utils.writeUpsert(
           databaseIds.map((id, index) => ({ id, sortOrder: index }))
         )
-      }
+      )
     },
     onSuccess: (response) => {
-      if (databases.status === 'ready') {
-        databases.utils.writeUpsert(response.databases)
-      }
+      writeIfReady(databases, (utils) => utils.writeUpsert(response.databases))
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.databases })
@@ -356,16 +346,16 @@ export function useReorderWorksheets() {
     onMutate: (worksheetIds) => {
       // Optimistic partial upsert so the list re-sorts immediately instead of
       // snapping back while the request is in flight.
-      if (worksheets.status === 'ready') {
-        worksheets.utils.writeUpsert(
+      writeIfReady(worksheets, (utils) =>
+        utils.writeUpsert(
           worksheetIds.map((id, index) => ({ id, sortOrder: index }))
         )
-      }
+      )
     },
     onSuccess: (response) => {
-      if (worksheets.status === 'ready') {
-        worksheets.utils.writeUpsert(response.worksheets)
-      }
+      writeIfReady(worksheets, (utils) =>
+        utils.writeUpsert(response.worksheets)
+      )
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.worksheets })
@@ -399,9 +389,7 @@ export function useUpdateDatabase() {
       request: UpdateDatabaseRequest
     }) => apiClient.updateDatabase(id, request),
     onSuccess: (response) => {
-      if (databases.status === 'ready') {
-        databases.utils.writeUpsert(response.database)
-      }
+      writeIfReady(databases, (utils) => utils.writeUpsert(response.database))
 
       void queryClient.invalidateQueries({
         queryKey: queryKeys.schema(response.database.id)
