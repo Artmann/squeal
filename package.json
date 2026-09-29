@@ -12,6 +12,7 @@
     "make": "electron-forge make",
     "make:mac": "tsx scripts/fetch-macos-bindings.ts && electron-forge make --arch=universal",
     "package": "electron-forge package",
+    "package:mac": "tsx scripts/fetch-macos-bindings.ts && electron-forge package --arch=universal",
     "seed": "tsx scripts/seed.ts",
     "start": "electron-forge start",
     "test": "vitest run",

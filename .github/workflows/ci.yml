@@ -96,8 +96,19 @@ jobs:
         run: yarn test
 
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.os }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The same three runners as the publish job in release.yml. Packaging
+        # copies the native `pg` and `@libsql` packages out of node_modules, so
+        # a packaging break is often specific to one platform, and without
+        # these it would first show up in a release.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -109,5 +120,14 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      # macOS packages the universal app the release ships, because merging
+      # the two slices is the step most likely to break there: it fails when a
+      # native binding exists in only one of them. Unsigned, since pull
+      # requests get no Apple secrets.
+      - name: Build (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: yarn package:mac
+
       - name: Build
+        if: ${{ !startsWith(matrix.os, 'macos') }}
         run: yarn package
