@@ -295,8 +295,12 @@ export function DatabaseForm({
   const databaseType = form.watch('type')
   const connectionInfo = form.watch('connectionInfo')
 
-  const { connectionTestIcon, handleTestConnection, isTestingConnection } =
-    useConnectionTest({ connectionInfo, databaseId, databaseType, form })
+  const {
+    connectionTestIcon,
+    connectionTestResult,
+    handleTestConnection,
+    isTestingConnection
+  } = useConnectionTest({ connectionInfo, databaseId, databaseType, form })
 
   const { handleSubmit, isSaving } = useSaveDatabase({
     databaseId,
@@ -378,6 +382,13 @@ export function DatabaseForm({
             />
           )}
         </div>
+
+        {/* Outside the scroller, so the verdict is in view beside the button
+            that asked for it however far the fields are scrolled. */}
+        <ConnectionTestBanner
+          result={connectionTestResult}
+          variant={variant}
+        />
 
         <DatabaseFormActions
           connectionTestIcon={connectionTestIcon}
@@ -478,10 +489,17 @@ interface UseConnectionTestOptions {
 // back to the values that were tested does bring the verdict back. That is
 // deliberate: the verdict is still true of what the form holds.
 type ConnectionTestState =
-  | { kind: 'failed'; testedConnection: string }
+  | { kind: 'failed'; message?: string; testedConnection: string }
   | { kind: 'idle' }
-  | { kind: 'passed'; testedConnection: string }
+  | { kind: 'passed'; message?: string; testedConnection: string }
   | { kind: 'testing'; testedConnection: string }
+
+// The verdict the banner shows: only ever one that still describes the values
+// on screen.
+interface ConnectionTestResult {
+  kind: 'failed' | 'passed'
+  message?: string
+}
 
 const resultIconClasses =
   'motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:[animation-duration:300ms]'
@@ -578,23 +596,20 @@ function useConnectionTest({
       Promise.all([apiClient.testConnection(connection, databaseId), minDelay])
         .then(([result]) => {
           // Dropped outright when the values moved on while the request was in
-          // flight. The toast has to be inside this check too: it names the host
-          // that was tested, so firing it for a connection the user has already
-          // replaced asserts something about values that are no longer there.
+          // flight: the message names the host that was tested, so keeping it
+          // for a connection the user has already replaced asserts something
+          // about values that are no longer there.
           if (testedConnection !== readCurrentConnection()) {
             return
           }
 
-          if (result.success) {
-            toast.success('Connection successful!')
-          } else {
-            toast.error('Connection failed', { description: result.message })
-          }
-
-          // The message is delivered by the toast above; the state only has to
-          // remember the verdict and what it was about.
+          // No toast. The banner holds the message for as long as it is true
+          // of the form, where a toast took the reason away after a few
+          // seconds, usually while the user was still reading the host it
+          // blamed.
           setState({
             kind: result.success ? 'passed' : 'failed',
+            message: result.message,
             testedConnection
           })
         })
@@ -625,13 +640,19 @@ function useConnectionTest({
     [connectionInfo, databaseId, databaseType, form, readCurrentConnection]
   )
 
-  const connectionTestIcon = useMemo(() => {
-    // A verdict is shown only while it still describes what the form holds; an
-    // edit changes the fingerprint, which retires it. A verdict that lands for
-    // values the user already changed never gets stored in the first place.
-    const describesCurrentValues =
-      state.kind !== 'idle' && state.testedConnection === currentConnection
+  // A verdict is shown only while it still describes what the form holds; an
+  // edit changes the fingerprint, which retires it. A verdict that lands for
+  // values the user already changed never gets stored in the first place.
+  const describesCurrentValues =
+    state.kind !== 'idle' && state.testedConnection === currentConnection
 
+  const connectionTestResult: ConnectionTestResult | null =
+    describesCurrentValues &&
+    (state.kind === 'failed' || state.kind === 'passed')
+      ? { kind: state.kind, message: state.message }
+      : null
+
+  const connectionTestIcon = useMemo(() => {
     switch (state.kind) {
       case 'failed':
         return describesCurrentValues ? (
@@ -660,10 +681,11 @@ function useConnectionTest({
         // rendering nothing.
         invariant(false, 'Unhandled connection test state.')
     }
-  }, [currentConnection, state])
+  }, [describesCurrentValues, state.kind])
 
   return {
     connectionTestIcon,
+    connectionTestResult,
     handleTestConnection,
     isTestingConnection: state.kind === 'testing'
   }
@@ -1150,6 +1172,61 @@ function SslSection({ form }: { form: DatabaseFormApi }): ReactElement {
         />
       )}
     </FormSection>
+  )
+}
+
+const connectionFailedFallback =
+  'The server gave no reason. Check the host, port and credentials, then test again.'
+
+// The reason a test passed or failed, kept in the form for as long as it is true
+// of the values on screen. A failure is an alert so a screen reader announces it
+// the way it used to announce the toast.
+function ConnectionTestBanner({
+  result,
+  variant
+}: {
+  result: ConnectionTestResult | null
+  variant: 'dialog' | 'page'
+}): ReactElement | null {
+  if (result === null) {
+    return null
+  }
+
+  // In a dialog the form has no gap between the scroller and the footer bar.
+  const spacing = variant === 'dialog' ? 'mb-3' : undefined
+
+  if (result.kind === 'failed') {
+    return (
+      <div
+        className={cn(
+          'flex items-start gap-2 rounded-md border border-err-border bg-err-bg px-3 py-2 text-xs text-err',
+          spacing
+        )}
+        role="alert"
+      >
+        <XCircleIcon className="mt-px size-3.5 flex-none" />
+        <p className="min-w-0 break-words">
+          <span className="font-medium">Connection failed.</span>{' '}
+          {result.message ?? connectionFailedFallback}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-2 rounded-md border border-ok/30 bg-ok/10 px-3 py-2 text-xs text-text',
+        spacing
+      )}
+      role="status"
+    >
+      <CheckCircle2Icon className="mt-px size-3.5 flex-none text-ok" />
+      <p className="min-w-0 break-words">
+        <span className="font-medium">Connection successful.</span>
+        {result.message !== undefined && ` ${result.message}`}
+      </p>
+    </div>
   )
 }
 
