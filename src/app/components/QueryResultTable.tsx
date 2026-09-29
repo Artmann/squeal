@@ -3,9 +3,11 @@ import {
   CSSProperties,
   Fragment,
   memo,
+  MouseEvent,
   ReactElement,
   useMemo,
-  useRef
+  useRef,
+  useState
 } from 'react'
 
 import { maxResultRows } from '@/databases/adapter'
@@ -82,8 +84,7 @@ export const QueryResultTable = memo(function QueryResultTable({
     [result]
   )
 
-  // Derived once rather than inside the per-cell CSV closure, which would
-  // rebuild it for every rendered cell.
+  // Derived once rather than on every Copy Row.
   const columnNames = useMemo(
     () => columns.map((column) => column.name),
     [columns]
@@ -158,49 +159,54 @@ export const QueryResultTable = memo(function QueryResultTable({
           columns={columns}
         />
 
-        <tbody>
-          {paddingTop > 0 && (
-            <tr aria-hidden="true">
-              <td
-                colSpan={columns.length + 1}
-                style={{ height: `${paddingTop}px` }}
+        <ResultCellContextMenu
+          columnNames={columnNames}
+          columns={columns}
+          rows={result.rows}
+        >
+          <tbody>
+            {paddingTop > 0 && (
+              <tr aria-hidden="true">
+                <td
+                  colSpan={columns.length + 1}
+                  style={{ height: `${paddingTop}px` }}
+                />
+              </tr>
+            )}
+
+            {virtualRows.map((virtualRow) => {
+              const rowIndex = toSourceIndex(virtualRow.index)
+
+              return (
+                <QueryResultRow
+                  activeMatch={activeMatch}
+                  columns={columns}
+                  key={rowIndex}
+                  needle={needle}
+                  row={result.rows[rowIndex]}
+                  rowIndex={rowIndex}
+                />
+              )
+            })}
+
+            {paddingBottom > 0 && (
+              <tr aria-hidden="true">
+                <td
+                  colSpan={columns.length + 1}
+                  style={{ height: `${paddingBottom}px` }}
+                />
+              </tr>
+            )}
+
+            {isFiltering && visibleRowCount === 0 && (
+              <NoMatchesRow
+                columnCount={columns.length + 1}
+                query={search?.query ?? ''}
+                truncated={result.truncated}
               />
-            </tr>
-          )}
-
-          {virtualRows.map((virtualRow) => {
-            const rowIndex = toSourceIndex(virtualRow.index)
-
-            return (
-              <QueryResultRow
-                activeMatch={activeMatch}
-                columnNames={columnNames}
-                columns={columns}
-                key={rowIndex}
-                needle={needle}
-                row={result.rows[rowIndex]}
-                rowIndex={rowIndex}
-              />
-            )
-          })}
-
-          {paddingBottom > 0 && (
-            <tr aria-hidden="true">
-              <td
-                colSpan={columns.length + 1}
-                style={{ height: `${paddingBottom}px` }}
-              />
-            </tr>
-          )}
-
-          {isFiltering && visibleRowCount === 0 && (
-            <NoMatchesRow
-              columnCount={columns.length + 1}
-              query={search?.query ?? ''}
-              truncated={result.truncated}
-            />
-          )}
-        </tbody>
+            )}
+          </tbody>
+        </ResultCellContextMenu>
       </table>
     </div>
   )
@@ -280,14 +286,12 @@ function QueryResultHead({
 
 function QueryResultRow({
   activeMatch,
-  columnNames,
   columns,
   needle,
   row,
   rowIndex
 }: {
   activeMatch: ResultRowMatch | undefined
-  columnNames: string[]
   columns: ResultColumn[]
   needle: string
   row: Record<string, unknown> | undefined
@@ -302,7 +306,7 @@ function QueryResultRow({
       {columns.map((column, columnIndex) => (
         <QueryResultCell
           column={column}
-          columnNames={columnNames}
+          columnIndex={columnIndex}
           isActive={
             activeMatch !== undefined &&
             activeMatch.rowIndex === rowIndex &&
@@ -311,6 +315,7 @@ function QueryResultRow({
           key={`${rowIndex}-${column.key}`}
           needle={needle}
           row={row}
+          rowIndex={rowIndex}
         />
       ))}
     </tr>
@@ -319,16 +324,18 @@ function QueryResultRow({
 
 function QueryResultCell({
   column,
-  columnNames,
+  columnIndex,
   isActive,
   needle,
-  row
+  row,
+  rowIndex
 }: {
   column: ResultColumn
-  columnNames: string[]
+  columnIndex: number
   isActive: boolean
   needle: string
   row: Record<string, unknown> | undefined
+  rowIndex: number
 }): ReactElement {
   // Known wrong for a result with two identically-named fields: the driver's
   // row is keyed by name, so both columns read the first field's value. The
@@ -338,73 +345,156 @@ function QueryResultCell({
   const text = formatCellValue(value)
 
   return (
+    <td
+      className={cn(
+        'h-[var(--row-h)] whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
+        column.align === 'right' ? 'text-right' : 'text-left',
+        value === null && 'text-text3 italic'
+      )}
+      data-column-index={columnIndex}
+      data-find-active={isActive ? '' : undefined}
+      data-row-index={rowIndex}
+    >
+      {needle === '' ? (
+        text
+      ) : (
+        <HighlightedCellText
+          isActive={isActive}
+          needle={needle}
+          text={text}
+        />
+      )}
+    </td>
+  )
+}
+
+interface ResultCellTarget {
+  columnIndex: number
+  rowIndex: number
+}
+
+/**
+ * The cell a right-click landed on, read back from the data attributes
+ * `QueryResultCell` writes. Undefined for anything that is not a value cell:
+ * the row number gutter, the spacer rows, and the no-matches row.
+ */
+function findResultCellTarget(
+  eventTarget: EventTarget
+): ResultCellTarget | undefined {
+  if (!(eventTarget instanceof Element)) {
+    return undefined
+  }
+
+  const cell = eventTarget.closest<HTMLElement>(
+    'td[data-row-index][data-column-index]'
+  )
+
+  if (cell === null) {
+    return undefined
+  }
+
+  return {
+    columnIndex: Number(cell.dataset.columnIndex),
+    rowIndex: Number(cell.dataset.rowIndex)
+  }
+}
+
+/**
+ * One context menu for every cell in the grid. The trigger is the `<tbody>`,
+ * and a right-click records which cell it landed on before the menu opens.
+ *
+ * The target lives in state here rather than in the table, so opening the menu
+ * re-renders only this component and the `<tbody>`: the rows inside it are the
+ * same elements as before, so React skips them.
+ */
+function ResultCellContextMenu({
+  children,
+  columnNames,
+  columns,
+  rows
+}: {
+  children: ReactElement
+  columnNames: string[]
+  columns: ResultColumn[]
+  rows: Record<string, unknown>[]
+}): ReactElement {
+  const [target, setTarget] = useState<ResultCellTarget | undefined>(undefined)
+
+  const handleContextMenu = (event: MouseEvent<HTMLElement>): void => {
+    const cellTarget = findResultCellTarget(event.target)
+
+    // Radix skips opening the menu when the default is prevented, so a
+    // right-click outside a value cell opens nothing.
+    if (cellTarget === undefined) {
+      event.preventDefault()
+
+      return
+    }
+
+    setTarget(cellTarget)
+  }
+
+  const column = target === undefined ? undefined : columns[target.columnIndex]
+  const row = target === undefined ? undefined : rows[target.rowIndex]
+
+  return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <td
-          className={cn(
-            'h-[var(--row-h)] whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
-            column.align === 'right' ? 'text-right' : 'text-left',
-            value === null && 'text-text3 italic'
-          )}
-          data-find-active={isActive ? '' : undefined}
-        >
-          {needle === '' ? (
-            text
-          ) : (
-            <HighlightedCellText
-              isActive={isActive}
-              needle={needle}
-              text={text}
-            />
-          )}
-        </td>
+      <ContextMenuTrigger
+        asChild
+        onContextMenu={handleContextMenu}
+      >
+        {children}
       </ContextMenuTrigger>
 
-      <ContextMenuContent>
-        <ContextMenuItem
-          className="text-xs"
-          onSelect={() => navigator.clipboard.writeText(text)}
-        >
-          Copy
-        </ContextMenuItem>
+      {column !== undefined && (
+        <ContextMenuContent>
+          <ContextMenuItem
+            className="text-xs"
+            onSelect={() =>
+              navigator.clipboard.writeText(formatCellValue(row?.[column.name]))
+            }
+          >
+            Copy
+          </ContextMenuItem>
 
-        <ContextMenuItem
-          className="text-xs"
-          onSelect={() => navigator.clipboard.writeText(column.name)}
-        >
-          Copy Column Name
-        </ContextMenuItem>
+          <ContextMenuItem
+            className="text-xs"
+            onSelect={() => navigator.clipboard.writeText(column.name)}
+          >
+            Copy Column Name
+          </ContextMenuItem>
 
-        <ContextMenuSeparator />
+          <ContextMenuSeparator />
 
-        <ContextMenuSub>
-          <ContextMenuSubTrigger className="text-xs">
-            Copy Row
-          </ContextMenuSubTrigger>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger className="text-xs">
+              Copy Row
+            </ContextMenuSubTrigger>
 
-          <ContextMenuSubContent>
-            <ContextMenuItem
-              className="text-xs"
-              onSelect={() =>
-                navigator.clipboard.writeText(
-                  formatRowAsCsv(row ?? {}, columnNames)
-                )
-              }
-            >
-              As CSV
-            </ContextMenuItem>
+            <ContextMenuSubContent>
+              <ContextMenuItem
+                className="text-xs"
+                onSelect={() =>
+                  navigator.clipboard.writeText(
+                    formatRowAsCsv(row ?? {}, columnNames)
+                  )
+                }
+              >
+                As CSV
+              </ContextMenuItem>
 
-            <ContextMenuItem
-              className="text-xs"
-              onSelect={() =>
-                navigator.clipboard.writeText(formatRowAsJson(row ?? {}))
-              }
-            >
-              As JSON
-            </ContextMenuItem>
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-      </ContextMenuContent>
+              <ContextMenuItem
+                className="text-xs"
+                onSelect={() =>
+                  navigator.clipboard.writeText(formatRowAsJson(row ?? {}))
+                }
+              >
+                As JSON
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        </ContextMenuContent>
+      )}
     </ContextMenu>
   )
 }
