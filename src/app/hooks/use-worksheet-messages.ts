@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import { canceledQueryMessage } from '@/glue/queries'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { toQueryErrorParts } from '../components/query-error-parts'
 import { useQueriesList } from './queries'
@@ -28,7 +28,9 @@ function firstLine(text: string): string {
  * survives a reload for free and cannot drift from the results.
  */
 /** The line logged when a query finishes, or none while it is still running. */
-function toOutcomeMessage(query: QueryDto): WorksheetMessage | undefined {
+function toOutcomeMessage(
+  query: QuerySummaryDto
+): WorksheetMessage | undefined {
   const timestamp = query.finishedAt ?? query.queriedAt
 
   if (query.error !== null) {
@@ -58,7 +60,7 @@ function toOutcomeMessage(query: QueryDto): WorksheetMessage | undefined {
   }
 }
 
-function toQueryMessages(query: QueryDto): WorksheetMessage[] {
+function toQueryMessages(query: QuerySummaryDto): WorksheetMessage[] {
   const messages: WorksheetMessage[] = []
   const statement = firstLine(query.content)
 
@@ -80,7 +82,7 @@ function toQueryMessages(query: QueryDto): WorksheetMessage[] {
 }
 
 export function buildWorksheetMessages(
-  queries: QueryDto[]
+  queries: QuerySummaryDto[]
 ): WorksheetMessage[] {
   const messages = queries
     .toSorted((a, b) => a.queriedAt - b.queriedAt)

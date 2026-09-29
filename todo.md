@@ -83,14 +83,19 @@ at the code to change.
       and `mysql-adapter.ts:44`. Fixed: `src/databases/close-quietly.ts` logs
       and swallows, applied to all seven sites in both adapters. One of them —
       the mysql2 callback connection in `runQuery` — was not even awaited.
-- [ ] **Trim the polling payload.** `QueryRunner.list()`
+- [x] **Trim the polling payload.** `QueryRunner.list()`
       (`src/server/services/query-runner.ts:294-303`) JSON-parses the stored
       `result` of all 250 rows it returns, and `get()` re-parses the row payload
       on every 250 ms poll (`src/app/hooks/queries.ts:11`,
       `query-runner.ts:273-291`). This matters more than it did: the Messages
       tab now reads the whole list through `useQueriesList`. Return metadata +
       `truncated` from the list endpoint and add a status-only poll that omits
-      the rows until they are needed.
+      the rows until they are needed. Fixed: `GET /queries` and the new
+      `GET /queries/:id/status` return `QuerySummaryDto` (`rowCount` and
+      `truncated`, no rows), projected in SQL from new `resultRowCount` /
+      `resultTruncated` columns so the `result` blob is not read; legacy rows
+      fall back to SQLite JSON functions. The results pane reads the rows once
+      through `useQueryResult` (`GET /queries/:id`, `staleTime: Infinity`).
 - [x] **Add a statement timeout to query execution.** Timeouts are set only in
       `testConnection`, not `runQuery` (`postgres-adapter.ts:65-105`,
       `mysql-adapter.ts:39-68`). A runaway query holds a connection open

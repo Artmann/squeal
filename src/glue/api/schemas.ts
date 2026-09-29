@@ -332,6 +332,26 @@ const QueryDto = Schema.Struct({
 })
 export type QueryDto = Schema.Schema.Type<typeof QueryDto>
 
+// What the history list and the status poll say about a result: its size and
+// whether it was cut off, without the rows. A result can hold 10,000 rows, and
+// the list carries 250 queries, so shipping rows there meant every boot read,
+// parsed and encoded what nobody was looking at. The rows come from `GET
+// /queries/:id`, once, for the query the results pane shows.
+const QueryResultSummaryDto = Schema.Struct({
+  rowCount: Schema.Number,
+  truncated: Schema.Boolean
+})
+export type QueryResultSummaryDto = Schema.Schema.Type<
+  typeof QueryResultSummaryDto
+>
+
+// A `QueryDto` is also a `QuerySummaryDto`: the full result has both fields.
+const QuerySummaryDto = Schema.Struct({
+  ...QueryDto.fields,
+  result: Schema.NullOr(QueryResultSummaryDto)
+})
+export type QuerySummaryDto = Schema.Schema.Type<typeof QuerySummaryDto>
+
 export const CreateQueryRequest = Schema.Struct({
   content: Schema.String,
 
@@ -590,15 +610,20 @@ export const DeleteEnvironmentResponse = Schema.Struct({
 })
 
 export const GetQueriesResponse = Schema.Struct({
-  queries: Schema.mutable(Schema.Array(QueryDto))
+  queries: Schema.mutable(Schema.Array(QuerySummaryDto))
 })
 
 export const GetQueryResponse = Schema.Struct({
   query: QueryDto
 })
 
+export const GetQueryStatusResponse = Schema.Struct({
+  query: QuerySummaryDto
+})
+
+// A summary, like the list: a query that was just created has no result yet.
 export const CreateQueryResponse = Schema.Struct({
-  query: QueryDto
+  query: QuerySummaryDto
 })
 export type CreateQueryResponse = Schema.Schema.Type<typeof CreateQueryResponse>
 

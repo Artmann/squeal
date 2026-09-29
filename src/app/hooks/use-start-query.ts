@@ -4,7 +4,7 @@ import { v7 } from 'uuid'
 
 import { useCollections } from '../collections-context'
 import { finishQueryTrace, startQueryTrace } from '../tracing/query-traces'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 interface StartQueryInput {
   content: string
@@ -29,7 +29,7 @@ export function consumeErrorNotice(queryId: string): boolean {
   return errorNoticeQueryIds.delete(queryId)
 }
 
-function createOptimisticQuery(input: StartQueryInput): QueryDto {
+function createOptimisticQuery(input: StartQueryInput): QuerySummaryDto {
   return {
     content: input.content,
     databaseId: input.databaseId ?? '',

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { canceledQueryMessage } from '@/glue/queries'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { stubElementSize } from '../test-element-size'
 import { QueryResultContent } from './QueryResultContent'
@@ -14,7 +14,7 @@ beforeEach(() => {
   stubElementSize()
 })
 
-const baseQuery: QueryDto = {
+const baseQuery: QuerySummaryDto = {
   content: 'SELECT * FROM film',
   databaseId: 'database-1',
   error: null,
@@ -23,6 +23,11 @@ const baseQuery: QueryDto = {
   queriedAt: 1000,
   result: null,
   worksheetId: 'worksheet-1'
+}
+
+const successfulQuery: QuerySummaryDto = {
+  ...baseQuery,
+  result: { rowCount: 1, truncated: false }
 }
 
 describe('QueryResultContent', () => {
@@ -63,14 +68,12 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{
-          ...baseQuery,
-          result: {
-            fields: [{ name: 'title' }],
-            rowCount: 1,
-            rows: [{ title: 'Alien' }],
-            truncated: false
-          }
+        query={successfulQuery}
+        result={{
+          fields: [{ name: 'title' }],
+          rowCount: 1,
+          rows: [{ title: 'Alien' }],
+          truncated: false
         }}
       />
     )
@@ -78,6 +81,36 @@ describe('QueryResultContent', () => {
     expect(screen.getByText('Alien')).toBeInTheDocument()
     expect(
       screen.getByRole('columnheader', { name: 'title' })
+    ).toBeInTheDocument()
+  })
+
+  // The query says it has rows before they have arrived, and "No results yet"
+  // would be a lie about a query that just produced some.
+  it('shows a loading state while the rows of a finished query arrive', () => {
+    render(
+      <QueryResultContent
+        databaseName="Pagila"
+        query={successfulQuery}
+      />
+    )
+
+    expect(screen.getByText('Loading results…')).toBeInTheDocument()
+    expect(screen.queryByText('No results yet')).not.toBeInTheDocument()
+  })
+
+  it('says so when the rows could not be loaded', () => {
+    render(
+      <QueryResultContent
+        databaseName="Pagila"
+        query={successfulQuery}
+        resultError="Could not load the rows for this query. Run it again to see them."
+      />
+    )
+
+    expect(
+      screen.getByText(
+        'Could not load the rows for this query. Run it again to see them.'
+      )
     ).toBeInTheDocument()
   })
 

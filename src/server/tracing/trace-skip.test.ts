@@ -13,7 +13,8 @@ describe('shouldSkipTracing', () => {
     expect(shouldSkipTracing('POST', '/traces/spans')).toEqual(true)
   })
 
-  it('skips the query result poller', () => {
+  it('skips the query status poller and the result read', () => {
+    expect(shouldSkipTracing('GET', '/queries/some-id/status')).toEqual(true)
     expect(shouldSkipTracing('GET', '/queries/some-id')).toEqual(true)
   })
 

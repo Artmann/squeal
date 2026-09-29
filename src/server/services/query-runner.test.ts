@@ -503,23 +503,69 @@ describe('QueryRunner', () => {
           })
         )
 
-        return yield* runner.list()
+        return {
+          full: yield* runner.get('legacy-query'),
+          list: yield* runner.list(),
+          status: yield* runner.status('legacy-query')
+        }
       })
     )
 
-    const legacy = queries.find((query) => query.id === 'legacy-query')
+    const legacySummary = {
+      content: 'select 1',
+      databaseId: expect.any(String),
+      error: null,
+      finishedAt: 2_000,
+      id: 'legacy-query',
+      queriedAt: 1_000,
+      result: { rowCount: 1, truncated: false },
+      worksheetId: 'worksheet-1'
+    }
 
-    expect(legacy?.result).toEqual({
+    expect(queries.list).toEqual([legacySummary])
+    expect(queries.status).toEqual(legacySummary)
+    expect(queries.full.result).toEqual({
       fields: [{ name: 'value' }],
       rowCount: 1,
       rows: [{ value: 1 }],
       truncated: false
     })
-    expect(legacy?.error).toEqual(null)
   })
 
-  it('reports a structurally unusable stored result without failing the list', async () => {
-    const queries = await run(
+  // A row saved before the size columns existed is summarized from its blob,
+  // with the same fallbacks `get` applies to it.
+  it('summarizes a stored result without a rowCount from its rows', async () => {
+    const summaries = await listStoredResults([
+      JSON.stringify({
+        fields: [{ name: 'value' }],
+        rows: [{ value: 1 }, { value: 2 }],
+        truncated: true
+      })
+    ])
+
+    expect(summaries).toEqual([
+      { error: null, result: { rowCount: 2, truncated: true } }
+    ])
+  })
+
+  it('reports an unusable stored result without failing the list', async () => {
+    const summaries = await listStoredResults([
+      JSON.stringify({ unexpected: true }),
+      'not json at all',
+      JSON.stringify({ fields: [], rows: [1, null] }),
+      JSON.stringify(null)
+    ])
+
+    const unreadable = {
+      error: 'Stored result could not be read.',
+      result: null
+    }
+
+    expect(summaries).toEqual([unreadable, unreadable, unreadable, unreadable])
+  })
+
+  it('reports an unusable stored result from get as well', async () => {
+    const query = await run(
       Effect.gen(function* () {
         const appDatabase = yield* AppDatabase
         const runner = yield* QueryRunner
@@ -537,13 +583,168 @@ describe('QueryRunner', () => {
           })
         )
 
+        return yield* runner.get('broken-query')
+      })
+    )
+
+    expect(query.result).toEqual(null)
+    expect(query.error).toEqual('Stored result could not be read.')
+  })
+
+  it('saves the size beside the result and lists it without the rows', async () => {
+    const { list, row, status } = await run(
+      Effect.gen(function* () {
+        const appDatabase = yield* AppDatabase
+        const runner = yield* QueryRunner
+        const database = yield* createDatabase
+
+        yield* runner.createAndRun({ ...queryInput, databaseId: database.id })
+        yield* runner.awaitIdle
+
+        const [row] = yield* appDatabase.execute((client) =>
+          client
+            .select({
+              resultRowCount: queriesTable.resultRowCount,
+              resultTruncated: queriesTable.resultTruncated
+            })
+            .from(queriesTable)
+        )
+
+        return {
+          list: yield* runner.list(),
+          row,
+          status: yield* runner.status(queryInput.id)
+        }
+      })
+    )
+
+    const summary = {
+      content: 'select 1',
+      databaseId: expect.any(String),
+      error: null,
+      finishedAt: expect.any(Number),
+      id: 'query-1',
+      queriedAt: 1_000,
+      result: { rowCount: 1, truncated: false },
+      worksheetId: 'worksheet-1'
+    }
+
+    expect(row).toEqual({ resultRowCount: 1, resultTruncated: false })
+    expect(list).toEqual([summary])
+    expect(status).toEqual(summary)
+  })
+
+  // The point of the size columns: a current row is summarized without its
+  // blob being read, so even a blob that would not parse does not matter.
+  it('summarizes a current row from its size columns alone', async () => {
+    const queries = await run(
+      Effect.gen(function* () {
+        const appDatabase = yield* AppDatabase
+        const runner = yield* QueryRunner
+        const database = yield* createDatabase
+
+        yield* appDatabase.execute((client) =>
+          client.insert(queriesTable).values({
+            content: 'select 1',
+            databaseId: database.id,
+            finishedAt: 2_000,
+            id: 'current-query',
+            queriedAt: 1_000,
+            result: 'not json at all',
+            resultRowCount: 10_000,
+            resultTruncated: true,
+            worksheetId: 'worksheet-1'
+          })
+        )
+
         return yield* runner.list()
       })
     )
 
-    const broken = queries.find((query) => query.id === 'broken-query')
+    expect(queries.map(({ error, result }) => ({ error, result }))).toEqual([
+      { error: null, result: { rowCount: 10_000, truncated: true } }
+    ])
+  })
 
-    expect(broken?.result).toEqual(null)
-    expect(broken?.error).toEqual('Stored result could not be read.')
+  it('summarizes an unfinished query with no result', async () => {
+    const status = await run(
+      Effect.gen(function* () {
+        const appDatabase = yield* AppDatabase
+        const runner = yield* QueryRunner
+        const database = yield* createDatabase
+
+        yield* appDatabase.execute((client) =>
+          client.insert(queriesTable).values({
+            content: 'select 1',
+            databaseId: database.id,
+            id: 'running-query',
+            queriedAt: 1_000,
+            worksheetId: 'worksheet-1'
+          })
+        )
+
+        return yield* runner.status('running-query')
+      })
+    )
+
+    expect(status).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      error: null,
+      finishedAt: null,
+      id: 'running-query',
+      queriedAt: 1_000,
+      result: null,
+      worksheetId: 'worksheet-1'
+    })
+  })
+
+  it('fails the status poll with QueryNotFoundError for an unknown query id', async () => {
+    const error = await run(
+      Effect.gen(function* () {
+        const runner = yield* QueryRunner
+
+        return yield* runner.status('missing').pipe(Effect.flip)
+      })
+    )
+
+    expect(error).toEqual(
+      expect.objectContaining({
+        _tag: 'QueryNotFoundError',
+        queryId: 'missing'
+      })
+    )
   })
 })
+
+// Stores each blob as a finished legacy row — no size columns — and lists
+// them back in the same order, keeping only what the summary says about each.
+function listStoredResults(results: string[]) {
+  return run(
+    Effect.gen(function* () {
+      const appDatabase = yield* AppDatabase
+      const runner = yield* QueryRunner
+      const database = yield* createDatabase
+
+      yield* appDatabase.execute((client) =>
+        client.insert(queriesTable).values(
+          results.map((result, index) => ({
+            content: 'select 1',
+            databaseId: database.id,
+            finishedAt: 2_000,
+            id: `stored-${index}`,
+            // Newest first in the list, so the earliest blob gets the latest
+            // timestamp to keep the order the caller gave.
+            queriedAt: 1_000 - index,
+            result,
+            worksheetId: 'worksheet-1'
+          }))
+        )
+      )
+
+      const queries = yield* runner.list()
+
+      return queries.map(({ error, result }) => ({ error, result }))
+    })
+  )
+}

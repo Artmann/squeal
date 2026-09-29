@@ -10,6 +10,7 @@ import { DatabaseDto } from '@/glue/databases'
 import type {
   EnvironmentDto,
   QueryDto,
+  QuerySummaryDto,
   SecretStorageMode,
   UpdateStatusResponse
 } from '@/glue/api/schemas'
@@ -33,7 +34,12 @@ export interface RenderOptions {
   environments?: EnvironmentDto[]
   /** Convenience for the common case of one open, active worksheet. */
   openWorksheetId?: string
-  queries?: QueryDto[]
+  queries?: QuerySummaryDto[]
+  /**
+   * Finished queries with their rows, seeded where `useQueryResult` reads
+   * them, so a results pane shows a table without a request.
+   */
+  queryResults?: QueryDto[]
   schemas?: Record<string, SchemaInfo>
   /** `null` skips seeding, for the tests that exercise the real fetch. */
   secretStorageMode?: SecretStorageMode | null
@@ -85,6 +91,10 @@ function seedQueryCache(
       mode: options.secretStorageMode ?? 'keychain',
       storageName: 'the macOS Keychain'
     })
+  }
+
+  for (const query of options.queryResults ?? []) {
+    queryClient.setQueryData(queryKeys.query(query.id), query)
   }
 
   for (const [databaseId, schema] of Object.entries(options.schemas ?? {})) {

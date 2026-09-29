@@ -4,7 +4,7 @@ import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { canceledQueryMessage } from '@/glue/queries'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { renderWithProviders } from '../test-utils'
 import { useCancelQuery } from './mutations'
@@ -15,14 +15,14 @@ vi.mock('../api-client', () => ({
     cancelQuery: vi.fn(async () => undefined),
     getDatabases: vi.fn(async () => []),
     getQueries: vi.fn(async () => []),
-    getQuery: vi.fn(),
+    getQueryStatus: vi.fn(),
     getWorksheets: vi.fn(async () => [])
   }
 }))
 
 import { apiClient } from '../api-client'
 
-const runningQuery: QueryDto = {
+const runningQuery: QuerySummaryDto = {
   content: 'SELECT pg_sleep(30);',
   databaseId: 'database-1',
   error: null,
@@ -33,7 +33,7 @@ const runningQuery: QueryDto = {
   worksheetId: 'ws-1'
 }
 
-const canceledQuery: QueryDto = {
+const canceledQuery: QuerySummaryDto = {
   ...runningQuery,
   error: canceledQueryMessage,
   finishedAt: 2
@@ -70,7 +70,7 @@ function CancelProbe(): ReactElement {
 function finalizeOnCancel(): void {
   let finalized = false
 
-  vi.mocked(apiClient.getQuery).mockImplementation(async () =>
+  vi.mocked(apiClient.getQueryStatus).mockImplementation(async () =>
     finalized ? canceledQuery : runningQuery
   )
 
@@ -80,14 +80,18 @@ function finalizeOnCancel(): void {
 }
 
 function stayRunning(): void {
-  vi.mocked(apiClient.getQuery).mockImplementation(async () => runningQuery)
+  vi.mocked(apiClient.getQueryStatus).mockImplementation(
+    async () => runningQuery
+  )
   vi.mocked(apiClient.cancelQuery).mockImplementation(async () => undefined)
 }
 
 // A backend that refuses the cancel outright, with the row left running — what
 // the user sees when the request never lands.
 function failCancel(): void {
-  vi.mocked(apiClient.getQuery).mockImplementation(async () => runningQuery)
+  vi.mocked(apiClient.getQueryStatus).mockImplementation(
+    async () => runningQuery
+  )
   vi.mocked(apiClient.cancelQuery).mockRejectedValue(
     new Error('The connection was lost.')
   )
@@ -103,7 +107,7 @@ function deferredCancels() {
 
   let row = runningQuery
 
-  vi.mocked(apiClient.getQuery).mockImplementation(async () => row)
+  vi.mocked(apiClient.getQueryStatus).mockImplementation(async () => row)
   vi.mocked(apiClient.cancelQuery).mockImplementation(
     (queryId: string) =>
       new Promise<void>((_resolve, reject) => {
@@ -209,7 +213,7 @@ describe('useCancelQuery', () => {
     stayRunning()
 
     const { rerender, result } = renderHook(
-      ({ query }: { query: QueryDto }) => useCancelQuery(query),
+      ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
       { initialProps: { query: runningQuery } }
     )
 
@@ -300,7 +304,7 @@ describe('useCancelQuery', () => {
     const cancels = deferredCancels()
 
     const { rerender, result } = renderHook(
-      ({ query }: { query: QueryDto }) => useCancelQuery(query),
+      ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
       { initialProps: { query: runningQuery } }
     )
 
@@ -326,7 +330,7 @@ describe('useCancelQuery', () => {
     stayRunning()
 
     const { rerender, result } = renderHook(
-      ({ query }: { query: QueryDto }) => useCancelQuery(query),
+      ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
       { initialProps: { query: runningQuery } }
     )
 
@@ -347,7 +351,7 @@ describe('useCancelQuery', () => {
     stayRunning()
 
     const { rerender, result } = renderHook(
-      ({ query }: { query: QueryDto }) => useCancelQuery(query),
+      ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
       { initialProps: { query: runningQuery } }
     )
 
@@ -365,7 +369,9 @@ describe('useCancelQuery', () => {
   // advice has to come from us — an empty half would read as a cut-off
   // sentence.
   it('still says what to do when the failure carries no message', async () => {
-    vi.mocked(apiClient.getQuery).mockImplementation(async () => runningQuery)
+    vi.mocked(apiClient.getQueryStatus).mockImplementation(
+      async () => runningQuery
+    )
     vi.mocked(apiClient.cancelQuery).mockRejectedValue('no message at all')
 
     renderWithProviders(<CancelProbe />, { queries: [runningQuery] })

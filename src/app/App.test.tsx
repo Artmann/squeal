@@ -4,7 +4,7 @@ import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DatabaseDto } from '@/glue/databases'
-import { QueryDto } from '@/glue/api/schemas'
+import { QuerySummaryDto } from '@/glue/api/schemas'
 import { WorksheetDto } from '@/glue/worksheets'
 import { App, useWorksheetSession } from './App'
 import { useAppSelector } from './store'
@@ -37,7 +37,7 @@ vi.mock('./api-client', () => ({
     createQuery: vi.fn(),
     getDatabases: vi.fn(async () => []),
     getDatabaseSchema: vi.fn(async () => ({ tables: [] })),
-    getQuery: vi.fn(),
+    getQueryStatus: vi.fn(),
     updateWorksheet: vi.fn()
   }
 }))
@@ -251,7 +251,7 @@ describe('running a query', () => {
 })
 
 describe('canceling a query', () => {
-  const runningQuery: QueryDto = {
+  const runningQuery: QuerySummaryDto = {
     content: 'SELECT pg_sleep(30);',
     databaseId: 'database-1',
     error: null,
@@ -265,7 +265,7 @@ describe('canceling a query', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(apiClient.updateWorksheet).mockResolvedValue(testWorksheet)
-    vi.mocked(apiClient.getQuery).mockResolvedValue(runningQuery)
+    vi.mocked(apiClient.getQueryStatus).mockResolvedValue(runningQuery)
   })
 
   // The whole app rather than a probe: the props `App` hands the toolbar are

@@ -8,6 +8,7 @@ export const queryKeys = {
   environments: ['environments'] as const,
   queries: ['queries'] as const,
   query: (id: string) => ['query', id] as const,
+  queryStatus: (id: string) => ['query', id, 'status'] as const,
   schema: (databaseId: string) => [...schemasKey, databaseId] as const,
   schemas: schemasKey,
   secretStorage: ['secret-storage'] as const,

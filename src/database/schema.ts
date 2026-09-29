@@ -55,6 +55,11 @@ export const queriesTable = sqliteTable(
     finishedAt: integer(),
     queriedAt: integer().notNull(),
     result: text(),
+    // The result's size, kept beside the blob so the history list and the
+    // status poll can answer without reading `result` at all. Null on rows
+    // saved before these columns existed; those are read from the blob.
+    resultRowCount: integer(),
+    resultTruncated: integer({ mode: 'boolean' }),
     worksheetId: text().notNull()
   },
   (table) => [
