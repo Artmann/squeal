@@ -102,10 +102,6 @@ interface SchemaResult {
 // identical in a tree — an empty subtree — and neither is: one needs the
 // password re-entered, the other names a server that did not answer.
 //
-// Loading only counts while there is nothing to show. A refresh of a loaded
-// schema keeps the old tree on screen until the new one lands, while a retry
-// after a failure has no tree, so it shows the placeholder — and drops the old
-// reason, which would otherwise sit there as if the click did nothing.
 function computeRenderedRows(
   databases: DatabaseDto[],
   schemaResults: (SchemaResult | undefined)[],
@@ -114,11 +110,9 @@ function computeRenderedRows(
   const isSearching = searchQuery.trim().length > 0
 
   const rows = databases.map((database, index) => {
-    const result = schemaResults[index]
-    const schema = result?.data
-
-    const isSchemaLoading =
-      (result?.isFetching ?? false) && schema === undefined
+    const { isSchemaLoading, schema, schemaError } = readSchemaState(
+      schemaResults[index]
+    )
 
     const searchMatch = isSearching
       ? (computeDatabaseMatch(database, schema, searchQuery) ?? undefined)
@@ -129,7 +123,7 @@ function computeRenderedRows(
       hasMultipleSchemas: spansMultipleSchemas(schema),
       isSchemaLoading,
       isUnreadable: isConnectionUnreadable(database),
-      schemaError: isSchemaLoading ? undefined : result?.error?.message,
+      schemaError,
       searchMatch,
       // Reading the schema here rather than in the expanded row gives up no
       // laziness: the caller fetches every schema unconditionally. If a
@@ -145,6 +139,27 @@ function computeRenderedRows(
   }
 
   return rows.filter((row) => row.searchMatch !== undefined)
+}
+
+interface SchemaState {
+  isSchemaLoading: boolean
+  schema: SchemaInfo | undefined
+  schemaError: string | undefined
+}
+
+// Loading only counts while there is nothing to show. A refresh of a loaded
+// schema keeps the old tree on screen until the new one lands, while a retry
+// after a failure has no tree, so it shows the placeholder — and drops the old
+// reason, which would otherwise sit there as if the click did nothing.
+function readSchemaState(result: SchemaResult | undefined): SchemaState {
+  const schema = result?.data
+  const isSchemaLoading = (result?.isFetching ?? false) && schema === undefined
+
+  return {
+    isSchemaLoading,
+    schema,
+    schemaError: isSchemaLoading ? undefined : result?.error?.message
+  }
 }
 
 function spansMultipleSchemas(schema: SchemaInfo | undefined): boolean {
