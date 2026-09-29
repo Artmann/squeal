@@ -171,6 +171,24 @@ function parseEntry(
     return null
   }
 
+  const parsedRanges = parseRanges(ranges, main)
+  const parsedScroll = parseScroll(scroll)
+
+  if (parsedRanges === null || parsedScroll === null) {
+    return null
+  }
+
+  return {
+    view: { main, ranges: parsedRanges, scroll: parsedScroll },
+    worksheetId
+  }
+}
+
+// Null unless every range is valid and `main` points at one of them.
+function parseRanges(
+  ranges: unknown,
+  main: number
+): StoredSelectionRange[] | null {
   if (
     !Array.isArray(ranges) ||
     ranges.length === 0 ||
@@ -190,6 +208,10 @@ function parseEntry(
     parsedRanges.push({ anchor: range.anchor, head: range.head })
   }
 
+  return parsedRanges
+}
+
+function parseScroll(scroll: unknown): StoredScroll | null {
   if (
     !isRecord(scroll) ||
     !isOffset(scroll.position) ||
@@ -199,12 +221,5 @@ function parseEntry(
     return null
   }
 
-  return {
-    view: {
-      main,
-      ranges: parsedRanges,
-      scroll: { offset: scroll.offset, position: scroll.position }
-    },
-    worksheetId
-  }
+  return { offset: scroll.offset, position: scroll.position }
 }

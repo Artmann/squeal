@@ -51,7 +51,7 @@ const bindWorksheet = StateEffect.define<string | undefined>()
  * exactly when the lines above keep their heights, and still the same line when
  * they do not.
  */
-export function captureEditorView(view: EditorView): StoredEditorView {
+function captureEditorView(view: EditorView): StoredEditorView {
   const { mainIndex, ranges } = view.state.selection
 
   // Asking for a line block first makes CodeMirror run any measure it has
@@ -72,7 +72,7 @@ export function captureEditorView(view: EditorView): StoredEditorView {
   }
 }
 
-export function toEditorSelection(view: StoredEditorView): EditorSelection {
+function toEditorSelection(view: StoredEditorView): EditorSelection {
   return EditorSelection.create(
     view.ranges.map((range) => EditorSelection.range(range.anchor, range.head)),
     view.main

@@ -167,9 +167,7 @@ export function useWorksheetEditor(
     latest.current = options
   })
 
-  const [worksheetViews] = useState(
-    () => new WorksheetViewMemory(() => latest.current.worksheetId)
-  )
+  const worksheetViews = useWorksheetViews(latest, worksheetId)
 
   const extensions = useMemo(
     () =>
@@ -180,43 +178,6 @@ export function useWorksheetEditor(
         worksheetViews
       }),
     [gutterCompartment, languageCompartment, latest, worksheetViews]
-  )
-
-  // Leaving a worksheet writes its view down before the document is swapped
-  // out from under it, which happens in the child's plain effect; this runs
-  // ahead of that.
-  useLayoutEffect(() => {
-    worksheetViews.saveNow()
-  }, [worksheetId, worksheetViews])
-
-  // After the child's effect, so a swap that happened is already visible and
-  // only a switch between worksheets with the same text is left to handle.
-  useEffect(() => {
-    worksheetViews.follow(worksheetId, latest.current.content)
-  }, [worksheetId, worksheetViews])
-
-  // Quitting does not unmount anything, and the app exits without waiting on
-  // the renderer, so the last caret is written when the page goes away.
-  useEffect(() => {
-    const handlePageHide = (): void => {
-      worksheetViews.saveNow()
-    }
-
-    window.addEventListener('pagehide', handlePageHide)
-
-    return () => {
-      window.removeEventListener('pagehide', handlePageHide)
-    }
-  }, [worksheetViews])
-
-  // A layout effect so the cleanup runs while the editor is still in the
-  // document: the child destroys the view in a plain effect cleanup, and a
-  // detached editor reads as scrolled to the top.
-  useLayoutEffect(
-    () => () => {
-      worksheetViews.release()
-    },
-    [worksheetViews]
   )
 
   // The schema and the dialect both belong to the language, and both change on
@@ -313,6 +274,56 @@ export function useWorksheetEditor(
     handleCreateEditor,
     handleUpdate
   }
+}
+
+// The memory of each worksheet's caret, selection and scroll, and the effects
+// that keep it in step with the worksheet on screen.
+function useWorksheetViews(
+  latest: RefObject<WorksheetEditorOptions>,
+  worksheetId: string | undefined
+): WorksheetViewMemory {
+  const [worksheetViews] = useState(
+    () => new WorksheetViewMemory(() => latest.current.worksheetId)
+  )
+
+  // Leaving a worksheet writes its view down before the document is swapped
+  // out from under it, which happens in the child's plain effect; this runs
+  // ahead of that.
+  useLayoutEffect(() => {
+    worksheetViews.saveNow()
+  }, [worksheetId, worksheetViews])
+
+  // After the child's effect, so a swap that happened is already visible and
+  // only a switch between worksheets with the same text is left to handle.
+  useEffect(() => {
+    worksheetViews.follow(worksheetId, latest.current.content)
+  }, [latest, worksheetId, worksheetViews])
+
+  // Quitting does not unmount anything, and the app exits without waiting on
+  // the renderer, so the last caret is written when the page goes away.
+  useEffect(() => {
+    const handlePageHide = (): void => {
+      worksheetViews.saveNow()
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+    }
+  }, [worksheetViews])
+
+  // A layout effect so the cleanup runs while the editor is still in the
+  // document: the child destroys the view in a plain effect cleanup, and a
+  // detached editor reads as scrolled to the top.
+  useLayoutEffect(
+    () => () => {
+      worksheetViews.release()
+    },
+    [worksheetViews]
+  )
+
+  return worksheetViews
 }
 
 // Built once per editor. The active-statement gutter is the only extension that
