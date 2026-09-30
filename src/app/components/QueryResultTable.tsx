@@ -32,6 +32,7 @@ import {
   rowNumberColumnWidth
 } from './query-result-columns'
 import {
+  formatCellDisplay,
   formatCellValue,
   formatRowAsCsv,
   formatRowAsJson
@@ -364,7 +365,7 @@ function QueryResultCell({
   // columns are at least distinct elements now; showing the right value needs
   // an array row mode in the adapter.
   const value = row?.[column.name]
-  const text = formatCellValue(value)
+  const text = formatCellDisplay(value)
 
   return (
     <td

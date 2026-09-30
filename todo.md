@@ -385,10 +385,13 @@ at the code to change.
       Fixed by the redesign: one `--accent` and a shared `--sel` token
       (`ui/input.tsx:11`, `codemirror-theme.ts:22`), no `"..."` left, and the
       search icon is `text-text3` (`SearchInput.tsx:37`).
-- [ ] **Italicize actual `NULL` cells** so they don't look like the string
+- [x] **Italicize actual `NULL` cells** so they don't look like the string
       "null". `query-result-format.ts:2-3` returns the bare string `'null'` with
       no styling hook — return a marker (or render the null case in
-      `QueryResultTable`) so it can be styled.
+      `QueryResultTable`) so it can be styled. Fixed: `QueryResultTable` already
+      dimmed and italicized `value === null`; the grid now also shows it as
+      `NULL` through `formatCellDisplay` (`query-result-format.ts:8`), while
+      Copy, Copy Row and find keep `formatCellValue`'s `null`.
 - [x] **Add a clear button to `SearchInput`** (`SearchInput.tsx`). Fixed:
       `SearchInput.tsx` shows a "Clear search" button while there is text, which
       clears and refocuses the input; the two sidebar filters also clear on
