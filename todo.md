@@ -427,12 +427,15 @@ at the code to change.
       watch mode (hangs contributors; CI gets away with it only because vitest
       detects `CI`). Add `"test": "vitest run"` + `"test:watch"`, install
       `@vitest/coverage-v8`, and surface coverage in CI.
-- [ ] **Harden CI.** `.github/workflows/ci.yml` uses mutable `yarn install` in
+- [x] **Harden CI.** `.github/workflows/ci.yml` uses mutable `yarn install` in
       all five jobs (use `--frozen-lockfile`), builds only on ubuntu — add a
       `[ubuntu, macos, windows]` matrix to the `build` job so native
       `pg`/`@libsql` packaging regressions are caught on PR rather than at
       release, where `release.yml` already runs all three. Consider `husky` +
-      `lint-staged`.
+      `lint-staged`. Fixed: every job installs with `--frozen-lockfile`, and the
+      `build` job runs on all three runners, with macOS packaging the universal
+      app through `yarn package:mac`. No git hooks were added: CI already runs
+      every check they would.
 - [x] **Add macOS signing/notarization** to `forge.config.ts` (gated on secrets)
       — released builds are unsigned and Gatekeeper-blocked. (The version-scheme
       half of this item is obsolete: release-please owns versions now, so the
