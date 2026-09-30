@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ReactElement } from 'react'
 import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -530,5 +531,128 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
 
     expect(screen.queryByText('Add database')).not.toBeInTheDocument()
+  })
+})
+
+describe('collapsing the sidebar', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  function renderWorkspace() {
+    return renderWithProviders(<App />, {
+      databases: [testDatabase],
+      queries: [],
+      worksheets: []
+    })
+  }
+
+  function getSidebar(toggle: HTMLElement): HTMLElement {
+    const sidebar = document.getElementById(
+      toggle.getAttribute('aria-controls') ?? ''
+    )
+
+    invariant(sidebar, 'The sidebar toggle does not point at the sidebar.')
+
+    return sidebar
+  }
+
+  it('hides the sidebar from the title bar and brings it back', async () => {
+    const user = userEvent.setup()
+
+    renderWorkspace()
+
+    const toggle = within(getTitleBar()).getByRole('button', {
+      name: 'Hide sidebar'
+    })
+    const sidebar = getSidebar(toggle)
+
+    expect(sidebar).toBeVisible()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(toggle)
+
+    expect(sidebar).not.toBeVisible()
+    expect(toggle).toHaveAccessibleName('Show sidebar')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(toggle)
+
+    expect(sidebar).toBeVisible()
+    expect(toggle).toHaveAccessibleName('Hide sidebar')
+  })
+
+  it('toggles the sidebar with mod+b', async () => {
+    const user = userEvent.setup()
+
+    const { store } = renderWorkspace()
+
+    const sidebar = getSidebar(
+      screen.getByRole('button', { name: 'Hide sidebar' })
+    )
+
+    await user.keyboard('{Meta>}b{/Meta}')
+
+    expect(sidebar).not.toBeVisible()
+    expect(store.getState().ui).toEqual({ sidebarCollapsed: true })
+
+    await user.keyboard('{Meta>}b{/Meta}')
+
+    expect(sidebar).toBeVisible()
+  })
+
+  it('starts collapsed when the store says so', () => {
+    renderWithProviders(<App />, {
+      databases: [testDatabase],
+      queries: [],
+      ui: { sidebarCollapsed: true },
+      worksheets: []
+    })
+
+    const toggle = screen.getByRole('button', { name: 'Show sidebar' })
+
+    expect(getSidebar(toggle)).not.toBeVisible()
+  })
+
+  it('keeps the width the sidebar had once it is expanded again', async () => {
+    const user = userEvent.setup()
+
+    localStorage.setItem('ui:sidebarWidth', '320')
+
+    renderWorkspace()
+
+    const toggle = screen.getByRole('button', { name: 'Hide sidebar' })
+
+    await user.click(toggle)
+    await user.click(toggle)
+
+    expect(getSidebar(toggle)).toHaveStyle({ width: '320px' })
+  })
+
+  // Hiding an element that holds focus drops focus on the body, which leaves a
+  // keyboard user nowhere.
+  it('moves focus to the toggle when the sidebar hides while holding it', async () => {
+    const user = userEvent.setup()
+
+    renderWorkspace()
+
+    const toggle = screen.getByRole('button', { name: 'Hide sidebar' })
+    const [firstButton] = within(getSidebar(toggle)).getAllByRole('button')
+
+    invariant(firstButton, 'The sidebar has no buttons to focus.')
+
+    firstButton.focus()
+
+    await user.keyboard('{Meta>}b{/Meta}')
+
+    expect(toggle).toHaveFocus()
+  })
+
+  it('offers no toggle while the getting started screen shows', () => {
+    renderWithProviders(<App />, { databases: [], queries: [], worksheets: [] })
+
+    expect(
+      screen.queryByRole('button', { name: /sidebar/ })
+    ).not.toBeInTheDocument()
   })
 })

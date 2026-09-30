@@ -46,6 +46,22 @@ describe('uiSlice', () => {
     })
   })
 
+  describe('toggleSidebar', () => {
+    it('collapses the sidebar from the initial state', () => {
+      const state = reducer(initialState, uiActions.toggleSidebar())
+
+      expect(state).toEqual({ sidebarCollapsed: true })
+    })
+
+    it('expands a collapsed sidebar', () => {
+      const collapsedState: UiState = { sidebarCollapsed: true }
+
+      const state = reducer(collapsedState, uiActions.toggleSidebar())
+
+      expect(state).toEqual({ sidebarCollapsed: false })
+    })
+  })
+
   describe('toggleTraceDashboard', () => {
     it('opens the dashboard from the initial state', () => {
       const state = reducer(initialState, uiActions.toggleTraceDashboard())

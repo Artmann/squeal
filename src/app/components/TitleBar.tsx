@@ -1,5 +1,5 @@
 import { MinusIcon, MoonIcon, SquareIcon, SunIcon, XIcon } from 'lucide-react'
-import { ReactElement } from 'react'
+import { ReactElement, ReactNode } from 'react'
 
 import { useTheme } from '@/app/hooks/useTheme'
 import { cn } from '@/app/lib/utils'
@@ -18,7 +18,13 @@ const handleMinimize = () => {
   void window.electron.windowMinimize()
 }
 
-export function TitleBar(): ReactElement {
+interface TitleBarProps {
+  // Passed in rather than rendered here, because the title bar also sits on
+  // screens that have no sidebar to toggle.
+  sidebarToggle?: ReactNode
+}
+
+export function TitleBar({ sidebarToggle }: TitleBarProps): ReactElement {
   return (
     <div className="title-bar relative h-10 flex items-center bg-panel2 border-b border-border select-none">
       <div className="flex-1 drag-region h-full" />
@@ -31,7 +37,9 @@ export function TitleBar(): ReactElement {
 
       {/* A drag region as well, so only the button itself stops the drag —
           `.title-bar button` sets `-webkit-app-region: no-drag`. */}
-      <div className="flex items-center pr-[10px] drag-region h-full">
+      <div className="flex items-center gap-1 pr-[10px] drag-region h-full">
+        {sidebarToggle}
+
         <ThemeToggle />
       </div>
 

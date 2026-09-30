@@ -265,8 +265,12 @@ at the code to change.
       (`ResultsPane.tsx`) that is always visible, shows an idle empty state, and
       resizes 120–620px. There is nothing left to close. A collapse toggle would
       be a new feature, not a fix.
-- [ ] **Let the sidebar collapse** to reclaim editor width. It resizes 200–380px
+- [x] **Let the sidebar collapse** to reclaim editor width. It resizes 200–380px
       (`AppShell.tsx`, `hooks/use-persisted-size.ts`) but cannot be hidden.
+      Fixed: `components/SidebarToggle.tsx` puts a toggle in the title bar and
+      binds ⌘B; `AppSidebar.tsx` hides rather than unmounts, so the stored width
+      comes back on expand, and `store/sidebar-storage.ts` keeps the collapsed
+      state across restarts.
 
 ## 🟣 UX — states, guards & feedback
 

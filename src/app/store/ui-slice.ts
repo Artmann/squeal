@@ -15,6 +15,7 @@ export interface UiState {
   // member: that union is spread into a component whose whole body is the
   // database form, and settings shares nothing with it but the overlay.
   settingsOpen?: boolean
+  sidebarCollapsed?: boolean
   traceDashboardOpen?: boolean
 }
 
@@ -57,6 +58,12 @@ const uiSlice = createSlice({
 
     openSettings: (state) => {
       state.settingsOpen = true
+    },
+
+    // Only hides the sidebar. Its width is stored on its own, so expanding
+    // brings back the width it had.
+    toggleSidebar: (state) => {
+      state.sidebarCollapsed = !state.sidebarCollapsed
     },
 
     toggleTraceDashboard: (state) => {

@@ -15,6 +15,7 @@ import { EditorScreen } from './components/EditorScreen'
 import { GettingStartedScreen } from './components/GettingStartedScreen'
 import { ResultsPane } from './components/ResultsPane'
 import { SettingsScreen } from './components/SettingsScreen'
+import { SidebarToggle, useSidebarHotkey } from './components/SidebarToggle'
 import { StatusBar } from './components/StatusBar'
 import { TitleBar } from './components/TitleBar'
 import type { CursorPosition } from './components/worksheet-editor-cursor'
@@ -281,7 +282,9 @@ export function App(): ReactElement {
           minimize, maximize and close buttons Windows and Linux get. Not an
           app-wide promise — the trace dashboard mounts outside App entirely and
           does overlap the bottom of these buttons. */}
-      <TitleBar />
+      <TitleBar
+        sidebarToggle={showGettingStartedScreen ? undefined : <SidebarToggle />}
+      />
 
       <div className="relative flex-1 min-h-0 flex flex-col">
         {showGettingStartedScreen ? (
@@ -324,6 +327,10 @@ function Workspace(): ReactElement {
   const openWorksheetId = useAppSelector(selectActiveWorksheetId)
 
   const [cursorPosition, setCursorPosition] = useState<CursorPosition>()
+
+  // Here rather than in the title bar, so the shortcut only exists while there
+  // is a sidebar to toggle.
+  useSidebarHotkey()
 
   const {
     activeStatement,
