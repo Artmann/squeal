@@ -285,11 +285,15 @@ at the code to change.
       (`QueryResultTable.tsx:255`), and a statement with no fields and no rows
       gets no grid at all — `NoResultSet` (`QueryResultContent.tsx:105`) says
       "No rows returned." plus the affected-row count when there is one.
-- [ ] **Add schema loading/error states in the explorer.**
+- [x] **Add schema loading/error states in the explorer.**
       `DatabaseExplorer.tsx:201-202` tracks `isLoadingSchemas` only while
       searching. Expanding a database shows nothing while its schema loads and
       fails silently if the connection is down. Add a loading skeleton on the
-      expand path and an inline error + retry.
+      expand path and an inline error + retry. Fixed: `DatabaseRowBody` in
+      `DatabaseExplorer.tsx` shows `DatabaseTableListSkeleton` while a row has
+      no schema yet, and `SchemaErrorNotice` gives the server's message, what to
+      do, Retry (`useRetryDatabaseSchema`, one schema, no toast) and Edit
+      connection.
 - [x] **Disable Run when the worksheet has no database.** `App.tsx:204-216`
       defaults `databaseId` to `''` and lets Run fire, failing only via a toast.
       Disable the button with a tooltip ("Select a database first"), mirroring

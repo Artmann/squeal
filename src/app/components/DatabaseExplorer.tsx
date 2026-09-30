@@ -26,7 +26,8 @@ import {
   useCreateWorksheet,
   useDeleteDatabase,
   useRefreshDatabases,
-  useReorderDatabases
+  useReorderDatabases,
+  useRetryDatabaseSchema
 } from '../hooks/mutations'
 import { getRefreshShortcut } from '../refresh-shortcut'
 import {
@@ -66,6 +67,8 @@ import { EnvironmentBadge } from './EnvironmentBadge'
 interface RenderedDatabaseRow {
   database: DatabaseDto
   hasMultipleSchemas: boolean
+  /** The schema is being asked for and there is nothing loaded to show yet. */
+  isSchemaLoading: boolean
   /** The row's stored secret could not be read, so there is nothing to browse. */
   isUnreadable: boolean
   /** Why this database's schema could not be loaded, if it could not. */
@@ -79,6 +82,7 @@ interface RenderedDatabaseRow {
 interface SchemaResult {
   data: SchemaInfo | undefined
   error: Error | null
+  isFetching: boolean
 }
 
 // Builds the rows to render: while searching, only databases with a match
@@ -98,6 +102,7 @@ interface SchemaResult {
 // A row also carries why it has no tables when it has none. Both reasons look
 // identical in a tree — an empty subtree — and neither is: one needs the
 // password re-entered, the other names a server that did not answer.
+//
 function computeRenderedRows(
   databases: DatabaseDto[],
   schemaResults: (SchemaResult | undefined)[],
@@ -106,7 +111,9 @@ function computeRenderedRows(
   const isSearching = searchQuery.trim().length > 0
 
   const rows = databases.map((database, index) => {
-    const schema = schemaResults[index]?.data
+    const { isSchemaLoading, schema, schemaError } = readSchemaState(
+      schemaResults[index]
+    )
 
     const searchMatch = isSearching
       ? (computeDatabaseMatch(database, schema, searchQuery) ?? undefined)
@@ -115,8 +122,9 @@ function computeRenderedRows(
     return {
       database,
       hasMultipleSchemas: spansMultipleSchemas(schema),
+      isSchemaLoading,
       isUnreadable: isConnectionUnreadable(database),
-      schemaError: schemaResults[index]?.error?.message,
+      schemaError,
       searchMatch,
       // Reading the schema here rather than in the expanded row gives up no
       // laziness: the caller fetches every schema unconditionally. If a
@@ -132,6 +140,27 @@ function computeRenderedRows(
   }
 
   return rows.filter((row) => row.searchMatch !== undefined)
+}
+
+interface SchemaState {
+  isSchemaLoading: boolean
+  schema: SchemaInfo | undefined
+  schemaError: string | undefined
+}
+
+// Loading only counts while there is nothing to show. A refresh of a loaded
+// schema keeps the old tree on screen until the new one lands, while a retry
+// after a failure has no tree, so it shows the placeholder — and drops the old
+// reason, which would otherwise sit there as if the click did nothing.
+function readSchemaState(result: SchemaResult | undefined): SchemaState {
+  const schema = result?.data
+  const isSchemaLoading = (result?.isFetching ?? false) && schema === undefined
+
+  return {
+    isSchemaLoading,
+    schema,
+    schemaError: isSchemaLoading ? undefined : result?.error?.message
+  }
 }
 
 function spansMultipleSchemas(schema: SchemaInfo | undefined): boolean {
@@ -350,6 +379,7 @@ export function DatabaseExplorer(): ReactElement {
   }, [dispatch])
 
   const { isRefreshing, refresh, refreshAll } = useRefreshDatabaseTree()
+  const retrySchema = useRetryDatabaseSchema()
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -388,6 +418,7 @@ export function DatabaseExplorer(): ReactElement {
                 onDelete={handleDeleteDatabase}
                 onEdit={handleEditDatabase}
                 onRefresh={refresh}
+                onRetrySchema={retrySchema}
               />
             ))}
           </SortableContext>
@@ -494,6 +525,7 @@ interface DatabaseRowProps {
   onDelete: (database: DatabaseDto) => void
   onEdit: (databaseId: string) => void
   onRefresh: (database: DatabaseDto) => void
+  onRetrySchema: (databaseId: string) => void
 }
 
 // A decision only speaks for the context it was made in:
@@ -589,11 +621,13 @@ function DatabaseRow({
   searchQuery,
   onDelete,
   onEdit,
-  onRefresh
+  onRefresh,
+  onRetrySchema
 }: DatabaseRowProps): ReactElement {
   const {
     database,
     hasMultipleSchemas,
+    isSchemaLoading,
     isUnreadable,
     schemaError,
     searchMatch,
@@ -656,9 +690,11 @@ function DatabaseRow({
         <DatabaseRowBody
           database={database}
           hasMultipleSchemas={hasMultipleSchemas}
+          isSchemaLoading={isSchemaLoading}
           schemaError={schemaError}
           tables={tables}
-          onRefresh={onRefresh}
+          onEdit={onEdit}
+          onRetrySchema={onRetrySchema}
         />
       )}
     </div>
@@ -668,25 +704,34 @@ function DatabaseRow({
 interface DatabaseRowBodyProps {
   database: DatabaseDto
   hasMultipleSchemas: boolean
-  onRefresh: (database: DatabaseDto) => void
+  isSchemaLoading: boolean
+  onEdit: (databaseId: string) => void
+  onRetrySchema: (databaseId: string) => void
   schemaError?: string
   tables: TableInfo[]
 }
 
-// What an open row holds: its tables, or why they are missing.
+// What an open row holds: its tables, a placeholder while they load, or why
+// they are missing.
 function DatabaseRowBody({
   database,
   hasMultipleSchemas,
-  onRefresh,
+  isSchemaLoading,
+  onEdit,
+  onRetrySchema,
   schemaError,
   tables
 }: DatabaseRowBodyProps): ReactElement {
+  if (isSchemaLoading) {
+    return <DatabaseTableListSkeleton />
+  }
+
   if (schemaError !== undefined) {
     return (
-      <DatabaseRowNotice
-        actionLabel="Retry"
+      <SchemaErrorNotice
         message={schemaError}
-        onAction={() => onRefresh(database)}
+        onEdit={() => onEdit(database.id)}
+        onRetry={() => onRetrySchema(database.id)}
       />
     )
   }
@@ -700,32 +745,87 @@ function DatabaseRowBody({
   )
 }
 
-interface DatabaseRowNoticeProps {
-  actionLabel: string
+// Fixed widths rather than random ones, so the placeholder does not jump
+// around between renders.
+const skeletonRowWidths = ['58%', '42%', '66%']
+
+// Stands in for the table rows while a schema loads, lined up with where the
+// real rows will land, so an open row never looks like a database with nothing
+// in it.
+function DatabaseTableListSkeleton(): ReactElement {
+  return (
+    <div
+      aria-label="Loading tables"
+      className="pt-[1px] pb-[3px]"
+      role="status"
+    >
+      {skeletonRowWidths.map((width) => (
+        <div
+          key={width}
+          aria-hidden
+          className="flex h-[26px] items-center gap-[6px] pr-[6px] pl-5"
+        >
+          <span className="size-[9px] flex-none" />
+
+          <span className="size-3 flex-none rounded-[3px] bg-hover motion-safe:animate-pulse" />
+
+          <span
+            className="h-[7px] rounded-full bg-hover motion-safe:animate-pulse"
+            style={{ width }}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+interface SchemaErrorNoticeProps {
   message: string
-  onAction: () => void
+  onEdit: () => void
+  onRetry: () => void
 }
 
 // Why an expanded row has no tables, in the place the tables would have been,
-// with the one action that changes it — rather than an empty subtree that looks
-// like a database with nothing in it. Only reached for a row the user opened, so
-// the sentence is never repeated down the whole list.
-function DatabaseRowNotice({
-  actionLabel,
+// with the actions that change it — rather than an empty subtree that looks
+// like a database with nothing in it. Only reached for a row the user opened,
+// so the sentences are never repeated down the whole list.
+//
+// The server's message says what went wrong ("Failed to load schema for
+// "Pagila": connection refused"); the line under it says what to do, since
+// the fix is either on the server's side or in the saved details.
+function SchemaErrorNotice({
   message,
-  onAction
-}: DatabaseRowNoticeProps): ReactElement {
+  onEdit,
+  onRetry
+}: SchemaErrorNoticeProps): ReactElement {
   return (
     <div className="pt-[1px] pr-[6px] pb-[3px] pl-[26px]">
-      <p className="text-[11.5px] leading-relaxed text-text2">{message}</p>
+      <p className="text-[11.5px] leading-relaxed break-words text-text2">
+        {message}
+      </p>
 
-      <button
-        className="text-[11.5px] text-accent hover:underline"
-        type="button"
-        onClick={onAction}
-      >
-        {actionLabel}
-      </button>
+      <p className="text-[11.5px] leading-relaxed text-text3">
+        Check that the server is running and reachable, then retry. If the
+        connection details have changed, edit the connection.
+      </p>
+
+      <div className="flex items-center gap-3">
+        <button
+          className="text-[11.5px] text-accent hover:underline"
+          type="button"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+
+        <button
+          className="text-[11.5px] text-accent hover:underline"
+          type="button"
+          onClick={onEdit}
+        >
+          Edit connection
+        </button>
+      </div>
     </div>
   )
 }
