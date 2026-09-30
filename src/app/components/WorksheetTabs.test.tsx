@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WorksheetDto } from '@/glue/worksheets'
 
@@ -16,6 +16,15 @@ vi.mock('../api-client', () => ({
 }))
 
 import { apiClient } from '../api-client'
+
+// Radix's tooltip positioning needs DOM APIs jsdom does not ship.
+beforeAll(() => {
+  window.ResizeObserver = class ResizeObserver {
+    observe = vi.fn()
+    unobserve = vi.fn()
+    disconnect = vi.fn()
+  } as unknown as typeof window.ResizeObserver
+})
 
 function worksheet(id: string, name: string): WorksheetDto {
   return {
@@ -157,6 +166,21 @@ describe('WorksheetTabs', () => {
       openWorksheetIds: ['ws-2'],
       status: 'reconciled'
     })
+  })
+
+  it('explains the add button in a tooltip', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<WorksheetTabs />, {
+      tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
+      worksheets: [revenue]
+    })
+
+    await user.hover(screen.getByRole('button', { name: 'New worksheet' }))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'New worksheet'
+    )
   })
 
   it('opens a newly created worksheet in a tab', async () => {

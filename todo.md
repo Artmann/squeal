@@ -399,9 +399,13 @@ at the code to change.
       `SearchInput.tsx` shows a "Clear search" button while there is text, which
       clears and refocuses the input; the two sidebar filters also clear on
       Escape (`clearOnEscape`), while find in results keeps Escape for closing.
-- [ ] **Use `cursor-pointer`** on interactive tree rows —
+- [x] **Use `cursor-pointer`** on interactive tree rows —
       `DatabaseExplorer.tsx:412,520` are still `cursor-default` — and add
-      tooltips to the `+` add buttons.
+      tooltips to the `+` add buttons. Fixed: the database and table rows in
+      `DatabaseExplorer.tsx`, the worksheet rows in `WorksheetExplorer.tsx` and
+      the tab bar's buttons in `WorksheetTabs.tsx` use `cursor-pointer`, like
+      the tab labels and toolbar already did; the three `+` buttons and "Refresh
+      databases" show a `Tooltip` instead of a native `title`.
 
 ## 🧪 Testing, tooling & hygiene
 

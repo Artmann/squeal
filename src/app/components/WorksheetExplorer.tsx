@@ -29,6 +29,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { useConfirm } from './ConfirmDialogProvider'
 import { DropIndicatorLine } from './DropIndicatorLine'
 import { SearchInput } from './SearchInput'
@@ -224,15 +225,20 @@ export function WorksheetExplorer(): ReactElement {
           Worksheets
         </h2>
 
-        <button
-          aria-label="New worksheet"
-          className="flex size-[22px] flex-none items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
-          title="New worksheet"
-          type="button"
-          onClick={handleNewWorksheet}
-        >
-          <PlusIcon className="size-3" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              aria-label="New worksheet"
+              className="flex size-[22px] flex-none cursor-pointer items-center justify-center rounded-[5px] text-text2 hover:bg-hover"
+              type="button"
+              onClick={handleNewWorksheet}
+            >
+              <PlusIcon className="size-3" />
+            </button>
+          </TooltipTrigger>
+
+          <TooltipContent side="bottom">New worksheet</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="mx-3 mb-2 flex-none">
@@ -407,7 +413,7 @@ function WorksheetListItem({
         <button
           aria-current={isOpen ? 'true' : undefined}
           className={cn(
-            'flex h-[var(--item-h)] w-full flex-none items-center gap-2 rounded-[6px] px-2 text-left hover:bg-hover',
+            'flex h-[var(--item-h)] w-full flex-none cursor-pointer items-center gap-2 rounded-[6px] px-2 text-left hover:bg-hover',
             isOpen || isSelected ? 'bg-sel text-text' : 'text-text2'
           )}
           data-selected={isSelected}

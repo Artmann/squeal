@@ -119,6 +119,18 @@ describe('DatabaseExplorer', () => {
     expect(screen.getByPlaceholderText('Filter tables')).toBeInTheDocument()
   })
 
+  it('explains the add button in a tooltip', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
+
+    await user.hover(screen.getByRole('button', { name: 'Add connection' }))
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Add connection'
+    )
+  })
+
   it('renders database names', () => {
     renderWithProviders(<DatabaseExplorer />, { databases: [testDatabase] })
 

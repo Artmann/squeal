@@ -29,6 +29,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from './ui/context-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { DropIndicatorLine } from './DropIndicatorLine'
 import { WorksheetNameInput } from './WorksheetNameInput'
 import { WorksheetDto } from '@/glue/worksheets'
@@ -260,15 +261,20 @@ export function WorksheetTabs(): ReactElement {
         </DndContext>
       </div>
 
-      <button
-        aria-label="New worksheet"
-        className="flex-none self-center flex size-6 items-center justify-center ml-[6px] rounded-[5px] text-text3 hover:bg-hover hover:text-text"
-        onClick={handleNewWorksheet}
-        title="New worksheet"
-        type="button"
-      >
-        <PlusIcon className="size-[11px]" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            aria-label="New worksheet"
+            className="flex-none self-center flex size-6 cursor-pointer items-center justify-center ml-[6px] rounded-[5px] text-text3 hover:bg-hover hover:text-text"
+            onClick={handleNewWorksheet}
+            type="button"
+          >
+            <PlusIcon className="size-[11px]" />
+          </button>
+        </TooltipTrigger>
+
+        <TooltipContent side="bottom">New worksheet</TooltipContent>
+      </Tooltip>
     </div>
   )
 }
@@ -318,7 +324,7 @@ function WorksheetTab({
   const closeButton = (
     <button
       aria-label={`Close ${worksheet.name}`}
-      className="flex-none flex size-4 items-center justify-center rounded-[4px] text-text3 hover:bg-hover hover:text-text"
+      className="flex-none flex size-4 cursor-pointer items-center justify-center rounded-[4px] text-text3 hover:bg-hover hover:text-text"
       onClick={(event) => {
         // Closing must not also select the tab underneath.
         event.stopPropagation()
