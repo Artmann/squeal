@@ -21,6 +21,7 @@ import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
 import { findEnvironment } from '@/glue/environments'
 import { secretStorageMessages } from '@/glue/secret-storage'
 
+import { onPersistFailure } from '../collection-writes'
 import { useCollections } from '../collections-context'
 import { useDatabases, useEnvironments, useWorksheets } from '../hooks/queries'
 import { cn } from '../lib/utils'
@@ -192,7 +193,7 @@ function assignWorksheetDatabase(
     draft.databaseId = databaseId
   })
 
-  void transaction.isPersisted.promise.catch((): void => undefined)
+  onPersistFailure(transaction)
 }
 
 /** Which database the active worksheet runs against, and how to change it. */

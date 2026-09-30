@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
+import { onPersistFailure } from '../collection-writes'
 import { useCollections } from '../collections-context'
 import { useAppDispatch, useAppSelector, useAppStore } from '../store'
 import {
@@ -85,7 +86,7 @@ export function useWorksheetRename(
         draft.name = trimmedName
       })
 
-      void transaction.isPersisted.promise.catch((error: unknown) => {
+      onPersistFailure(transaction, (error) => {
         const message = error instanceof Error ? error.message : 'Unknown error'
 
         toast.error('Failed to rename worksheet', { description: message })

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 
 import { WorksheetDto } from '@/glue/worksheets'
 
+import { onPersistFailure } from '../collection-writes'
 import { useCollections } from '../collections-context'
 import { useAppDispatch, useAppSelector } from '../store'
 import { selectActiveWorksheetId, tabsActions } from '../store/tabs-slice'
@@ -151,7 +152,7 @@ export function useOpenWorksheet(): (worksheetId: string) => void {
 
       // The tab is already open. A failed touch costs the MRU order and nothing
       // the user asked for, so it is not worth a toast in front of them.
-      void transaction.isPersisted.promise.catch((): void => undefined)
+      onPersistFailure(transaction)
     },
     [dispatch, worksheets]
   )

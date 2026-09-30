@@ -184,7 +184,7 @@ at the code to change.
       `queryClient.invalidateQueries` is neither awaited nor voided, while every
       other call site in the file is (`:131,158,185`). Violates "No Floating
       Promises". (The `DatabaseForm` promise chain is gone.) Fixed: voided.
-- [ ] **Factor out the collection boilerplate.** The
+- [x] **Factor out the collection boilerplate.** The
       `if (collection.status === 'ready') { collection.utils.write…() }` guard
       and `void transaction.isPersisted.promise.catch(…)` are still copied by
       hand — seven of the latter, across `App.tsx:149`,
@@ -192,7 +192,12 @@ at the code to change.
       `ConnectionPicker.tsx:181`, `useWorksheetAutosave.ts:38` and
       `mutations.ts:70`. Make them small helpers, or prefer collection-native
       `onInsert`/`onUpdate` so components stop poking `collection.utils`
-      directly.
+      directly. Fixed: `src/app/collection-writes.ts` has `writeIfReady` (all
+      ten guards in `hooks/mutations.ts`) and `onPersistFailure` (the four
+      catch-only sites in `ConnectionPicker.tsx`, `use-start-query.ts`,
+      `use-worksheet-commands.ts` and `use-worksheet-rename.ts`).
+      `useWorksheetAutosave.ts` keeps its own `.then().catch()`, since it acts
+      on success as well as failure.
 - [ ] **Unify Redux slice conventions.** Four slices, three export styles:
       `database-explorer-slice` exports named actions, `tabs-slice`/`ui-slice`
       export a bundled `tabsActions`/`uiActions`, and `editor-slice` exports
