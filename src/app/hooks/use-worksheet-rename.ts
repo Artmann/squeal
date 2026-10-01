@@ -4,12 +4,7 @@ import { toast } from 'sonner'
 import { onPersistFailure } from '../collection-writes'
 import { useCollections } from '../collections-context'
 import { useAppDispatch, useAppSelector, useAppStore } from '../store'
-import {
-  worksheetRenameDraftUpdated,
-  worksheetRenameEnded,
-  worksheetRenameStarted,
-  type WorksheetRenameScope
-} from '../store/editor-slice'
+import { editorActions, type WorksheetRenameScope } from '../store/editor-slice'
 import { WorksheetDto } from '@/glue/worksheets'
 
 export type WorksheetRenameControls = ReturnType<typeof useWorksheetRename>
@@ -65,7 +60,7 @@ export function useWorksheetRename(
 
   const setEditingName = useCallback(
     (name: string) => {
-      dispatch(worksheetRenameDraftUpdated(name))
+      dispatch(editorActions.setWorksheetRenameDraft(name))
     },
     [dispatch]
   )
@@ -109,7 +104,7 @@ export function useWorksheetRename(
       }
 
       dispatch(
-        worksheetRenameStarted({
+        editorActions.startWorksheetRename({
           draftName: worksheet.name,
           scope,
           worksheetId: worksheet.id
@@ -120,7 +115,7 @@ export function useWorksheetRename(
   )
 
   const handleRenameCancel = useCallback(() => {
-    dispatch(worksheetRenameEnded())
+    dispatch(editorActions.endWorksheetRename())
   }, [dispatch])
 
   const handleRenameSubmit = useCallback(

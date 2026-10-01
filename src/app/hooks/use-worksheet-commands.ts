@@ -134,7 +134,7 @@ export function useOpenWorksheet(): (worksheetId: string) => void {
 
   return useCallback(
     (worksheetId: string) => {
-      dispatch(tabsActions.tabOpened(worksheetId))
+      dispatch(tabsActions.openTab(worksheetId))
 
       // `update` throws on a key the collection does not hold — a collection
       // that has not started syncing holds nothing, and a worksheet deleted in

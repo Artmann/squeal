@@ -5,7 +5,7 @@ import {
   replaceSelection,
   toggleSelection
 } from '../list-selection'
-import { worksheetSelectionChanged } from '../store/editor-slice'
+import { editorActions } from '../store/editor-slice'
 import { selectActiveWorksheetId } from '../store/tabs-slice'
 
 interface WorksheetSelection {
@@ -58,7 +58,7 @@ export function useWorksheetSelection(
   return {
     extend: (worksheetId) => {
       dispatch(
-        worksheetSelectionChanged(
+        editorActions.setWorksheetSelection(
           extendSelection(selection, worksheetId, orderedIds)
         )
       )
@@ -68,11 +68,15 @@ export function useWorksheetSelection(
     ids: orderedIds.filter((id) => selected.has(id)),
     isSelected: (worksheetId) => selected.has(worksheetId),
     replace: (worksheetId) => {
-      dispatch(worksheetSelectionChanged(replaceSelection(worksheetId)))
+      dispatch(
+        editorActions.setWorksheetSelection(replaceSelection(worksheetId))
+      )
     },
     toggle: (worksheetId) => {
       dispatch(
-        worksheetSelectionChanged(toggleSelection(selection, worksheetId))
+        editorActions.setWorksheetSelection(
+          toggleSelection(selection, worksheetId)
+        )
       )
     }
   }

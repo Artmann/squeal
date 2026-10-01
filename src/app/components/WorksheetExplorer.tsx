@@ -21,7 +21,7 @@ import { useWorksheetRename } from '../hooks/use-worksheet-rename'
 import { useWorksheetSelection } from '../hooks/use-worksheet-selection'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
-import { worksheetSearchQueryUpdated } from '../store/editor-slice'
+import { editorActions } from '../store/editor-slice'
 import { selectActiveWorksheetId } from '../store/tabs-slice'
 import {
   ContextMenu,
@@ -247,7 +247,7 @@ export function WorksheetExplorer(): ReactElement {
           placeholder="Filter worksheets"
           value={worksheetSearchQuery}
           onChange={(newValue) =>
-            dispatch(worksheetSearchQueryUpdated(newValue))
+            dispatch(editorActions.setWorksheetSearchQuery(newValue))
           }
         />
       </div>

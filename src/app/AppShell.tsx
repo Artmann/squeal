@@ -179,7 +179,7 @@ function AppDataLoader({ children }: { children: ReactNode }): ReactNode {
     const availableIds = worksheets.data.map((worksheet) => worksheet.id)
 
     dispatch(
-      tabsActions.tabsReconciled({
+      tabsActions.reconcileTabs({
         availableIds,
         fallbackId: pickWorksheetToOpen(worksheets.data, activeWorksheetId)
       })

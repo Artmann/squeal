@@ -37,14 +37,13 @@ import {
 } from '../hooks/use-list-reorder'
 import { useStartQuery } from '../hooks/use-start-query'
 import { useOpenWorksheet } from '../hooks/use-worksheet-commands'
-import { databaseSearchQueryUpdated } from '../store/editor-slice'
+import { editorActions } from '../store/editor-slice'
 import { uiActions } from '../store/ui-slice'
 import { cn } from '../lib/utils'
 import { useAppDispatch, useAppSelector } from '../store'
 import {
-  DatabaseExpansion,
-  expandTable,
-  setDatabaseExpanded
+  databaseExplorerActions,
+  DatabaseExpansion
 } from '../store/database-explorer-slice'
 import { computeDatabaseMatch, DatabaseMatch } from './database-explorer-search'
 import { SearchInput } from './SearchInput'
@@ -396,7 +395,7 @@ export function DatabaseExplorer(): ReactElement {
           placeholder="Filter tables"
           value={databaseSearchQuery}
           onChange={(newValue) =>
-            dispatch(databaseSearchQueryUpdated(newValue))
+            dispatch(editorActions.setDatabaseSearchQuery(newValue))
           }
         />
       </div>
@@ -604,7 +603,7 @@ function useRowActivation({
     }
 
     dispatch(
-      setDatabaseExpanded({
+      databaseExplorerActions.setDatabaseExpanded({
         databaseId,
         isExpanded: !isExpanded,
         query: searchQuery
@@ -1011,7 +1010,9 @@ function DatabaseTableList({
             isExpanded={Boolean(expandedTables[tableKey])}
             table={table}
             onQueryTable={handleQueryTable}
-            onToggle={() => dispatch(expandTable(tableKey))}
+            onToggle={() =>
+              dispatch(databaseExplorerActions.toggleTableExpanded(tableKey))
+            }
           />
         )
       })}
