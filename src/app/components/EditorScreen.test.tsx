@@ -1,9 +1,13 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ReactElement } from 'react'
+import invariant from 'tiny-invariant'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { DatabaseDto } from '@/glue/databases'
 
+import { useAppDispatch, useAppSelector } from '../store'
+import { uiActions } from '../store/ui-slice'
 import { renderWithProviders } from '../test-utils'
 import { EditorScreen } from './EditorScreen'
 
@@ -158,6 +162,133 @@ describe('EditorScreen', () => {
 
       await waitFor(() => {
         expect(store.getState().ui.editorScreen).toBeUndefined()
+      })
+    })
+  })
+
+  describe('dialog semantics', () => {
+    it('is a modal dialog named by its title', () => {
+      renderWithProviders(
+        <EditorScreen
+          databaseId="db-123"
+          type="edit-database"
+        />,
+        { databases: [testDatabase] }
+      )
+
+      const dialog = screen.getByRole('dialog', { name: 'Edit database' })
+
+      expect(dialog).toHaveAttribute('aria-modal', 'true')
+    })
+
+    it('closes on Escape', async () => {
+      const user = userEvent.setup()
+      const { store } = renderWithProviders(
+        <EditorScreen type="create-database" />,
+        {
+          databases: [],
+          ui: { editorScreen: { type: 'create-database' } }
+        }
+      )
+
+      await user.keyboard('{Escape}')
+
+      expect(store.getState().ui.editorScreen).toBeUndefined()
+    })
+
+    it('closes on a click on the backdrop', async () => {
+      const user = userEvent.setup()
+      const { store } = renderWithProviders(
+        <EditorScreen type="create-database" />,
+        {
+          databases: [],
+          ui: { editorScreen: { type: 'create-database' } }
+        }
+      )
+
+      const overlay = document.querySelector('[data-slot="dialog-overlay"]')
+
+      invariant(overlay instanceof HTMLElement, 'The overlay is not rendered.')
+
+      await user.click(overlay)
+
+      expect(store.getState().ui.editorScreen).toBeUndefined()
+    })
+
+    it('stays open when something outside the backdrop is pressed', async () => {
+      // Stands in for the title bar: outside the dialog and outside its
+      // backdrop, and its window buttons must not discard the form.
+      const { store } = renderWithProviders(
+        <>
+          <button type="button">Minimize</button>
+
+          <EditorScreen type="create-database" />
+        </>,
+        {
+          databases: [],
+          ui: { editorScreen: { type: 'create-database' } }
+        }
+      )
+
+      // `fireEvent` rather than `user.click`: the modal turns pointer events
+      // off on `<body>`, which user-event honours, and the title bar opts
+      // back in with a class jsdom has no stylesheet for. The waits are
+      // Radix's: it starts listening for outside presses a tick after it
+      // mounts, and it dismisses on the click that follows a press rather than
+      // on the press itself.
+      // By text, because the modal hides everything outside itself from the
+      // accessibility tree.
+      const minimize = screen.getByText('Minimize')
+
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+
+      fireEvent.pointerDown(minimize)
+      fireEvent.pointerUp(minimize)
+      fireEvent.click(minimize)
+
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+
+      expect(store.getState().ui.editorScreen).toEqual({
+        type: 'create-database'
+      })
+    })
+
+    it('returns focus to what had it before it opened', async () => {
+      const user = userEvent.setup()
+
+      // How App mounts it: only while the store has an editor screen.
+      function Harness(): ReactElement {
+        const dispatch = useAppDispatch()
+        const editorScreen = useAppSelector((state) => state.ui.editorScreen)
+
+        return (
+          <>
+            <button
+              type="button"
+              onClick={() => dispatch(uiActions.openCreateDatabase())}
+            >
+              Add database
+            </button>
+
+            {editorScreen && <EditorScreen {...editorScreen} />}
+          </>
+        )
+      }
+
+      renderWithProviders(<Harness />, { databases: [] })
+
+      await user.click(screen.getByRole('button', { name: 'Add database' }))
+
+      const dialog = await screen.findByRole('dialog', { name: 'Add database' })
+
+      expect(dialog.contains(document.activeElement)).toEqual(true)
+
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: 'Add database' })
+        ).toHaveFocus()
       })
     })
   })

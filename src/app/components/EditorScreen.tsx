@@ -9,6 +9,13 @@ import { uiActions } from '../store/ui-slice'
 import { DatabaseForm } from './DatabaseForm'
 import type { DatabaseFormConnectionInfo } from './DatabaseForm'
 import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogOverlay,
+  DialogTitle
+} from './ui/dialog'
 
 // The DTO and the form's input type are close but not identical: the DTO omits
 // the password and treats port as optional, while the form wants every server
@@ -74,7 +81,11 @@ export function EditorScreen(props: EditorScreenProps): ReactElement {
       }
     : undefined
 
-  // Absolute rather than fixed, so it covers the screen slot App gives it and
+  // Always open: App mounts this only while there is an editor screen, so
+  // closing is a dispatch that unmounts it, and Escape, the backdrop and the X
+  // all arrive through `onOpenChange`.
+  //
+  // The overlay is not portaled, so it covers the screen slot App gives it and
   // not the title bar above it — the frameless window has no other close button
   // and no other drag region.
   //
@@ -89,44 +100,65 @@ export function EditorScreen(props: EditorScreenProps): ReactElement {
   // does not outgrow it, which is what keeps the title and the Save button on
   // screen at every window height.
   return (
-    <div className="absolute inset-0 z-(--z-overlay) bg-bg/70 flex justify-center items-start overflow-y-auto py-6">
-      <div className="w-full max-w-lg max-h-full my-auto flex flex-col gap-6 overflow-hidden rounded-md border border-border bg-panel p-6 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">{title}</h1>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          handleClose()
+        }
+      }}
+    >
+      <DialogOverlay className="flex justify-center items-start py-6">
+        <DialogContent
+          // The form explains itself; there is no one sentence to describe it
+          // with, and Radix warns when a description is neither given nor
+          // opted out of.
+          aria-describedby={undefined}
+          className="w-full max-w-lg max-h-full my-auto flex flex-col gap-6 overflow-hidden p-6"
+        >
+          <div className="flex items-center justify-between">
+            <DialogTitle
+              asChild
+              className="text-2xl font-semibold"
+            >
+              <h1>{title}</h1>
+            </DialogTitle>
 
-          <Button
-            aria-label="Close"
-            size="icon-sm"
-            variant="ghost"
-            onClick={handleClose}
-          >
-            <XIcon className="size-4" />
-          </Button>
-        </div>
+            <DialogClose asChild>
+              <Button
+                aria-label="Close"
+                size="icon-sm"
+                variant="ghost"
+              >
+                <XIcon className="size-4" />
+              </Button>
+            </DialogClose>
+          </div>
 
-        {isNotFound ? (
-          // Deletion is the only writer that removes a row, and it is not
-          // optimistic -- `useDeleteDatabase` writes in `onSuccess` -- so
-          // there is no rollback window to miss an id in. `useDatabases`
-          // suspends and App reads it before this can mount, so the list is
-          // loaded and this is not a load race either. Rendered inside the
-          // panel rather than as a bare message, because the screen covers
-          // everything below it and nothing here answers Escape -- a message
-          // with no close button is not an error state, it is a stuck window.
-          <p className="text-text2">
-            This database has been deleted. Close this screen and pick another
-            one.
-          </p>
-        ) : (
-          <DatabaseForm
-            databaseId={databaseId}
-            defaultValues={defaultValues}
-            variant="dialog"
-            onCancel={handleClose}
-            onSuccess={handleClose}
-          />
-        )}
-      </div>
-    </div>
+          {isNotFound ? (
+            // Deletion is the only writer that removes a row, and it is not
+            // optimistic -- `useDeleteDatabase` writes in `onSuccess` -- so
+            // there is no rollback window to miss an id in. `useDatabases`
+            // suspends and App reads it before this can mount, so the list is
+            // loaded and this is not a load race either. Rendered inside the
+            // panel rather than as a bare message, because the screen covers
+            // everything below it -- a message with no visible way out reads as
+            // a stuck window even though Escape would close it.
+            <p className="text-text2">
+              This database has been deleted. Close this screen and pick another
+              one.
+            </p>
+          ) : (
+            <DatabaseForm
+              databaseId={databaseId}
+              defaultValues={defaultValues}
+              variant="dialog"
+              onCancel={handleClose}
+              onSuccess={handleClose}
+            />
+          )}
+        </DialogContent>
+      </DialogOverlay>
+    </Dialog>
   )
 }

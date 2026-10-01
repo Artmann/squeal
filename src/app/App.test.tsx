@@ -483,9 +483,14 @@ describe('App', () => {
       worksheets: []
     })
 
+    // `hidden` because the editor screen is a modal dialog, which hides
+    // everything outside it from the accessibility tree. The buttons still
+    // take a click: the modal turns pointer events off on `<body>`, and the
+    // title bar turns them back on for itself.
     expect(
-      within(getTitleBar()).getByRole('button', { name: 'Close' })
+      within(getTitleBar()).getByRole('button', { hidden: true, name: 'Close' })
     ).toBeInTheDocument()
+    expect(getTitleBar()).toHaveClass('pointer-events-auto')
 
     expectTitleBarAbove(screen.getByText('Edit database'))
   })

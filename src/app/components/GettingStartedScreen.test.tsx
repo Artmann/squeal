@@ -27,6 +27,27 @@ describe('GettingStartedScreen', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
   })
 
+  it('is a region named by its heading rather than a dialog', () => {
+    renderWithProviders(<GettingStartedScreen />)
+
+    expect(
+      screen.getByRole('region', { name: 'Connect a database' })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('stays up on Escape', async () => {
+    const user = userEvent.setup()
+
+    const { store } = renderWithProviders(<GettingStartedScreen />)
+
+    // Dismissing is persisted, so a stray key must not skip first-run setup.
+    await user.click(screen.getByLabelText('Name'))
+    await user.keyboard('{Escape}')
+
+    expect(store.getState().ui).toEqual({})
+  })
+
   it.each(['Close', 'Skip for now'])(
     'dismisses the screen from %s',
     async (name) => {

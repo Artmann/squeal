@@ -337,12 +337,18 @@ at the code to change.
       `ConnectionPicker.tsx:437,449`, and Run carries a visible text label. The
       EditorScreen close button is **not** among them — see the dialog-semantics
       item below, which owns that component.
-- [ ] **Give custom modals dialog semantics.** `EditorScreen.tsx` and
+- [x] **Give custom modals dialog semantics.** `EditorScreen.tsx` and
       `GettingStartedScreen.tsx` are still plain `fixed inset-0` divs — no
       `role="dialog"`/`aria-modal`, no focus trap/return, no Escape, no
       backdrop-close. Rebuild on Radix Dialog. Also give the close button an
       accessible name: `EditorScreen.tsx:61-67` is still an icon-only `Button`
-      wrapping a bare `<XIcon />`, the one site the item above missed.
+      wrapping a bare `<XIcon />`, the one site the item above missed. Fixed:
+      `EditorScreen.tsx` is built on `ui/dialog.tsx`, an unportaled Radix Dialog
+      that stops at the title bar, returns focus on close and only dismisses
+      from its own backdrop; its close button was already labelled.
+      `GettingStartedScreen.tsx` stays a page — nothing is behind it and its
+      dismissal is persisted — and is now a named `region`. `SettingsScreen.tsx`
+      has the same plain-div overlay and is not covered here.
 - [x] **Finish the resize separator.** `ResizeHandle.tsx:110-125` now has
       `role="separator"`, `aria-label`, `aria-orientation`, `tabIndex` and arrow
       keys, but still no `aria-valuenow`/`valuemin`/`valuemax` (so the current
