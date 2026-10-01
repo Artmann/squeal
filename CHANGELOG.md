@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.8.0](https://github.com/Artmann/squeal/compare/v1.7.0...v1.8.0) (2026-10-01)
+
+
+### Features
+
+* **a11y:** mark the active worksheet in the explorer with aria-current ([#217](https://github.com/Artmann/squeal/issues/217)) ([b540077](https://github.com/Artmann/squeal/commit/b540077d4996e2efdfbdae73cf62dbc7a69597e2))
+* **a11y:** mark the active worksheet in the explorer with aria-current ([#217](https://github.com/Artmann/squeal/issues/217)) ([ad7b274](https://github.com/Artmann/squeal/commit/ad7b2748e984852bd58ef7f738b8c2a8d5039ed9))
+* **databases:** add a password reveal toggle to the connection form ([#214](https://github.com/Artmann/squeal/issues/214)) ([61d158c](https://github.com/Artmann/squeal/commit/61d158c3840ccc403cfe1979c6798cc10654bddc))
+* **editor:** complete tables, columns and joins from the live schema ([a614100](https://github.com/Artmann/squeal/commit/a6141002def917fdf4edc23c7d14ff475bd98ad8))
+* **editor:** remember each worksheet's caret, selection and scroll ([#224](https://github.com/Artmann/squeal/issues/224)) ([0da5ccc](https://github.com/Artmann/squeal/commit/0da5ccc0ff4731a91760a96650148ba79dbca7ec))
+* Environment labels ([594907c](https://github.com/Artmann/squeal/commit/594907cd118276812241e68dfc918c3dbc9da1c4))
+* **environments:** the UI, the routes and the badge ([#200](https://github.com/Artmann/squeal/issues/200)) ([71827c2](https://github.com/Artmann/squeal/commit/71827c2f5d309750050d52e0b6bab5b302ce4537))
+* **explorer:** show schema loading and error states on expanded databases ([#221](https://github.com/Artmann/squeal/issues/221)) ([9bca343](https://github.com/Artmann/squeal/commit/9bca343da8a0fca30ac83212941da67d72179cf7))
+* **lint:** turn on oxlint's type-aware rules ([71aa1cc](https://github.com/Artmann/squeal/commit/71aa1cc9a14759c791d72c7477630d06c122142a))
+* **results:** show SQL NULL as NULL in the result grid ([#213](https://github.com/Artmann/squeal/issues/213)) ([905cdb4](https://github.com/Artmann/squeal/commit/905cdb454f5ad94335ebee7012656bddfe9fd45d))
+* **sidebar:** let the sidebar collapse ([#218](https://github.com/Artmann/squeal/issues/218)) ([ddfebc9](https://github.com/Artmann/squeal/commit/ddfebc99a3747ac97c3a8ce69f4cae5e0d12732f))
+
+
+### Bug Fixes
+
+* **a11y:** give the editor screen modal dialog semantics ([#219](https://github.com/Artmann/squeal/issues/219)) ([1d25372](https://github.com/Artmann/squeal/commit/1d2537250a078e0101cf4313218ffc7f9940b673))
+* **queries:** drop the summary result type nothing reads ([#225](https://github.com/Artmann/squeal/issues/225)) ([2f64f33](https://github.com/Artmann/squeal/commit/2f64f33ef7dfb194cb714627353f1ba1441539e5))
+* **ui:** use pointer cursors on sidebar rows and tooltips on add buttons ([#216](https://github.com/Artmann/squeal/issues/216)) ([3245311](https://github.com/Artmann/squeal/commit/32453119401ee1eb297f0dd467153a1c4b1ac0f5))
+
 ## [1.7.0](https://github.com/Artmann/squeal/compare/v1.6.0...v1.7.0) (2026-08-31)
 
 
