@@ -375,6 +375,7 @@ function Workspace(): ReactElement {
                 schema={worksheetSchema.schema}
                 schemaStatus={worksheetSchema.status}
                 statements={statements}
+                worksheetId={currentWorksheet.id}
                 onChange={handleUpdateContent}
                 onCursorChange={setCursorPosition}
                 onCursorPositionChange={setCursorOffset}

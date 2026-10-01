@@ -25,7 +25,15 @@ import {
   keymap
 } from '@codemirror/view'
 import type { ReactCodeMirrorRef } from '@uiw/react-codemirror'
-import { type RefObject, useCallback, useEffect, useMemo, useRef } from 'react'
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { toast } from 'sonner'
 
 import type { DatabaseType, SchemaInfoDto } from '@/glue/api/schemas'
@@ -40,6 +48,7 @@ import {
 } from './worksheet-editor-cursor'
 import { formatEditorContent } from './worksheet-editor-format'
 import { findGutterMarkerPositions } from './worksheet-editor-lines'
+import { WorksheetViewMemory } from './worksheet-editor-view'
 
 // `autocompletion` is off because the extension list registers it explicitly;
 // basicSetup only leaves an option out when it is literally `false`, so without
@@ -109,9 +118,13 @@ const editorBasicSetup = {
 
 export interface WorksheetEditorOptions {
   activeStatement: Statement | null
+  content: string
   databaseType: DatabaseType | undefined
   schema: SchemaInfoDto | undefined
   schemaStatus: WorksheetSchemaStatus
+  // The worksheet `content` belongs to. The editor remembers the caret,
+  // selection and scroll position under it.
+  worksheetId: string | undefined
   onChange?: (value: string) => void
   onCursorChange?: (position: CursorPosition) => void
   onCursorPositionChange?: (position: number) => void
@@ -125,13 +138,14 @@ export interface WorksheetEditor {
   focusEditor: () => void
   formatQuery: () => void
   handleChange: (value: string) => void
+  handleCreateEditor: (view: EditorView) => void
   handleUpdate: (update: ViewUpdate) => void
 }
 
 export function useWorksheetEditor(
   options: WorksheetEditorOptions
 ): WorksheetEditor {
-  const { activeStatement, databaseType, schema } = options
+  const { activeStatement, databaseType, schema, worksheetId } = options
 
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   const gutterCompartment = useMemo(() => new Compartment(), [])
@@ -141,17 +155,29 @@ export function useWorksheetEditor(
   // One ref for all of it rather than one per callback. The keymap and the
   // handlers are built once, so they read the current props through here instead
   // of being rebuilt on every change. Refreshing it in an effect rather than
-  // during render keeps the render pure; they only fire on user input, which is
-  // always after the effect has run.
+  // during render keeps the render pure.
+  //
+  // A layout effect, because one reader does not wait for user input: the
+  // worksheet memory reads the worksheet id while `@uiw/react-codemirror`
+  // swaps the document in, and that happens in a plain effect of the child,
+  // which runs before any plain effect here. Layout effects all run first.
   const latest = useRef(options)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     latest.current = options
   })
 
+  const worksheetViews = useWorksheetViews(latest, worksheetId)
+
   const extensions = useMemo(
-    () => createExtensions({ gutterCompartment, languageCompartment, latest }),
-    [gutterCompartment, languageCompartment, latest]
+    () =>
+      createExtensions({
+        gutterCompartment,
+        languageCompartment,
+        latest,
+        worksheetViews
+      }),
+    [gutterCompartment, languageCompartment, latest, worksheetViews]
   )
 
   // The schema and the dialect both belong to the language, and both change on
@@ -217,6 +243,13 @@ export function useWorksheetEditor(
     latest.current.onChange?.(value)
   }, [])
 
+  const handleCreateEditor = useCallback(
+    (view: EditorView) => {
+      worksheetViews.attach(view)
+    },
+    [worksheetViews]
+  )
+
   const handleUpdate = useCallback((update: ViewUpdate) => {
     const offset = update.state.selection.main.head
     const position = toCursorPosition(update.state.doc.lineAt(offset), offset)
@@ -238,8 +271,59 @@ export function useWorksheetEditor(
     focusEditor,
     formatQuery,
     handleChange,
+    handleCreateEditor,
     handleUpdate
   }
+}
+
+// The memory of each worksheet's caret, selection and scroll, and the effects
+// that keep it in step with the worksheet on screen.
+function useWorksheetViews(
+  latest: RefObject<WorksheetEditorOptions>,
+  worksheetId: string | undefined
+): WorksheetViewMemory {
+  const [worksheetViews] = useState(
+    () => new WorksheetViewMemory(() => latest.current.worksheetId)
+  )
+
+  // Leaving a worksheet writes its view down before the document is swapped
+  // out from under it, which happens in the child's plain effect; this runs
+  // ahead of that.
+  useLayoutEffect(() => {
+    worksheetViews.saveNow()
+  }, [worksheetId, worksheetViews])
+
+  // After the child's effect, so a swap that happened is already visible and
+  // only a switch between worksheets with the same text is left to handle.
+  useEffect(() => {
+    worksheetViews.follow(worksheetId, latest.current.content)
+  }, [latest, worksheetId, worksheetViews])
+
+  // Quitting does not unmount anything, and the app exits without waiting on
+  // the renderer, so the last caret is written when the page goes away.
+  useEffect(() => {
+    const handlePageHide = (): void => {
+      worksheetViews.saveNow()
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+    }
+  }, [worksheetViews])
+
+  // A layout effect so the cleanup runs while the editor is still in the
+  // document: the child destroys the view in a plain effect cleanup, and a
+  // detached editor reads as scrolled to the top.
+  useLayoutEffect(
+    () => () => {
+      worksheetViews.release()
+    },
+    [worksheetViews]
+  )
+
+  return worksheetViews
 }
 
 // Built once per editor. The active-statement gutter is the only extension that
@@ -249,10 +333,13 @@ function createExtensions(options: {
   gutterCompartment: Compartment
   languageCompartment: Compartment
   latest: RefObject<WorksheetEditorOptions>
+  worksheetViews: WorksheetViewMemory
 }): Extension[] {
-  const { gutterCompartment, languageCompartment, latest } = options
+  const { gutterCompartment, languageCompartment, latest, worksheetViews } =
+    options
 
   return [
+    worksheetViews.extension,
     squealEditorTheme,
     squealHighlighting,
     languageCompartment.of(

@@ -27,7 +27,8 @@
         "files": [
           "src/app/components/WorksheetEditor.tsx",
           "src/app/components/codemirror-theme.ts",
-          "src/app/components/use-worksheet-editor.ts"
+          "src/app/components/use-worksheet-editor.ts",
+          "src/app/components/worksheet-editor-view.ts"
         ],
         "rules": ["react-doctor/prefer-dynamic-import"]
       },
