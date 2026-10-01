@@ -537,6 +537,13 @@ describe('App', () => {
 describe('collapsing the sidebar', () => {
   beforeEach(() => {
     localStorage.clear()
+    // The sidebar's add buttons carry Radix tooltips, which measure their
+    // trigger with a ResizeObserver that jsdom does not have.
+    window.ResizeObserver = class ResizeObserver {
+      observe = vi.fn()
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+    } as unknown as typeof window.ResizeObserver
   })
 
   function renderWorkspace() {
