@@ -32,6 +32,8 @@ free of main-process imports. See `CLAUDE.md` for the architecture in detail.
 - `yarn start` - Run in development mode
 - `yarn typecheck` - Type-check both projects (backend and renderer)
 - `yarn test` - Run the test suite once
+- `yarn test:coverage` - Run the test suite once with coverage; the HTML report
+  lands in `coverage/`
 - `yarn test:watch` - Run the test suite in watch mode
 - `yarn lint` - Run oxlint
 - `yarn format` - Format code with oxfmt

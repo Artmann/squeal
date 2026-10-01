@@ -93,7 +93,31 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Test
-        run: yarn test
+        run: yarn test:coverage
+
+      # Puts the totals on the run's summary page, so nobody has to download
+      # the report to see them. It runs even when a test failed, since the
+      # numbers are still worth having then.
+      - name: Coverage summary
+        if:
+          ${{ !cancelled() && hashFiles('coverage/coverage-summary.json') != ''
+          }}
+        run: |
+          node -e '
+            const { total } = require("./coverage/coverage-summary.json")
+            const rows = ["lines", "statements", "functions", "branches"].map(
+              (name) => `| ${name} | ${total[name].pct}% | ${total[name].covered} / ${total[name].total} |`
+            )
+            console.log(["## Coverage", "", "| | % | Covered |", "| --- | --- | --- |", ...rows].join("\n"))
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() && hashFiles('coverage/index.html') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
+          retention-days: 14
 
   build:
     name: Build (${{ matrix.os }})
