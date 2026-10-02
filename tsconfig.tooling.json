@@ -15,6 +15,7 @@
     "scripts/**/*",
     "vite.main.config.ts",
     "vite.preload.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.projects.ts"
   ]
 }
