@@ -1,8 +1,13 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Option } from 'effect'
+import { mkdtempSync, rmSync } from 'fs'
+import Database from 'libsql'
+import { tmpdir } from 'os'
+import path from 'path'
 import { describe, expect, it } from 'vitest'
 
 import { databasesTable } from '@/database/schema'
+import { SqliteAdapter } from '@/databases/sqlite-adapter'
 import { AppDatabase } from '@/server/services/app-database'
 import { DatabaseService } from '@/server/services/database-service'
 import {
@@ -568,6 +573,68 @@ describe('database routes', () => {
     expect(adapterState.lastConnectionInfo).toEqual({
       path: '/tmp/pagila.sqlite3'
     })
+  })
+
+  // `REFERENCES parent`, with no column list, is a foreign key that
+  // `PRAGMA foreign_key_list` reports with a NULL `to`. Passed through, it
+  // failed to encode against the contract and the route answered a 400
+  // `HttpApiDecodeError`, so a single such key hid every table in the file.
+  it('loads the schema of a SQLite file with a foreign key that names no column', async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'squeal-sqlite-'))
+    const databasePath = path.join(directory, 'database.sqlite')
+
+    try {
+      const database = new Database(databasePath)
+
+      try {
+        database.exec('CREATE TABLE parent (id INTEGER PRIMARY KEY)')
+        database.exec(
+          'CREATE TABLE child (parent_id INTEGER REFERENCES parent)'
+        )
+      } finally {
+        database.close()
+      }
+
+      const response = await run(
+        Effect.gen(function* () {
+          const client = yield* makeAuthorizedClient
+
+          const created = yield* client.databases.create({
+            payload: {
+              connectionInfo: { path: databasePath },
+              name: 'Local',
+              type: 'sqlite'
+            }
+          })
+
+          return yield* client.databases.schema({
+            path: { id: created.database.id }
+          })
+        }),
+        {
+          adapter: {
+            getSchema: () =>
+              new SqliteAdapter({ path: databasePath }).getSchema()
+          }
+        }
+      )
+
+      const child = response.schema.tables.find(
+        (table) => table.tableName === 'child'
+      )
+
+      expect(child?.foreignKeys).toEqual([
+        {
+          columnName: 'parent_id',
+          constraintName: 'fk_child_0',
+          referencedColumnName: 'id',
+          referencedTableName: 'parent',
+          referencedTableSchema: 'main'
+        }
+      ])
+    } finally {
+      rmSync(directory, { force: true, recursive: true })
+    }
   })
 
   // The environment is the one field a PATCH can send, omit, or null, and all

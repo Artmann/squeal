@@ -7,6 +7,7 @@ import { maxResultRows } from './adapter'
 import type {
   ColumnInfo,
   DatabaseAdapter,
+  ForeignKeyInfo,
   QueryResult,
   SchemaInfo
 } from './adapter'
@@ -155,29 +156,112 @@ export class SqliteAdapter implements DatabaseAdapter {
     }))
   }
 
+  // The parent's primary key columns, in key order rather than column order.
+  // `pk` in `PRAGMA table_info` is the column's 1-based position in the key,
+  // and 0 for a column outside it. A table that does not exist answers no
+  // rows, so it reads as one without a primary key.
+  private async getPrimaryKeyColumns(
+    client: ReturnType<typeof createClient>,
+    tableName: string
+  ): Promise<string[]> {
+    const result = await client.execute(`PRAGMA table_info("${tableName}")`)
+
+    return result.rows
+      .flatMap((row) => {
+        const position = Number(row.pk)
+
+        return typeof row.name === 'string' && position > 0
+          ? [{ name: row.name, position }]
+          : []
+      })
+      .sort((left, right) => left.position - right.position)
+      .map((column) => column.name)
+  }
+
   private async getTableForeignKeys(
     client: ReturnType<typeof createClient>,
     tableName: string
-  ): Promise<
-    {
-      columnName: string
-      constraintName: string
-      referencedColumnName: string
-      referencedTableName: string
-      referencedTableSchema: string
-    }[]
-  > {
+  ): Promise<ForeignKeyInfo[]> {
     const result = await client.execute(
       `PRAGMA foreign_key_list("${tableName}")`
     )
 
-    return result.rows.map((row) => ({
-      columnName: row.from as string,
-      constraintName: `fk_${tableName}_${row.id as number}`,
-      referencedColumnName: row.to as string,
-      referencedTableName: row.table as string,
-      referencedTableSchema: 'main'
-    }))
+    // One row per column, grouped by `id`, ordered within it by `seq`.
+    const constraints = new Map<
+      number,
+      { from: unknown; seq: number; table: unknown; to: unknown }[]
+    >()
+
+    for (const row of result.rows) {
+      const id = Number(row.id)
+      const columns = constraints.get(id) ?? []
+
+      columns.push({
+        from: row.from,
+        seq: Number(row.seq),
+        table: row.table,
+        to: row.to
+      })
+      constraints.set(id, columns)
+    }
+
+    const foreignKeys = await Promise.all(
+      [...constraints].map(async ([id, columns]) => {
+        const sortedColumns = columns.toSorted(
+          (left, right) => left.seq - right.seq
+        )
+        const referencedTableName = sortedColumns[0]?.table
+
+        if (typeof referencedTableName !== 'string') {
+          return []
+        }
+
+        // `REFERENCES parent` with no column list means the parent's primary
+        // key, and SQLite reports each `to` as NULL. Passing that NULL on
+        // failed the contract's encoding and lost the whole schema. A parent
+        // without a primary key of the same width cannot be resolved — SQLite
+        // only rejects such a key when a row is written — so it is left out.
+        const needsPrimaryKey = sortedColumns.some(
+          (column) => typeof column.to !== 'string'
+        )
+        const primaryKeyColumns = needsPrimaryKey
+          ? await this.getPrimaryKeyColumns(client, referencedTableName)
+          : []
+
+        if (
+          needsPrimaryKey &&
+          primaryKeyColumns.length !== sortedColumns.length
+        ) {
+          return []
+        }
+
+        const resolvedColumns: ForeignKeyInfo[] = []
+
+        for (const [index, column] of sortedColumns.entries()) {
+          const referencedColumnName =
+            typeof column.to === 'string' ? column.to : primaryKeyColumns[index]
+
+          if (
+            typeof column.from !== 'string' ||
+            referencedColumnName === undefined
+          ) {
+            return []
+          }
+
+          resolvedColumns.push({
+            columnName: column.from,
+            constraintName: `fk_${tableName}_${id}`,
+            referencedColumnName,
+            referencedTableName,
+            referencedTableSchema: 'main'
+          })
+        }
+
+        return resolvedColumns
+      })
+    )
+
+    return foreignKeys.flat()
   }
 
   private getConnectionUrl(): string {
