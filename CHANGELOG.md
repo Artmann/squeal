@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0](https://github.com/Artmann/squeal/compare/v1.8.0...v1.9.0) (2026-10-02)
+
+
+### Features
+
+* **results:** resize result columns by dragging their header edge ([1152fbe](https://github.com/Artmann/squeal/commit/1152fbe09e8abefc6e778fde3d95e9cc3fdafe12))
+
+
+### Bug Fixes
+
+* **database:** generate the app schema DDL from schema.ts ([#228](https://github.com/Artmann/squeal/issues/228)) ([7aa4349](https://github.com/Artmann/squeal/commit/7aa4349bdcf0ec2b9c1b1023ca55c06778aa1f25))
+* **database:** generate the app schema DDL from schema.ts ([#228](https://github.com/Artmann/squeal/issues/228)) ([713ba8a](https://github.com/Artmann/squeal/commit/713ba8a16583322f64e69f2aed76eba46d37d123))
+* **database:** generate the app schema DDL from schema.ts ([#228](https://github.com/Artmann/squeal/issues/228)) ([c244362](https://github.com/Artmann/squeal/commit/c244362d62b00d8629e55376c623e68a3f1cfb37))
+
 ## [1.8.0](https://github.com/Artmann/squeal/compare/v1.7.0...v1.8.0) (2026-10-01)
 
 
