@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { WorksheetDto } from '@/glue/worksheets'
 
+import { makeWorksheet } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { useWorksheetAutosave } from './useWorksheetAutosave'
 
@@ -19,15 +20,11 @@ vi.mock('../api-client', () => ({
 
 import { apiClient } from '../api-client'
 
-const first: WorksheetDto = {
+const first = makeWorksheet({
   content: 'select 1',
   createdAt: 1,
-  databaseId: null,
-  id: 'ws-1',
-  lastOpenedAt: null,
-  name: 'First',
-  sortOrder: null
-}
+  name: 'First'
+})
 
 const second: WorksheetDto = {
   ...first,

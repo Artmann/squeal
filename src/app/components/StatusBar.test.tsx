@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { QueryDto } from '@/glue/api/schemas'
 import { DatabaseDto } from '@/glue/databases'
 
+import { makeDatabase } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { StatusBar } from './StatusBar'
 
@@ -32,7 +33,7 @@ vi.mock('../api-client', () => ({
 
 import { apiClient } from '../api-client'
 
-const testDatabase: DatabaseDto = {
+const testDatabase = makeDatabase({
   connectionInfo: {
     database: 'pagila',
     host: 'localhost',
@@ -40,12 +41,9 @@ const testDatabase: DatabaseDto = {
     username: 'postgres'
   },
   createdAt: 1,
-  environmentId: null,
   id: 'database-1',
-  name: 'Pagila',
-  sortOrder: null,
-  type: 'postgres'
-}
+  name: 'Pagila'
+})
 
 /**
  * A row count as the reader's own machine would render it.

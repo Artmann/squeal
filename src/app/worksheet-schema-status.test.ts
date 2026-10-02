@@ -1,28 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
+import { makeDatabase } from './test-fixtures'
 import {
   findSchemaNotice,
   toWorksheetSchemaStatus
 } from './worksheet-schema-status'
-import type { DatabaseDto } from '@/glue/databases'
-
-function database(overrides: Partial<DatabaseDto> = {}): DatabaseDto {
-  return {
-    connectionInfo: {
-      database: 'pagila',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres'
-    },
-    createdAt: 0,
-    environmentId: null,
-    id: 'database-1',
-    name: 'Pagila',
-    sortOrder: 0,
-    type: 'postgres',
-    ...overrides
-  }
-}
 
 describe('toWorksheetSchemaStatus', () => {
   it('reports a worksheet with no connection', () => {
@@ -40,7 +22,7 @@ describe('toWorksheetSchemaStatus', () => {
   it('reports a connection whose stored secret cannot be read', () => {
     expect(
       toWorksheetSchemaStatus({
-        database: database({ connectionInfo: null }),
+        database: makeDatabase({ connectionInfo: null, name: 'Pagila' }),
         error: null,
         isLoaded: false
       })
@@ -50,7 +32,7 @@ describe('toWorksheetSchemaStatus', () => {
   it('reports a failed introspection with the driver message', () => {
     expect(
       toWorksheetSchemaStatus({
-        database: database(),
+        database: makeDatabase({ name: 'Pagila' }),
         error: new Error('connection refused'),
         isLoaded: false
       })
@@ -64,7 +46,7 @@ describe('toWorksheetSchemaStatus', () => {
   it('reports a request still in flight', () => {
     expect(
       toWorksheetSchemaStatus({
-        database: database(),
+        database: makeDatabase({ name: 'Pagila' }),
         error: null,
         isLoaded: false
       })
@@ -74,7 +56,7 @@ describe('toWorksheetSchemaStatus', () => {
   it('reports a loaded schema', () => {
     expect(
       toWorksheetSchemaStatus({
-        database: database(),
+        database: makeDatabase({ name: 'Pagila' }),
         error: null,
         isLoaded: true
       })

@@ -3,10 +3,9 @@ import { screen } from '@testing-library/react'
 import { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { WorksheetDto } from '@/glue/worksheets'
-
 import { apiClient } from './api-client'
 import { useCollections } from './collections-context'
+import { makeWorksheet } from './test-fixtures'
 import { renderWithProviders } from './test-utils'
 
 vi.mock('./api-client', () => ({
@@ -17,15 +16,10 @@ vi.mock('./api-client', () => ({
   }
 }))
 
-const testWorksheet: WorksheetDto = {
+const testWorksheet = makeWorksheet({
   content: 'SELECT * FROM users',
-  createdAt: 1704067200000,
-  databaseId: null,
-  id: 'ws-1',
-  lastOpenedAt: null,
-  name: 'Smoke Test Worksheet',
-  sortOrder: null
-}
+  name: 'Smoke Test Worksheet'
+})
 
 function WorksheetNames(): ReactElement {
   const { worksheets } = useCollections()

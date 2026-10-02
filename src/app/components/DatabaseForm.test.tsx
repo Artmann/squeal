@@ -14,13 +14,9 @@ import {
 
 import { createCollections } from '../collections'
 import { CollectionsProvider } from '../collections-context'
-import type {
-  DatabaseDto,
-  EnvironmentDto,
-  SecretStorageMode,
-  WorksheetDto
-} from '@/glue/api/schemas'
+import type { EnvironmentDto, SecretStorageMode } from '@/glue/api/schemas'
 import { capturedFetch, jsonResponse } from '../test-fetch'
+import { makeDatabase, makeWorksheet } from '../test-fixtures'
 import { DatabaseForm } from './DatabaseForm'
 
 // The form reads whether stored passwords are encrypted, and the environments
@@ -821,30 +817,17 @@ describe('DatabaseForm', () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()
 
-    const database: DatabaseDto = {
-      connectionInfo: {
-        database: 'testdb',
-        host: 'localhost',
-        port: 5432,
-        username: 'admin'
-      },
+    const database = makeDatabase({
       createdAt: Date.now(),
-      environmentId: null,
       id: '123',
-      name: 'My Database',
-      sortOrder: null,
-      type: 'postgres'
-    }
+      name: 'My Database'
+    })
 
-    const updatedWorksheet: WorksheetDto = {
-      content: '',
+    const updatedWorksheet = makeWorksheet({
       createdAt: Date.now(),
       databaseId: '123',
-      id: 'ws-1',
-      lastOpenedAt: null,
-      name: 'Worksheet 1',
-      sortOrder: null
-    }
+      name: 'Worksheet 1'
+    })
 
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ database, updatedWorksheet }, { status: 201 })
@@ -866,20 +849,11 @@ describe('DatabaseForm', () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse(
         {
-          database: {
-            connectionInfo: {
-              database: 'testdb',
-              host: 'localhost',
-              port: 5432,
-              username: 'admin'
-            },
+          database: makeDatabase({
             createdAt: Date.now(),
-            environmentId: null,
             id: '123',
-            name: 'My Database',
-            sortOrder: null,
-            type: 'postgres'
-          }
+            name: 'My Database'
+          })
         },
         { status: 201 }
       )
@@ -1131,20 +1105,11 @@ describe('DatabaseForm', () => {
     // reaches the form state, not just the input's own value.
     it('saves a certificate path picked from the file dialog', async () => {
       const user = userEvent.setup()
-      const database: DatabaseDto = {
-        connectionInfo: {
-          database: 'testdb',
-          host: 'localhost',
-          port: 5432,
-          username: 'admin'
-        },
+      const database = makeDatabase({
         createdAt: Date.now(),
-        environmentId: null,
         id: '123',
-        name: 'My Database',
-        sortOrder: null,
-        type: 'postgres'
-      }
+        name: 'My Database'
+      })
 
       vi.spyOn(window.electron, 'openFileDialog').mockResolvedValue(
         '/etc/ssl/certs/pagila.pem'
@@ -1189,20 +1154,11 @@ describe('DatabaseForm', () => {
       const user = userEvent.setup()
       const onSuccess = vi.fn()
 
-      const database: DatabaseDto = {
-        connectionInfo: {
-          database: 'testdb',
-          host: 'localhost',
-          port: 5432,
-          username: 'admin'
-        },
+      const database = makeDatabase({
         createdAt: Date.now(),
-        environmentId: null,
         id: '123',
-        name: 'My Database',
-        sortOrder: null,
-        type: 'postgres'
-      }
+        name: 'My Database'
+      })
 
       vi.mocked(fetch).mockResolvedValueOnce(
         jsonResponse({ database }, { status: 201 })

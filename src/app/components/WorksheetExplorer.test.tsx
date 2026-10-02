@@ -2,9 +2,9 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 
+import { makeDatabase, makeWorksheet } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { WorksheetExplorer } from './WorksheetExplorer'
 
@@ -28,40 +28,26 @@ beforeAll(() => {
   } as unknown as typeof window.ResizeObserver
 })
 
-const testDatabase: DatabaseDto = {
+const testDatabase = makeDatabase({
   connectionInfo: {
     database: 'pagila',
     host: 'localhost',
     port: 5432,
     username: 'admin'
   },
-  createdAt: 1704067200000,
-  environmentId: null,
-  id: 'db-123',
-  name: 'Pagila',
-  sortOrder: null,
-  type: 'postgres'
-}
+  name: 'Pagila'
+})
 
-const testWorksheet: WorksheetDto = {
+const testWorksheet = makeWorksheet({
   content: 'SELECT * FROM users',
-  createdAt: 1704067200000,
-  databaseId: null,
-  id: 'ws-123',
-  lastOpenedAt: null,
-  name: 'Test Worksheet',
-  sortOrder: null
-}
+  id: 'ws-123'
+})
 
-const secondWorksheet: WorksheetDto = {
-  content: '',
+const secondWorksheet = makeWorksheet({
   createdAt: 1704067300000,
-  databaseId: null,
   id: 'ws-456',
-  lastOpenedAt: null,
-  name: 'Second Worksheet',
-  sortOrder: null
-}
+  name: 'Second Worksheet'
+})
 
 describe('WorksheetExplorer', () => {
   beforeEach(() => {
@@ -379,15 +365,10 @@ describe('WorksheetExplorer', () => {
     it('can rename a newly created worksheet using its real id', async () => {
       const user = userEvent.setup()
 
-      const createdWorksheet: WorksheetDto = {
-        content: '',
-        createdAt: 1704067200000,
-        databaseId: null,
+      const createdWorksheet = makeWorksheet({
         id: 'real-db-id',
-        lastOpenedAt: null,
-        name: 'Worksheet draft',
-        sortOrder: null
-      }
+        name: 'Worksheet draft'
+      })
 
       vi.mocked(apiClient.createWorksheet).mockResolvedValue(createdWorksheet)
 
