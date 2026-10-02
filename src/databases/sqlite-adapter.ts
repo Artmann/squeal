@@ -186,82 +186,46 @@ export class SqliteAdapter implements DatabaseAdapter {
       `PRAGMA foreign_key_list("${tableName}")`
     )
 
-    // One row per column, grouped by `id`, ordered within it by `seq`.
-    const constraints = new Map<
-      number,
-      { from: unknown; seq: number; table: unknown; to: unknown }[]
-    >()
-
-    for (const row of result.rows) {
-      const id = Number(row.id)
-      const columns = constraints.get(id) ?? []
-
-      columns.push({
-        from: row.from,
-        seq: Number(row.seq),
-        table: row.table,
-        to: row.to
-      })
-      constraints.set(id, columns)
-    }
-
     const foreignKeys = await Promise.all(
-      [...constraints].map(async ([id, columns]) => {
-        const sortedColumns = columns.toSorted(
-          (left, right) => left.seq - right.seq
-        )
-        const referencedTableName = sortedColumns[0]?.table
-
-        if (typeof referencedTableName !== 'string') {
-          return []
-        }
-
-        // `REFERENCES parent` with no column list means the parent's primary
-        // key, and SQLite reports each `to` as NULL. Passing that NULL on
-        // failed the contract's encoding and lost the whole schema. A parent
-        // without a primary key of the same width cannot be resolved — SQLite
-        // only rejects such a key when a row is written — so it is left out.
-        const needsPrimaryKey = sortedColumns.some(
-          (column) => typeof column.to !== 'string'
-        )
-        const primaryKeyColumns = needsPrimaryKey
-          ? await this.getPrimaryKeyColumns(client, referencedTableName)
-          : []
-
-        if (
-          needsPrimaryKey &&
-          primaryKeyColumns.length !== sortedColumns.length
-        ) {
-          return []
-        }
-
-        const resolvedColumns: ForeignKeyInfo[] = []
-
-        for (const [index, column] of sortedColumns.entries()) {
-          const referencedColumnName =
-            typeof column.to === 'string' ? column.to : primaryKeyColumns[index]
-
-          if (
-            typeof column.from !== 'string' ||
-            referencedColumnName === undefined
-          ) {
-            return []
-          }
-
-          resolvedColumns.push({
-            columnName: column.from,
-            constraintName: `fk_${tableName}_${id}`,
-            referencedColumnName,
-            referencedTableName,
-            referencedTableSchema: 'main'
-          })
-        }
-
-        return resolvedColumns
-      })
+      [...groupForeignKeyRows(result.rows)].map(([id, columns]) =>
+        this.resolveForeignKey(client, `fk_${tableName}_${id}`, columns)
+      )
     )
 
     return foreignKeys.flat()
+  }
+
+  // `REFERENCES parent` with no column list means the parent's primary key,
+  // and SQLite reports each `to` as NULL. Passing that NULL on failed the
+  // contract's encoding and lost the whole schema. A parent without a primary
+  // key of the same width cannot be resolved — SQLite only rejects such a key
+  // when a row is written — so it is left out.
+  private async resolveForeignKey(
+    client: ReturnType<typeof createClient>,
+    constraintName: string,
+    columns: ForeignKeyColumnRow[]
+  ): Promise<ForeignKeyInfo[]> {
+    const referencedTableName = columns[0]?.table
+
+    if (typeof referencedTableName !== 'string') {
+      return []
+    }
+
+    const needsPrimaryKey = columns.some(
+      (column) => typeof column.to !== 'string'
+    )
+    const primaryKeyColumns = needsPrimaryKey
+      ? await this.getPrimaryKeyColumns(client, referencedTableName)
+      : []
+
+    if (needsPrimaryKey && primaryKeyColumns.length !== columns.length) {
+      return []
+    }
+
+    return pairForeignKeyColumns(columns, primaryKeyColumns, {
+      constraintName,
+      referencedTableName
+    })
   }
 
   private getConnectionUrl(): string {
@@ -273,4 +237,71 @@ export class SqliteAdapter implements DatabaseAdapter {
 
     return parts[parts.length - 1] ?? 'sqlite'
   }
+}
+
+interface ForeignKeyColumnRow {
+  from: unknown
+  seq: number
+  table: unknown
+  to: unknown
+}
+
+// `PRAGMA foreign_key_list` answers one row per column. The columns of one
+// key share an `id` and are ordered within it by `seq`.
+function groupForeignKeyRows(
+  rows: Record<string, unknown>[]
+): Map<number, ForeignKeyColumnRow[]> {
+  const constraints = new Map<number, ForeignKeyColumnRow[]>()
+
+  for (const row of rows) {
+    const id = Number(row.id)
+    const columns = constraints.get(id) ?? []
+
+    columns.push({
+      from: row.from,
+      seq: Number(row.seq),
+      table: row.table,
+      to: row.to
+    })
+    constraints.set(id, columns)
+  }
+
+  for (const columns of constraints.values()) {
+    columns.sort((left, right) => left.seq - right.seq)
+  }
+
+  return constraints
+}
+
+// Pairs each column with the one it references: its own `to`, or the parent's
+// primary key column at the same position. Any column that cannot be paired
+// drops the whole key, since half a key would suggest a wrong join.
+function pairForeignKeyColumns(
+  columns: ForeignKeyColumnRow[],
+  primaryKeyColumns: string[],
+  reference: { constraintName: string; referencedTableName: string }
+): ForeignKeyInfo[] {
+  const pairs = columns.map((column, index) => ({
+    columnName: column.from,
+    referencedColumnName:
+      typeof column.to === 'string' ? column.to : primaryKeyColumns[index]
+  }))
+
+  const isComplete = pairs.every(
+    (pair) =>
+      typeof pair.columnName === 'string' &&
+      pair.referencedColumnName !== undefined
+  )
+
+  if (!isComplete) {
+    return []
+  }
+
+  return pairs.map((pair) => ({
+    columnName: String(pair.columnName),
+    constraintName: reference.constraintName,
+    referencedColumnName: String(pair.referencedColumnName),
+    referencedTableName: reference.referencedTableName,
+    referencedTableSchema: 'main'
+  }))
 }
