@@ -183,6 +183,56 @@ describe('listJoinCompletions', () => {
     })
   })
 
+  it('joins every column pair of a composite foreign key in one predicate', () => {
+    const composite: SchemaInfoDto = {
+      databaseName: 'shop',
+      tables: [
+        table('order_lines', []),
+        table('shipments', [
+          foreignKey(
+            'order_id',
+            'order_lines',
+            'order_id',
+            'shipments_line_fk'
+          ),
+          foreignKey(
+            'line_number',
+            'order_lines',
+            'number',
+            'shipments_line_fk'
+          )
+        ])
+      ]
+    }
+
+    const forward = findJoinContext(
+      'select * from order_lines l join shipments s ',
+      45
+    )
+    const backward = findJoinContext(
+      'select * from shipments s join order_lines l ',
+      45
+    )
+
+    expect([
+      ...(forward ? listJoinCompletions(forward, composite, PostgreSQL) : []),
+      ...(backward ? listJoinCompletions(backward, composite, PostgreSQL) : [])
+    ]).toEqual([
+      {
+        boost: 2,
+        detail: 'shipments_line_fk',
+        label: 'ON s.order_id = l.order_id AND s.line_number = l.number',
+        type: 'keyword'
+      },
+      {
+        boost: 2,
+        detail: 'shipments_line_fk',
+        label: 'ON l.order_id = s.order_id AND l.number = s.line_number',
+        type: 'keyword'
+      }
+    ])
+  })
+
   it('offers nothing when the two tables are unrelated', () => {
     expect(labelsAt('select * from users u join order_items i |')).toEqual([])
   })

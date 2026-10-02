@@ -232,10 +232,34 @@ function referencesTable(
   )
 }
 
-interface JoinPredicate {
-  constraintName: string
+interface ColumnPair {
   left: string
   right: string
+}
+
+interface JoinPredicate {
+  constraintName: string
+  pairs: ColumnPair[]
+}
+
+// A composite key arrives as one `ForeignKeyInfo` per column, all sharing the
+// constraint's name. They belong in one predicate — `a.x = b.x AND a.y = b.y`
+// — because either half on its own is a different, wrong join. Constraint
+// names are unique within a table, and these all come from one.
+function groupByConstraint(foreignKeys: ForeignKeyInfo[]): ForeignKeyInfo[][] {
+  const groups = new Map<string, ForeignKeyInfo[]>()
+
+  for (const foreignKey of foreignKeys) {
+    const group = groups.get(foreignKey.constraintName)
+
+    if (group) {
+      group.push(foreignKey)
+    } else {
+      groups.set(foreignKey.constraintName, [foreignKey])
+    }
+  }
+
+  return Array.from(groups.values())
 }
 
 /**
@@ -268,29 +292,35 @@ export function listJoinCompletions(
   for (const source of context.sources) {
     const sourceQualifier = toQualifier(source, dialect)
 
-    for (const foreignKey of joinedTable.foreignKeys) {
-      if (!referencesTable(foreignKey, source)) {
+    for (const constraint of groupByConstraint(joinedTable.foreignKeys)) {
+      if (!referencesTable(constraint[0], source)) {
         continue
       }
 
       predicates.push({
-        constraintName: foreignKey.constraintName,
-        left: `${joinedQualifier}.${quoteIdentifier(foreignKey.columnName, dialect)}`,
-        right: `${sourceQualifier}.${quoteIdentifier(foreignKey.referencedColumnName, dialect)}`
+        constraintName: constraint[0].constraintName,
+        pairs: constraint.map((foreignKey) => ({
+          left: `${joinedQualifier}.${quoteIdentifier(foreignKey.columnName, dialect)}`,
+          right: `${sourceQualifier}.${quoteIdentifier(foreignKey.referencedColumnName, dialect)}`
+        }))
       })
     }
 
     const sourceTable = findTable(schema, source)
 
-    for (const foreignKey of sourceTable?.foreignKeys ?? []) {
-      if (!referencesTable(foreignKey, context.joined)) {
+    for (const constraint of groupByConstraint(
+      sourceTable?.foreignKeys ?? []
+    )) {
+      if (!referencesTable(constraint[0], context.joined)) {
         continue
       }
 
       predicates.push({
-        constraintName: foreignKey.constraintName,
-        left: `${joinedQualifier}.${quoteIdentifier(foreignKey.referencedColumnName, dialect)}`,
-        right: `${sourceQualifier}.${quoteIdentifier(foreignKey.columnName, dialect)}`
+        constraintName: constraint[0].constraintName,
+        pairs: constraint.map((foreignKey) => ({
+          left: `${joinedQualifier}.${quoteIdentifier(foreignKey.referencedColumnName, dialect)}`,
+          right: `${sourceQualifier}.${quoteIdentifier(foreignKey.columnName, dialect)}`
+        }))
       })
     }
   }
@@ -301,7 +331,9 @@ export function listJoinCompletions(
   return predicates.map((predicate) => ({
     boost: 2,
     detail: predicate.constraintName,
-    label: `ON ${predicate.left} = ${predicate.right}`,
+    label: `ON ${predicate.pairs
+      .map((pair) => `${pair.left} = ${pair.right}`)
+      .join(' AND ')}`,
     type: 'keyword'
   }))
 }
