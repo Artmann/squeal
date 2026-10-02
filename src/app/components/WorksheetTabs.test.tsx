@@ -2,8 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { WorksheetDto } from '@/glue/worksheets'
-
+import { makeWorksheet } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { WorksheetTabs } from './WorksheetTabs'
 
@@ -26,21 +25,9 @@ beforeAll(() => {
   } as unknown as typeof window.ResizeObserver
 })
 
-function worksheet(id: string, name: string): WorksheetDto {
-  return {
-    content: '',
-    createdAt: 1704067200000,
-    databaseId: null,
-    id,
-    lastOpenedAt: null,
-    name,
-    sortOrder: null
-  }
-}
-
-const revenue = worksheet('ws-1', 'Revenue')
-const signups = worksheet('ws-2', 'Signups')
-const churn = worksheet('ws-3', 'Churn')
+const revenue = makeWorksheet({ id: 'ws-1', name: 'Revenue' })
+const signups = makeWorksheet({ id: 'ws-2', name: 'Signups' })
+const churn = makeWorksheet({ id: 'ws-3', name: 'Churn' })
 
 const allWorksheets = [revenue, signups, churn]
 
@@ -185,7 +172,7 @@ describe('WorksheetTabs', () => {
 
   it('opens a newly created worksheet in a tab', async () => {
     const user = userEvent.setup()
-    const created = worksheet('ws-new', 'Untitled')
+    const created = makeWorksheet({ id: 'ws-new', name: 'Untitled' })
 
     vi.mocked(apiClient.createWorksheet).mockResolvedValue(created)
 
@@ -211,12 +198,12 @@ describe('WorksheetTabs', () => {
     const user = userEvent.setup()
 
     vi.mocked(apiClient.createWorksheet).mockResolvedValue(
-      worksheet('ws-new', 'Untitled 2')
+      makeWorksheet({ id: 'ws-new', name: 'Untitled 2' })
     )
 
     renderWithProviders(<WorksheetTabs />, {
       tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
-      worksheets: [worksheet('ws-1', 'Untitled')]
+      worksheets: [makeWorksheet({ id: 'ws-1', name: 'Untitled' })]
     })
 
     await user.click(screen.getByRole('button', { name: 'New worksheet' }))
@@ -235,12 +222,16 @@ describe('WorksheetTabs', () => {
     const user = userEvent.setup()
 
     vi.mocked(apiClient.createWorksheet)
-      .mockResolvedValueOnce(worksheet('ws-new', 'Untitled 2'))
-      .mockResolvedValueOnce(worksheet('ws-newer', 'Untitled 3'))
+      .mockResolvedValueOnce(
+        makeWorksheet({ id: 'ws-new', name: 'Untitled 2' })
+      )
+      .mockResolvedValueOnce(
+        makeWorksheet({ id: 'ws-newer', name: 'Untitled 3' })
+      )
 
     renderWithProviders(<WorksheetTabs />, {
       tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
-      worksheets: [worksheet('ws-1', 'Untitled')]
+      worksheets: [makeWorksheet({ id: 'ws-1', name: 'Untitled' })]
     })
 
     await user.click(screen.getByRole('button', { name: 'New worksheet' }))
@@ -285,12 +276,15 @@ describe('WorksheetTabs', () => {
     const user = userEvent.setup()
 
     vi.mocked(apiClient.createWorksheet).mockResolvedValue(
-      worksheet('ws-new', 'Untitled')
+      makeWorksheet({ id: 'ws-new', name: 'Untitled' })
     )
-    vi.mocked(apiClient.updateWorksheet).mockResolvedValue({
-      ...worksheet('ws-new', 'Untitled'),
-      lastOpenedAt: 1704070800000
-    })
+    vi.mocked(apiClient.updateWorksheet).mockResolvedValue(
+      makeWorksheet({
+        id: 'ws-new',
+        lastOpenedAt: 1704070800000,
+        name: 'Untitled'
+      })
+    )
 
     renderWithProviders(<WorksheetTabs />, {
       tabs: { activeWorksheetId: 'ws-1', openWorksheetIds: ['ws-1'] },
@@ -322,7 +316,7 @@ describe('WorksheetTabs', () => {
     const user = userEvent.setup()
 
     vi.mocked(apiClient.createWorksheet).mockResolvedValue(
-      worksheet('ws-new', 'Untitled')
+      makeWorksheet({ id: 'ws-new', name: 'Untitled' })
     )
 
     renderWithProviders(<WorksheetTabs />, {
@@ -344,7 +338,7 @@ describe('WorksheetTabs', () => {
     const user = userEvent.setup()
 
     vi.mocked(apiClient.createWorksheet).mockResolvedValue(
-      worksheet('ws-new', 'Untitled')
+      makeWorksheet({ id: 'ws-new', name: 'Untitled' })
     )
 
     renderWithProviders(<WorksheetTabs />, {

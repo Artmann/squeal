@@ -1,30 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import type { WorksheetDto } from '@/glue/worksheets'
+import { makeWorksheet } from './test-fixtures'
 import {
   pickDatabaseForNewWorksheet,
   pickWorksheetToOpen
 } from './worksheet-selection'
 
-function createWorksheet(
-  id: string,
-  lastOpenedAt: number | null
-): WorksheetDto {
-  return {
-    content: '',
-    createdAt: 1,
-    databaseId: null,
-    id,
-    lastOpenedAt,
-    name: id,
-    sortOrder: null
-  }
-}
-
 const worksheets = [
-  createWorksheet('a', null),
-  createWorksheet('b', 200),
-  createWorksheet('c', 100)
+  makeWorksheet({ id: 'a', lastOpenedAt: null }),
+  makeWorksheet({ id: 'b', lastOpenedAt: 200 }),
+  makeWorksheet({ id: 'c', lastOpenedAt: 100 })
 ]
 
 describe('pickWorksheetToOpen', () => {
@@ -39,7 +24,10 @@ describe('pickWorksheetToOpen', () => {
 
   it('falls back to the first worksheet when none was opened', () => {
     expect(
-      pickWorksheetToOpen([createWorksheet('a', null)], undefined)
+      pickWorksheetToOpen(
+        [makeWorksheet({ id: 'a', lastOpenedAt: null })],
+        undefined
+      )
     ).toEqual('a')
   })
 
@@ -49,17 +37,10 @@ describe('pickWorksheetToOpen', () => {
 })
 
 describe('pickDatabaseForNewWorksheet', () => {
-  function withDatabase(
-    worksheet: WorksheetDto,
-    databaseId: string
-  ): WorksheetDto {
-    return { ...worksheet, databaseId }
-  }
-
   it('reuses the database the active worksheet runs against', () => {
     const candidates = [
-      withDatabase(createWorksheet('a', 300), 'db-a'),
-      withDatabase(createWorksheet('b', 200), 'db-b')
+      makeWorksheet({ databaseId: 'db-a', id: 'a', lastOpenedAt: 300 }),
+      makeWorksheet({ databaseId: 'db-b', id: 'b', lastOpenedAt: 200 })
     ]
 
     expect(pickDatabaseForNewWorksheet(candidates, 'b')).toEqual('db-b')
@@ -67,9 +48,9 @@ describe('pickDatabaseForNewWorksheet', () => {
 
   it('falls back to the most recently opened worksheet with a database', () => {
     const candidates = [
-      withDatabase(createWorksheet('a', 100), 'db-a'),
-      withDatabase(createWorksheet('b', 300), 'db-b'),
-      createWorksheet('c', 400)
+      makeWorksheet({ databaseId: 'db-a', id: 'a', lastOpenedAt: 100 }),
+      makeWorksheet({ databaseId: 'db-b', id: 'b', lastOpenedAt: 300 }),
+      makeWorksheet({ databaseId: null, id: 'c', lastOpenedAt: 400 })
     ]
 
     expect(pickDatabaseForNewWorksheet(candidates, undefined)).toEqual('db-b')
@@ -79,8 +60,8 @@ describe('pickDatabaseForNewWorksheet', () => {
   // scratch — the last connection the user worked with is the better guess.
   it('falls back when the active worksheet has no database', () => {
     const candidates = [
-      withDatabase(createWorksheet('a', 100), 'db-a'),
-      createWorksheet('b', 300)
+      makeWorksheet({ databaseId: 'db-a', id: 'a', lastOpenedAt: 100 }),
+      makeWorksheet({ databaseId: null, id: 'b', lastOpenedAt: 300 })
     ]
 
     expect(pickDatabaseForNewWorksheet(candidates, 'b')).toEqual('db-a')
