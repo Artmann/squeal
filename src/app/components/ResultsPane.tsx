@@ -2,7 +2,6 @@ import { SearchIcon } from 'lucide-react'
 import { ReactElement, useCallback } from 'react'
 
 import type { QuerySummaryDto } from '@/glue/api/schemas'
-import { isQueryFinished } from '@/glue/queries'
 
 import { getFindShortcut } from '../find-shortcut'
 import { useQueryResult } from '../hooks/queries'
@@ -188,24 +187,23 @@ function ResultsMeta({
 }: {
   query: QuerySummaryDto | undefined
 }): ReactElement {
-  if (!isQueryFinished(query)) {
+  if (query === undefined || query.status === 'running') {
     return <></>
   }
 
-  const durationMs = query.finishedAt - query.queriedAt
+  const duration = Intl.NumberFormat().format(
+    query.finishedAt - query.queriedAt
+  )
 
-  if (query.error !== null) {
-    return <>failed · {Intl.NumberFormat().format(durationMs)} ms</>
-  }
-
-  if (!query.result) {
-    return <></>
+  // A canceled run produced no result either, so it reads as failed here.
+  if (query.status !== 'succeeded') {
+    return <>failed · {duration} ms</>
   }
 
   return (
     <>
-      {formatRowCount(query.result)} · {Intl.NumberFormat().format(durationMs)}{' '}
-      ms · <TimeAgo timestamp={query.queriedAt} />
+      {formatRowCount(query.result)} · {duration} ms ·{' '}
+      <TimeAgo timestamp={query.queriedAt} />
     </>
   )
 }

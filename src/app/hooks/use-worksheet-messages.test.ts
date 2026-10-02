@@ -1,24 +1,42 @@
 import { describe, expect, it } from 'vitest'
 
-import { canceledQueryMessage } from '@/glue/queries'
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QueryDto, QueryResultDto } from '@/glue/api/schemas'
 
 import {
   buildWorksheetMessages,
   maxWorksheetMessages
 } from './use-worksheet-messages'
 
-function query(overrides: Partial<QueryDto> = {}): QueryDto {
+const queryFields = {
+  content: 'SELECT 1',
+  databaseId: 'db-1',
+  id: 'q-1',
+  queriedAt: 1000,
+  worksheetId: 'ws-1'
+}
+
+type QueryFields = typeof queryFields
+
+function failed(error: string): QueryDto {
+  return { ...queryFields, error, finishedAt: 1200, status: 'failed' }
+}
+
+function running(fields: Partial<QueryFields> = {}): QueryDto {
+  return { ...queryFields, ...fields, status: 'running' }
+}
+
+function succeeded(result: Partial<QueryResultDto>): QueryDto {
   return {
-    content: 'SELECT 1',
-    databaseId: 'db-1',
-    error: null,
+    ...queryFields,
     finishedAt: 1200,
-    id: 'q-1',
-    queriedAt: 1000,
-    result: null,
-    worksheetId: 'ws-1',
-    ...overrides
+    result: {
+      fields: [{ name: 'id' }],
+      rowCount: 100,
+      rows: [],
+      truncated: false,
+      ...result
+    },
+    status: 'succeeded'
   }
 }
 
@@ -29,7 +47,7 @@ describe('buildWorksheetMessages', () => {
 
   it('logs the first line of the statement when it runs', () => {
     const messages = buildWorksheetMessages([
-      query({ content: 'SELECT *\nFROM film\nLIMIT 10', result: null })
+      running({ content: 'SELECT *\nFROM film\nLIMIT 10' })
     ])
 
     expect(messages[0]).toEqual({
@@ -40,16 +58,7 @@ describe('buildWorksheetMessages', () => {
   })
 
   it('logs the row count and duration on success', () => {
-    const messages = buildWorksheetMessages([
-      query({
-        result: {
-          fields: [{ name: 'id' }],
-          rowCount: 100,
-          rows: [],
-          truncated: false
-        }
-      })
-    ])
+    const messages = buildWorksheetMessages([succeeded({ rowCount: 100 })])
 
     expect(messages[1]).toEqual({
       id: 'q-1:result',
@@ -60,39 +69,21 @@ describe('buildWorksheetMessages', () => {
 
   it('marks a truncated result', () => {
     const messages = buildWorksheetMessages([
-      query({
-        result: {
-          fields: [{ name: 'id' }],
-          rowCount: 10000,
-          rows: [],
-          truncated: true
-        }
-      })
+      succeeded({ rowCount: 10000, truncated: true })
     ])
 
     expect(messages[1]?.text).toEqual('10,000+ rows in 200 ms')
   })
 
   it('uses the singular noun for one row', () => {
-    const messages = buildWorksheetMessages([
-      query({
-        result: {
-          fields: [{ name: 'id' }],
-          rowCount: 1,
-          rows: [],
-          truncated: false
-        }
-      })
-    ])
+    const messages = buildWorksheetMessages([succeeded({ rowCount: 1 })])
 
     expect(messages[1]?.text).toEqual('1 row in 200 ms')
   })
 
   it('logs the first line of a failure', () => {
     const messages = buildWorksheetMessages([
-      query({
-        error: 'ERROR 42P01: relation "Employes" does not exist\nHINT: typo?'
-      })
+      failed('ERROR 42P01: relation "Employes" does not exist\nHINT: typo?')
     ])
 
     expect(messages[1]).toEqual({
@@ -104,16 +95,18 @@ describe('buildWorksheetMessages', () => {
 
   it('logs a cancel as its own line rather than an error', () => {
     const messages = buildWorksheetMessages([
-      query({ error: canceledQueryMessage })
+      { ...queryFields, finishedAt: 1200, status: 'canceled' }
     ])
 
-    expect(messages[1]?.text).toEqual('Query canceled.')
+    expect(messages[1]).toEqual({
+      id: 'q-1:error',
+      text: 'Query canceled.',
+      timestamp: 1200
+    })
   })
 
   it('logs nothing beyond the statement while a query is still running', () => {
-    const messages = buildWorksheetMessages([
-      query({ finishedAt: null, result: null })
-    ])
+    const messages = buildWorksheetMessages([running()])
 
     expect(messages).toEqual([
       { id: 'q-1:run', text: 'SELECT 1', timestamp: 1000 }
@@ -122,8 +115,8 @@ describe('buildWorksheetMessages', () => {
 
   it('orders messages oldest first regardless of input order', () => {
     const messages = buildWorksheetMessages([
-      query({ content: 'SECOND', id: 'q-2', queriedAt: 2000 }),
-      query({ content: 'FIRST', id: 'q-1', queriedAt: 1000 })
+      running({ content: 'SECOND', id: 'q-2', queriedAt: 2000 }),
+      running({ content: 'FIRST', id: 'q-1', queriedAt: 1000 })
     ])
 
     expect(messages.map((message) => message.text)).toEqual(['FIRST', 'SECOND'])
@@ -131,13 +124,7 @@ describe('buildWorksheetMessages', () => {
 
   it('caps the log and keeps the newest entries', () => {
     const queries = Array.from({ length: maxWorksheetMessages + 50 }, (_, i) =>
-      query({
-        content: `SELECT ${i}`,
-        finishedAt: null,
-        id: `q-${i}`,
-        queriedAt: 1000 + i,
-        result: null
-      })
+      running({ content: `SELECT ${i}`, id: `q-${i}`, queriedAt: 1000 + i })
     )
 
     const messages = buildWorksheetMessages(queries)

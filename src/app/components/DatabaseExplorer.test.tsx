@@ -801,11 +801,9 @@ describe('DatabaseExplorer', () => {
         query: {
           content: 'SELECT * FROM "users" LIMIT 100',
           databaseId: 'db-123',
-          error: null,
-          finishedAt: null,
           id: 'q-1',
           queriedAt: 1704067200000,
-          result: null,
+          status: 'running',
           worksheetId: 'ws-users'
         }
       })

@@ -3,7 +3,6 @@ import { ReactElement } from 'react'
 import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { canceledQueryMessage } from '@/glue/queries'
 import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { renderWithProviders } from '../test-utils'
@@ -22,22 +21,25 @@ vi.mock('../api-client', () => ({
 
 import { apiClient } from '../api-client'
 
-const runningQuery: QuerySummaryDto = {
+const queryFields = {
   content: 'SELECT pg_sleep(30);',
   databaseId: 'database-1',
-  error: null,
-  finishedAt: null,
   id: 'q-1',
   queriedAt: 1,
-  result: null,
   worksheetId: 'ws-1'
 }
 
+const runningQuery: QuerySummaryDto = { ...queryFields, status: 'running' }
+
 const canceledQuery: QuerySummaryDto = {
-  ...runningQuery,
-  error: canceledQueryMessage,
-  finishedAt: 2
+  ...queryFields,
+  finishedAt: 2,
+  status: 'canceled'
 }
+
+// Typed as the whole union, so a hook rendered with the running query can be
+// rerendered with a finished one.
+const runningProps: { query: QuerySummaryDto } = { query: runningQuery }
 
 // The same pairing `App` makes: the poller is the only writer of the terminal
 // row, and cancel is a request that the poller is expected to observe.
@@ -59,8 +61,8 @@ function CancelProbe(): ReactElement {
       </button>
 
       <output>{isCanceling ? 'canceling' : 'idle'}</output>
-      <output>{query?.finishedAt ? 'finished' : 'running'}</output>
-      <output>{query?.error ?? 'no error'}</output>
+      <output>{query?.status === 'running' ? 'running' : 'finished'}</output>
+      <output>{`status: ${query?.status ?? 'none'}`}</output>
     </>
   )
 }
@@ -158,10 +160,7 @@ describe('useCancelQuery', () => {
 
     expect(await screen.findByText('canceling')).toBeInTheDocument()
 
-    expect({
-      error: screen.getByText('no error').textContent,
-      row: screen.getByText('running').textContent
-    }).toEqual({ error: 'no error', row: 'running' })
+    expect(screen.getByText('status: running')).toBeInTheDocument()
   })
 
   it('shows the query as canceled once the backend finalizes it', async () => {
@@ -173,7 +172,7 @@ describe('useCancelQuery', () => {
 
     expect(await screen.findByText('finished')).toBeInTheDocument()
 
-    expect(screen.getByText(canceledQueryMessage)).toBeInTheDocument()
+    expect(screen.getByText('status: canceled')).toBeInTheDocument()
   })
 
   // Self-clears off the row rather than off the request, so the flag cannot
@@ -214,7 +213,7 @@ describe('useCancelQuery', () => {
 
     const { rerender, result } = renderHook(
       ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
-      { initialProps: { query: runningQuery } }
+      { initialProps: runningProps }
     )
 
     act(() => {
@@ -305,7 +304,7 @@ describe('useCancelQuery', () => {
 
     const { rerender, result } = renderHook(
       ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
-      { initialProps: { query: runningQuery } }
+      { initialProps: runningProps }
     )
 
     act(() => {
@@ -331,7 +330,7 @@ describe('useCancelQuery', () => {
 
     const { rerender, result } = renderHook(
       ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
-      { initialProps: { query: runningQuery } }
+      { initialProps: runningProps }
     )
 
     act(() => {
@@ -352,7 +351,7 @@ describe('useCancelQuery', () => {
 
     const { rerender, result } = renderHook(
       ({ query }: { query: QuerySummaryDto }) => useCancelQuery(query),
-      { initialProps: { query: runningQuery } }
+      { initialProps: runningProps }
     )
 
     act(() => {

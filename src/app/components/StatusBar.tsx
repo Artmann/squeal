@@ -1,7 +1,6 @@
 import { ActivityIcon, SettingsIcon } from 'lucide-react'
 import { ReactElement } from 'react'
 
-import { isQueryFinished } from '@/glue/queries'
 import type { QuerySummaryDto } from '@/glue/api/schemas'
 import type { DatabaseDto } from '@/glue/databases'
 import { findEnvironment } from '@/glue/environments'
@@ -39,37 +38,40 @@ const healthTitles: Record<ConnectionHealth, string> = {
   unknown: 'No queries run yet'
 }
 
+// A canceled run counts as a failed one here: the dot says whether the last
+// run produced a result, and a canceled one did not.
 function getConnectionHealth(
   query: QuerySummaryDto | undefined
 ): ConnectionHealth {
-  if (!isQueryFinished(query)) {
-    return 'unknown'
+  switch (query?.status) {
+    case 'canceled':
+    case 'failed':
+      return 'failed'
+    case 'succeeded':
+      return 'succeeded'
+    default:
+      return 'unknown'
   }
-
-  return query.error === null ? 'succeeded' : 'failed'
 }
 
 function formatRunSummary(
   query: QuerySummaryDto | undefined
 ): string | undefined {
-  if (!isQueryFinished(query)) {
-    return undefined
+  switch (query?.status) {
+    case 'canceled':
+    case 'failed':
+      return 'Query failed'
+    case 'succeeded': {
+      const seconds = (query.finishedAt - query.queriedAt) / 1000
+      const count = Intl.NumberFormat().format(query.result.rowCount)
+      const suffix = query.result.truncated ? '+' : ''
+      const noun = query.result.rowCount === 1 ? 'row' : 'rows'
+
+      return `${count}${suffix} ${noun} in ${seconds.toFixed(2)} s`
+    }
+    default:
+      return undefined
   }
-
-  if (query.error !== null) {
-    return 'Query failed'
-  }
-
-  if (!query.result) {
-    return undefined
-  }
-
-  const seconds = (query.finishedAt - query.queriedAt) / 1000
-  const count = Intl.NumberFormat().format(query.result.rowCount)
-  const suffix = query.result.truncated ? '+' : ''
-  const noun = query.result.rowCount === 1 ? 'row' : 'rows'
-
-  return `${count}${suffix} ${noun} in ${seconds.toFixed(2)} s`
 }
 
 export function StatusBar({

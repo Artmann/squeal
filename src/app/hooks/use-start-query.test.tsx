@@ -45,11 +45,9 @@ describe('useStartQuery', () => {
       query: {
         content: 'SELECT 1;',
         databaseId: 'database-1',
-        error: null,
-        finishedAt: null,
         id: 'q-1',
         queriedAt: 1,
-        result: null,
+        status: 'running',
         worksheetId: 'ws-1'
       }
     })

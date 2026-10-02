@@ -14,8 +14,8 @@ import { Authorization } from '../security'
 
 const idParam = HttpApiSchema.param('id', QueryId)
 
-// Query execution is async: create returns the row immediately with a null
-// finishedAt, and the renderer polls `status` until it is set. `list` and
+// Query execution is async: create returns the row immediately with `status:
+// 'running'`, and the renderer polls `status` until it is not. `list` and
 // `status` carry the result's size but not its rows; `get` is the one route
 // that returns the rows, and the renderer asks it once per finished query.
 export const queriesGroup = HttpApiGroup.make('queries')

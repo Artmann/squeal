@@ -53,40 +53,48 @@ export function createCollections(queryClient: QueryClient) {
     })
   )
 
-  const queries = createCollection(
-    queryCollectionOptions({
-      getKey: (item: QuerySummaryDto) => item.id,
-      onInsert: async ({ transaction }) => {
-        await Promise.all(
-          transaction.mutations.map(async (mutation) => {
-            const query = mutation.modified
+  const queryOptions = queryCollectionOptions({
+    getKey: (item: QuerySummaryDto) => item.id,
+    onInsert: async ({ transaction }) => {
+      await Promise.all(
+        transaction.mutations.map(async (mutation) => {
+          const query = mutation.modified
 
-            // Continues the query.run trace started when the run was clicked.
-            const traceParent = getQueryTraceParent(query.id)
+          // Continues the query.run trace started when the run was clicked.
+          const traceParent = getQueryTraceParent(query.id)
 
-            const response = await apiClient.createQuery(
-              {
-                content: query.content,
-                databaseId:
-                  query.databaseId === '' ? undefined : query.databaseId,
-                id: query.id,
-                queriedAt: query.queriedAt,
-                worksheetId: query.worksheetId
-              },
-              traceParent ? { traceParent } : {}
-            )
+          const response = await apiClient.createQuery(
+            {
+              content: query.content,
+              databaseId:
+                query.databaseId === '' ? undefined : query.databaseId,
+              id: query.id,
+              queriedAt: query.queriedAt,
+              worksheetId: query.worksheetId
+            },
+            traceParent ? { traceParent } : {}
+          )
 
-            queries.utils.writeUpsert(response.query)
-          })
-        )
+          queries.utils.writeUpsert(response.query)
+        })
+      )
 
-        return { refetch: false }
-      },
-      queryClient,
-      queryFn: () => apiClient.getQueries(),
-      queryKey: queryKeys.queries
-    })
-  )
+      return { refetch: false }
+    },
+    queryClient,
+    queryFn: () => apiClient.getQueries(),
+    queryKey: queryKeys.queries
+  })
+
+  // A query row is a union on `status`, and each variant carries only the
+  // fields legal for it, so a write replaces the row rather than merging into
+  // it. A merge would keep a finished row's `result` on the running row a slow
+  // insert response writes over it. Every write here is a whole row from the
+  // server, so nothing partial is lost.
+  const queries = createCollection({
+    ...queryOptions,
+    sync: { ...queryOptions.sync, rowUpdateMode: 'full' }
+  })
 
   const worksheets = createCollection(
     queryCollectionOptions({

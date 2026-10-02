@@ -1,9 +1,9 @@
-import { Deferred, Effect, Layer, Schedule } from 'effect'
+import { Deferred, Effect, Either, Layer, Schedule, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { queriesTable } from '@/database/schema'
 import { QueryCanceledError, type QueryResult } from '@/databases/adapter'
-import type { ConnectionInfo } from '@/glue/api/schemas'
+import { GetQueriesResponse, type ConnectionInfo } from '@/glue/api/schemas'
 import { canceledQueryMessage } from '@/glue/queries'
 import { SpanRecord } from '@/glue/tracing/spans'
 import { makeSquealTracer } from '@/server/tracing/effect-tracer'
@@ -135,15 +135,28 @@ describe('QueryRunner', () => {
       })
     )
 
-    expect(immediate.finishedAt).toBeNull()
-    expect(immediate.result).toBeNull()
-    expect(finished.finishedAt).toEqual(expect.any(Number))
-    expect(finished.error).toBeNull()
-    expect(finished.result).toEqual({
-      fields: [{ name: 'value' }],
-      rowCount: 1,
-      rows: [{ value: 1 }],
-      truncated: false
+    expect(immediate).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      id: 'query-1',
+      queriedAt: 1_000,
+      status: 'running',
+      worksheetId: 'worksheet-1'
+    })
+    expect(finished).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      finishedAt: expect.any(Number),
+      id: 'query-1',
+      queriedAt: 1_000,
+      result: {
+        fields: [{ name: 'value' }],
+        rowCount: 1,
+        rows: [{ value: 1 }],
+        truncated: false
+      },
+      status: 'succeeded',
+      worksheetId: 'worksheet-1'
     })
   })
 
@@ -191,9 +204,16 @@ describe('QueryRunner', () => {
       }
     )
 
-    expect(finished.error).toEqual('relation "missing" does not exist')
-    expect(finished.finishedAt).toEqual(expect.any(Number))
-    expect(finished.result).toBeNull()
+    expect(finished).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      error: 'relation "missing" does not exist',
+      finishedAt: expect.any(Number),
+      id: 'query-1',
+      queriedAt: 1_000,
+      status: 'failed',
+      worksheetId: 'worksheet-1'
+    })
   })
 
   it('normalizes a canceled query and calls the adapter cancel', async () => {
@@ -242,8 +262,15 @@ describe('QueryRunner', () => {
     )
 
     expect(cancelCalls).toBeGreaterThanOrEqual(1)
-    expect(finished.error).toEqual(canceledQueryMessage)
-    expect(finished.result).toBeNull()
+    expect(finished).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      finishedAt: expect.any(Number),
+      id: 'query-1',
+      queriedAt: 1_000,
+      status: 'canceled',
+      worksheetId: 'worksheet-1'
+    })
   })
 
   // The persisted row, the fiber and the adapter all start at different
@@ -302,15 +329,16 @@ describe('QueryRunner', () => {
       )
     )
 
-    expect({
-      error: finished.error,
-      finishedAt: finished.finishedAt,
-      result: finished.result,
-      runQueryCalls
-    }).toEqual({
-      error: canceledQueryMessage,
-      finishedAt: expect.any(Number),
-      result: null,
+    expect({ finished, runQueryCalls }).toEqual({
+      finished: {
+        content: 'select 1',
+        databaseId: expect.any(String),
+        finishedAt: expect.any(Number),
+        id: 'query-1',
+        queriedAt: 1_000,
+        status: 'canceled',
+        worksheetId: 'worksheet-1'
+      },
       runQueryCalls: 0
     })
   })
@@ -369,14 +397,14 @@ describe('QueryRunner', () => {
       }
     )
 
-    expect({
-      error: finished.error,
-      finishedAt: finished.finishedAt,
-      result: finished.result
-    }).toEqual({
-      error: canceledQueryMessage,
+    expect(finished).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
       finishedAt: expect.any(Number),
-      result: null
+      id: 'query-1',
+      queriedAt: 1_000,
+      status: 'canceled',
+      worksheetId: 'worksheet-1'
     })
   })
 
@@ -409,11 +437,10 @@ describe('QueryRunner', () => {
       }
     )
 
-    expect({
-      cancelCalls,
-      error: finished.error,
-      hasResult: finished.result !== null
-    }).toEqual({ cancelCalls: 0, error: null, hasResult: true })
+    expect({ cancelCalls, status: finished.status }).toEqual({
+      cancelCalls: 0,
+      status: 'succeeded'
+    })
   })
 
   it('fails with QueryNotFoundError for an unknown query id', async () => {
@@ -514,21 +541,24 @@ describe('QueryRunner', () => {
     const legacySummary = {
       content: 'select 1',
       databaseId: expect.any(String),
-      error: null,
       finishedAt: 2_000,
       id: 'legacy-query',
       queriedAt: 1_000,
       result: { rowCount: 1, truncated: false },
+      status: 'succeeded',
       worksheetId: 'worksheet-1'
     }
 
     expect(queries.list).toEqual([legacySummary])
     expect(queries.status).toEqual(legacySummary)
-    expect(queries.full.result).toEqual({
-      fields: [{ name: 'value' }],
-      rowCount: 1,
-      rows: [{ value: 1 }],
-      truncated: false
+    expect(queries.full).toEqual({
+      ...legacySummary,
+      result: {
+        fields: [{ name: 'value' }],
+        rowCount: 1,
+        rows: [{ value: 1 }],
+        truncated: false
+      }
     })
   })
 
@@ -544,7 +574,11 @@ describe('QueryRunner', () => {
     ])
 
     expect(summaries).toEqual([
-      { error: null, result: { rowCount: 2, truncated: true } }
+      storedQuery(0, {
+        finishedAt: 2_000,
+        result: { rowCount: 2, truncated: true },
+        status: 'succeeded'
+      })
     ])
   })
 
@@ -558,10 +592,77 @@ describe('QueryRunner', () => {
 
     const unreadable = {
       error: 'Stored result could not be read.',
-      result: null
+      finishedAt: 2_000,
+      status: 'failed'
     }
 
-    expect(summaries).toEqual([unreadable, unreadable, unreadable, unreadable])
+    expect(summaries).toEqual(
+      [0, 1, 2, 3].map((index) => storedQuery(index, unreadable))
+    )
+  })
+
+  // Every combination the independent columns can hold maps to exactly one
+  // status, so no stored row can fail response encoding. Each of these is a
+  // shape a real database can contain: one saved by an earlier version, one
+  // left mid-write, or one the boot reconciler has not reached yet.
+  it('derives one status for every legacy row shape', async () => {
+    const legacyRows: StoredColumns[] = [
+      // Finished with neither a result nor an error.
+      { error: null, finishedAt: 2_000, result: null },
+      // Finished with an empty blob, which earlier versions read as absent.
+      { error: null, finishedAt: 2_000, result: '' },
+      // Canceled, which is stored as its message.
+      { error: canceledQueryMessage, finishedAt: 2_000, result: null },
+      // An error beside a result: the error wins, as it always has.
+      {
+        error: 'connection reset',
+        finishedAt: 2_000,
+        result: JSON.stringify({ fields: [], rows: [] })
+      },
+      // An error without a finish time, from before the reconciler ran.
+      { error: 'connection reset', finishedAt: null, result: null },
+      // A result without a finish time, from before the column existed.
+      {
+        error: null,
+        finishedAt: null,
+        result: JSON.stringify({ fields: [], rows: [] })
+      }
+    ]
+
+    const { full, list } = await storeRows(legacyRows)
+
+    const expected = [
+      {
+        error: 'Stored result could not be read.',
+        finishedAt: 2_000,
+        status: 'failed'
+      },
+      {
+        error: 'Stored result could not be read.',
+        finishedAt: 2_000,
+        status: 'failed'
+      },
+      { finishedAt: 2_000, status: 'canceled' },
+      { error: 'connection reset', finishedAt: 2_000, status: 'failed' },
+      { status: 'running' },
+      { status: 'running' }
+    ].map((state, index) => storedQuery(index, state))
+
+    expect({ full, list }).toEqual({ full: expected, list: expected })
+  })
+
+  // The regression this guards: one row the response schema refuses fails
+  // encoding for the whole list, and the history answers 400 instead.
+  it('encodes a history list that holds legacy rows', async () => {
+    const list = await listStoredResults([
+      JSON.stringify({ fields: [{ name: 'value' }], rows: [{ value: 1 }] }),
+      'not json at all',
+      ''
+    ])
+
+    const encoded = Schema.encodeEither(GetQueriesResponse)({ queries: list })
+
+    expect(Either.isRight(encoded)).toEqual(true)
   })
 
   it('reports an unusable stored result from get as well', async () => {
@@ -587,8 +688,16 @@ describe('QueryRunner', () => {
       })
     )
 
-    expect(query.result).toEqual(null)
-    expect(query.error).toEqual('Stored result could not be read.')
+    expect(query).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      error: 'Stored result could not be read.',
+      finishedAt: 2_000,
+      id: 'broken-query',
+      queriedAt: 1_000,
+      status: 'failed',
+      worksheetId: 'worksheet-1'
+    })
   })
 
   it('saves the size beside the result and lists it without the rows', async () => {
@@ -621,11 +730,11 @@ describe('QueryRunner', () => {
     const summary = {
       content: 'select 1',
       databaseId: expect.any(String),
-      error: null,
       finishedAt: expect.any(Number),
       id: 'query-1',
       queriedAt: 1_000,
       result: { rowCount: 1, truncated: false },
+      status: 'succeeded',
       worksheetId: 'worksheet-1'
     }
 
@@ -661,8 +770,17 @@ describe('QueryRunner', () => {
       })
     )
 
-    expect(queries.map(({ error, result }) => ({ error, result }))).toEqual([
-      { error: null, result: { rowCount: 10_000, truncated: true } }
+    expect(queries).toEqual([
+      {
+        content: 'select 1',
+        databaseId: expect.any(String),
+        finishedAt: 2_000,
+        id: 'current-query',
+        queriedAt: 1_000,
+        result: { rowCount: 10_000, truncated: true },
+        status: 'succeeded',
+        worksheetId: 'worksheet-1'
+      }
     ])
   })
 
@@ -690,11 +808,9 @@ describe('QueryRunner', () => {
     expect(status).toEqual({
       content: 'select 1',
       databaseId: expect.any(String),
-      error: null,
-      finishedAt: null,
       id: 'running-query',
       queriedAt: 1_000,
-      result: null,
+      status: 'running',
       worksheetId: 'worksheet-1'
     })
   })
@@ -717,9 +833,17 @@ describe('QueryRunner', () => {
   })
 })
 
-// Stores each blob as a finished legacy row — no size columns — and lists
-// them back in the same order, keeping only what the summary says about each.
-function listStoredResults(results: string[]) {
+// The columns a query's state is derived from, as a stored row holds them.
+interface StoredColumns {
+  error: string | null
+  finishedAt: number | null
+  result: string | null
+}
+
+// Stores each row as a legacy row — no size columns — and reads every one of
+// them back both ways, in the order given: from the list, and one at a time
+// from `get`.
+function storeRows(rows: StoredColumns[]) {
   return run(
     Effect.gen(function* () {
       const appDatabase = yield* AppDatabase
@@ -728,23 +852,45 @@ function listStoredResults(results: string[]) {
 
       yield* appDatabase.execute((client) =>
         client.insert(queriesTable).values(
-          results.map((result, index) => ({
+          rows.map((row, index) => ({
+            ...row,
             content: 'select 1',
             databaseId: database.id,
-            finishedAt: 2_000,
             id: `stored-${index}`,
-            // Newest first in the list, so the earliest blob gets the latest
+            // Newest first in the list, so the earliest row gets the latest
             // timestamp to keep the order the caller gave.
             queriedAt: 1_000 - index,
-            result,
             worksheetId: 'worksheet-1'
           }))
         )
       )
 
-      const queries = yield* runner.list()
+      const full = yield* Effect.forEach(rows, (_row, index) =>
+        runner.get(`stored-${index}`)
+      )
 
-      return queries.map(({ error, result }) => ({ error, result }))
+      return { full, list: yield* runner.list() }
     })
   )
+}
+
+// Stores each blob as a finished legacy row and lists them back.
+async function listStoredResults(results: string[]) {
+  const { list } = await storeRows(
+    results.map((result) => ({ error: null, finishedAt: 2_000, result }))
+  )
+
+  return list
+}
+
+// What `storeRows` gives back for the row at `index`, around its state.
+function storedQuery(index: number, state: object) {
+  return {
+    content: 'select 1',
+    databaseId: expect.any(String),
+    id: `stored-${index}`,
+    queriedAt: 1_000 - index,
+    worksheetId: 'worksheet-1',
+    ...state
+  }
 }

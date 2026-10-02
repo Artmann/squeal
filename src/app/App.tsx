@@ -32,7 +32,6 @@ import { useCancelQuery } from './hooks/mutations'
 import { useStartQuery } from './hooks/use-start-query'
 import { useWorksheetAutosave } from './hooks/useWorksheetAutosave'
 import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
-import { isQueryInFlight } from '@/glue/queries'
 import { secretStorageMessages } from '@/glue/secret-storage'
 import { useAppDispatch, useAppSelector } from './store'
 import { selectActiveWorksheetId } from './store/tabs-slice'
@@ -239,7 +238,7 @@ export function useWorksheetSession(openWorksheetId: string | undefined) {
     handleUpdateContent,
     hasSaveFailed,
     isCanceling,
-    isQueryRunning: isQueryInFlight(query),
+    isQueryRunning: query?.status === 'running',
     query,
     setCursorOffset,
     statements,

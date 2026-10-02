@@ -320,18 +320,6 @@ const QueryResultDto = Schema.Struct({
 })
 export type QueryResultDto = Schema.Schema.Type<typeof QueryResultDto>
 
-const QueryDto = Schema.Struct({
-  content: Schema.String,
-  databaseId: Schema.String,
-  error: Schema.NullOr(Schema.String),
-  finishedAt: Schema.NullOr(Schema.Number),
-  id: Schema.String,
-  queriedAt: Schema.Number,
-  result: Schema.NullOr(QueryResultDto),
-  worksheetId: Schema.String
-})
-export type QueryDto = Schema.Schema.Type<typeof QueryDto>
-
 // What the history list and the status poll say about a result: its size and
 // whether it was cut off, without the rows. A result can hold 10,000 rows, and
 // the list carries 250 queries, so shipping rows there meant every boot read,
@@ -342,11 +330,58 @@ const QueryResultSummaryDto = Schema.Struct({
   truncated: Schema.Boolean
 })
 
+const queryFields = {
+  content: Schema.String,
+  databaseId: Schema.String,
+  id: Schema.String,
+  queriedAt: Schema.Number,
+  worksheetId: Schema.String
+}
+
+// A field that belongs to another status is an error rather than something to
+// strip, so a running query that carries a result, or a succeeded one that
+// carries an error, is refused instead of quietly decoding as something else.
+const exactVariant = { parseOptions: { onExcessProperty: 'error' } } as const
+
+// A query is one of four states, and each carries only the fields legal for
+// it: a running query has no finish time, a succeeded one always has a result,
+// a failed one always has an error, and a canceled one has neither. The SQL
+// columns are still independent; `status` is derived from them in one place on
+// the server (`toQueryState` in `query-runner.ts`).
+//
+// Built from the result schema so the summary is the same union with a
+// smaller result, never a second definition that could drift from it.
+function makeQuerySchema<Result extends Schema.Schema.Any>(result: Result) {
+  return Schema.Union(
+    Schema.Struct({
+      ...queryFields,
+      finishedAt: Schema.Number,
+      status: Schema.Literal('canceled')
+    }).annotations(exactVariant),
+    Schema.Struct({
+      ...queryFields,
+      error: Schema.String,
+      finishedAt: Schema.Number,
+      status: Schema.Literal('failed')
+    }).annotations(exactVariant),
+    Schema.Struct({
+      ...queryFields,
+      status: Schema.Literal('running')
+    }).annotations(exactVariant),
+    Schema.Struct({
+      ...queryFields,
+      finishedAt: Schema.Number,
+      result,
+      status: Schema.Literal('succeeded')
+    }).annotations(exactVariant)
+  )
+}
+
+const QueryDto = makeQuerySchema(QueryResultDto)
+export type QueryDto = Schema.Schema.Type<typeof QueryDto>
+
 // A `QueryDto` is also a `QuerySummaryDto`: the full result has both fields.
-const QuerySummaryDto = Schema.Struct({
-  ...QueryDto.fields,
-  result: Schema.NullOr(QueryResultSummaryDto)
-})
+const QuerySummaryDto = makeQuerySchema(QueryResultSummaryDto)
 export type QuerySummaryDto = Schema.Schema.Type<typeof QuerySummaryDto>
 
 export const CreateQueryRequest = Schema.Struct({

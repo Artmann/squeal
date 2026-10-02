@@ -1,4 +1,3 @@
-import { canceledQueryMessage } from '@/glue/queries'
 import { SpanAttributes, SpanContext } from '@/glue/tracing/spans'
 
 import { Span, startSpan } from './tracer'
@@ -10,10 +9,11 @@ interface QueryTraceInput {
   worksheetId?: string | null
 }
 
-interface QueryTraceResult {
-  error?: string | null
-  id: string
-}
+// A finished query's outcome. A `QuerySummaryDto` that is not running is one,
+// and so is the failed insert that never reached the server.
+type QueryTraceResult =
+  | { error: string; id: string; status: 'failed' }
+  | { id: string; status: 'canceled' | 'succeeded' }
 
 // Bridges the query trace from the run action in App.tsx to the collection's
 // onInsert handler and the result poller — the client-generated query id is
@@ -47,16 +47,21 @@ export function finishQueryTrace(query: QueryTraceResult): void {
 
   activeQuerySpans.delete(query.id)
 
-  if (query.error === canceledQueryMessage) {
+  // A cancel is the user's action rather than a failure, so the span stays ok
+  // and carries an event instead.
+  if (query.status === 'canceled') {
     span.addEvent('query.canceled')
-    span.setStatus('ok')
-  } else if (query.error) {
+  }
+
+  if (query.status === 'failed') {
     span.setStatus('error', query.error)
   } else {
     span.setStatus('ok')
   }
 
-  span.addEvent('query.finished', { 'query.success': !query.error })
+  span.addEvent('query.finished', {
+    'query.success': query.status !== 'failed'
+  })
   span.end()
 }
 

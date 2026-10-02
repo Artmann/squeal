@@ -22,11 +22,6 @@ import type {
   UpdateStatusResponse
 } from '@/glue/api/schemas'
 import { isConnectionUnreadable, type DatabaseDto } from '@/glue/databases'
-import {
-  canceledQueryMessage,
-  isQueryFinished,
-  isQueryInFlight
-} from '@/glue/queries'
 
 const queryPollInterval = 250
 
@@ -264,7 +259,7 @@ export function useQueryResultSync(query: QuerySummaryDto | undefined): void {
   const { queries } = useCollections()
 
   const queryId = query?.id
-  const isRunning = isQueryInFlight(query)
+  const isRunning = query?.status === 'running'
 
   const polled = useQuery<QuerySummaryDto>({
     queryKey: queryId ? queryKeys.queryStatus(queryId) : ['query', 'noop'],
@@ -283,11 +278,14 @@ export function useQueryResultSync(query: QuerySummaryDto | undefined): void {
         return queryPollInterval
       }
 
-      return isQueryFinished(data) ? false : queryPollInterval
+      return data.status === 'running' ? queryPollInterval : false
     }
   })
 
-  const finished = isQueryFinished(polled.data) ? polled.data : undefined
+  const finished =
+    polled.data === undefined || polled.data.status === 'running'
+      ? undefined
+      : polled.data
 
   useEffect(() => {
     // Also re-runs when the collection row regresses to running (for example
@@ -305,11 +303,10 @@ export function useQueryResultSync(query: QuerySummaryDto | undefined): void {
     // its own failure, since nothing told the user a query was even running.
     // Switching tabs before it finishes disables this poller, so the toast is
     // missed; the error is still waiting in the results pane.
-    if (
-      consumeErrorNotice(finished.id) &&
-      finished.error &&
-      finished.error !== canceledQueryMessage
-    ) {
+    //
+    // `consumeErrorNotice` is asked first, so a run that did not fail still
+    // drops its entry. A cancel is the user's own doing, so it says nothing.
+    if (consumeErrorNotice(finished.id) && finished.status === 'failed') {
       toast.error('Query failed', { description: finished.error })
     }
 
@@ -336,10 +333,7 @@ export interface QueryResultRead {
 export function useQueryResult(
   query: QuerySummaryDto | undefined
 ): QueryResultRead {
-  const queryId =
-    isQueryFinished(query) && query.error === null && query.result !== null
-      ? query.id
-      : undefined
+  const queryId = query?.status === 'succeeded' ? query.id : undefined
 
   const fetched = useQuery<QueryDto>({
     queryKey: queryId ? queryKeys.query(queryId) : ['query', 'noop'],
@@ -361,14 +355,17 @@ export function useQueryResult(
     return { error: undefined, result: undefined }
   }
 
-  if (fetched.data !== undefined) {
-    const { error, result } = fetched.data
-
-    if (result === null) {
-      return { error: error ?? unavailableResultMessage, result: undefined }
-    }
-
-    return { error: undefined, result }
+  // The summary said succeeded, but the full row is read separately and can
+  // disagree — a stored blob whose size columns are fine but which will not
+  // parse comes back failed.
+  switch (fetched.data?.status) {
+    case 'succeeded':
+      return { error: undefined, result: fetched.data.result }
+    case 'failed':
+      return { error: fetched.data.error, result: undefined }
+    case 'canceled':
+    case 'running':
+      return { error: unavailableResultMessage, result: undefined }
   }
 
   if (fetched.isError) {

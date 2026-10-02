@@ -34,11 +34,9 @@ function createOptimisticQuery(input: StartQueryInput): QuerySummaryDto {
   return {
     content: input.content,
     databaseId: input.databaseId ?? '',
-    error: null,
-    finishedAt: null,
     id: v7(),
     queriedAt: Date.now(),
-    result: null,
+    status: 'running',
     worksheetId: input.worksheetId ?? ''
   }
 }
@@ -79,7 +77,11 @@ export function useStartQuery(): (input: StartQueryInput) => void {
           error instanceof Error ? error.message : 'Failed to run query'
 
         consumeErrorNotice(optimistic.id)
-        finishQueryTrace({ error: message, id: optimistic.id })
+        finishQueryTrace({
+          error: message,
+          id: optimistic.id,
+          status: 'failed'
+        })
         toast.error('Query failed', { description: message })
       })
     },
