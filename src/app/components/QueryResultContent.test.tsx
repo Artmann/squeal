@@ -1,7 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { canceledQueryMessage } from '@/glue/queries'
 import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { stubElementSize } from '../test-element-size'
@@ -14,20 +13,30 @@ beforeEach(() => {
   stubElementSize()
 })
 
-const baseQuery: QuerySummaryDto = {
+const queryFields = {
   content: 'SELECT * FROM film',
   databaseId: 'database-1',
-  error: null,
-  finishedAt: 1200,
   id: 'query-1',
   queriedAt: 1000,
-  result: null,
   worksheetId: 'worksheet-1'
 }
 
-const successfulQuery: QuerySummaryDto = {
-  ...baseQuery,
-  result: { rowCount: 1, truncated: false }
+const runningQuery: QuerySummaryDto = { ...queryFields, status: 'running' }
+
+const successfulQuery: QuerySummaryDto = succeededQuery(queryFields.content, 1)
+
+function failedQuery(error: string): QuerySummaryDto {
+  return { ...queryFields, error, finishedAt: 1200, status: 'failed' }
+}
+
+function succeededQuery(content: string, rowCount: number): QuerySummaryDto {
+  return {
+    ...queryFields,
+    content,
+    finishedAt: 1200,
+    result: { rowCount, truncated: false },
+    status: 'succeeded'
+  }
 }
 
 describe('QueryResultContent', () => {
@@ -46,7 +55,7 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{ ...baseQuery, finishedAt: null }}
+        query={runningQuery}
       />
     )
 
@@ -57,7 +66,7 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName={undefined}
-        query={{ ...baseQuery, finishedAt: null }}
+        query={runningQuery}
       />
     )
 
@@ -118,7 +127,7 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{ ...baseQuery, result: { rowCount: 0, truncated: false } }}
+        query={succeededQuery(queryFields.content, 0)}
         result={{
           fields: [{ name: 'title' }],
           rowCount: 0,
@@ -138,11 +147,10 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{
-          ...baseQuery,
-          content: "UPDATE film SET title = 'Alien' WHERE film_id < 4",
-          result: { rowCount: 3, truncated: false }
-        }}
+        query={succeededQuery(
+          "UPDATE film SET title = 'Alien' WHERE film_id < 4",
+          3
+        )}
         result={{ fields: [], rowCount: 3, rows: [], truncated: false }}
       />
     )
@@ -156,11 +164,7 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{
-          ...baseQuery,
-          content: 'CREATE TABLE notes (id integer)',
-          result: { rowCount: 0, truncated: false }
-        }}
+        query={succeededQuery('CREATE TABLE notes (id integer)', 0)}
         result={{ fields: [], rowCount: 0, rows: [], truncated: false }}
       />
     )
@@ -173,11 +177,9 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{
-          ...baseQuery,
-          error:
-            'ERROR 42P01: relation "Employes" does not exist\nHINT:  Perhaps you meant "Employees".'
-        }}
+        query={failedQuery(
+          'ERROR 42P01: relation "Employes" does not exist\nHINT:  Perhaps you meant "Employees".'
+        )}
       />
     )
 
@@ -194,7 +196,7 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{ ...baseQuery, error: 'syntax error at or near "FORM"' }}
+        query={failedQuery('syntax error at or near "FORM"')}
       />
     )
 
@@ -207,7 +209,7 @@ describe('QueryResultContent', () => {
     render(
       <QueryResultContent
         databaseName="Pagila"
-        query={{ ...baseQuery, error: canceledQueryMessage }}
+        query={{ ...queryFields, finishedAt: 1200, status: 'canceled' }}
       />
     )
 

@@ -15,7 +15,6 @@ import {
   UpdateDatabaseRequest,
   type UpdateEnvironmentRequest
 } from '@/glue/api/schemas'
-import { isQueryFinished, isQueryInFlight } from '@/glue/queries'
 
 export interface CancelQuery {
   cancel: () => void
@@ -53,7 +52,7 @@ export function useCancelQuery(
     setCancelingQueryId(queryId)
   }, [])
 
-  const runningQueryId = isQueryInFlight(query) ? query.id : undefined
+  const runningQueryId = query?.status === 'running' ? query.id : undefined
   const isCanceling =
     runningQueryId !== undefined && cancelingQueryId === runningQueryId
 
@@ -67,11 +66,11 @@ export function useCancelQuery(
     if (
       cancelingQueryId !== undefined &&
       query?.id === cancelingQueryId &&
-      isQueryFinished(query)
+      query.status !== 'running'
     ) {
       setCanceling(undefined)
     }
-  }, [cancelingQueryId, query?.finishedAt, query?.id, setCanceling])
+  }, [cancelingQueryId, query?.id, query?.status, setCanceling])
 
   const cancel = useCallback(() => {
     // The button now stays on screen for as long as the query runs, so this is

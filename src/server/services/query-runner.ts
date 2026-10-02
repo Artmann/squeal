@@ -598,55 +598,101 @@ interface QuerySummaryRow {
   worksheetId: string
 }
 
+interface StoredState<Result> {
+  error: string | null
+  finishedAt: number | null
+  /** The stored result, or null when it is absent or could not be read. */
+  result: Result | null
+}
+
+type QueryState<Result> =
+  | { finishedAt: number; status: 'canceled' }
+  | { error: string; finishedAt: number; status: 'failed' }
+  | { status: 'running' }
+  | { finishedAt: number; result: Result; status: 'succeeded' }
+
+// The one place a query's status is derived from its columns, which are still
+// independent in SQL. It is total: every combination a stored row can hold —
+// including the ones earlier versions wrote — maps to exactly one status, so
+// no row can fail response encoding and take the history list down with it.
+//
+// The order is the one the renderer used to apply on its own: an unfinished
+// row is running whatever else it holds (the boot reconciler finishes the ones
+// a previous process left behind), then an error wins over a result.
+// Canceled is stored as its message. A finished row with no readable result
+// and no error says so rather than claiming a success it cannot show.
+function toQueryState<Result>(stored: StoredState<Result>): QueryState<Result> {
+  const { error, finishedAt, result } = stored
+
+  if (finishedAt === null) {
+    return { status: 'running' }
+  }
+
+  if (error === canceledQueryMessage) {
+    return { finishedAt, status: 'canceled' }
+  }
+
+  if (error !== null) {
+    return { error, finishedAt, status: 'failed' }
+  }
+
+  if (result === null) {
+    return { error: unreadableResultMessage, finishedAt, status: 'failed' }
+  }
+
+  return { finishedAt, result, status: 'succeeded' }
+}
+
 function transformSummaryRow(row: QuerySummaryRow): QuerySummaryDto {
   const rowCount = row.resultState === 'readable' ? row.resultRowCount : null
-  const isUnreadable = row.resultState !== 'absent' && rowCount === null
 
   return {
     content: row.content,
     databaseId: row.databaseId,
-    error: row.error ?? (isUnreadable ? unreadableResultMessage : null),
-    finishedAt: row.finishedAt,
     id: row.id,
     queriedAt: row.queriedAt,
-    result:
-      rowCount === null
-        ? null
-        : {
-            rowCount,
-            // SQLite answers a comparison with 1 or 0, and a stored boolean
-            // the same way.
-            truncated: row.resultTruncated === 1
-          },
-    worksheetId: row.worksheetId
+    worksheetId: row.worksheetId,
+    ...toQueryState({
+      error: row.error,
+      finishedAt: row.finishedAt,
+      result:
+        rowCount === null
+          ? null
+          : {
+              rowCount,
+              // SQLite answers a comparison with 1 or 0, and a stored boolean
+              // the same way.
+              truncated: row.resultTruncated === 1
+            }
+    })
+  }
+}
+
+// One unreadable stored result must not take down the whole history list, so
+// a blob that will not parse is read as no result at all.
+function parseStoredResult(value: string | null): QueryResult | null {
+  if (!value) {
+    return null
+  }
+
+  try {
+    return toStoredQueryResult(JSON.parse(value))
+  } catch {
+    return null
   }
 }
 
 function transformQueryRow(row: QueryRow): QueryDto {
-  let parsed: QueryResult | null = null
-  let parseError: string | null = null
-
-  // One unreadable stored result must not take down the whole history list.
-  if (row.result) {
-    try {
-      parsed = toStoredQueryResult(JSON.parse(row.result))
-
-      if (parsed === null) {
-        parseError = unreadableResultMessage
-      }
-    } catch {
-      parseError = unreadableResultMessage
-    }
-  }
-
   return {
     content: row.content,
     databaseId: row.databaseId,
-    error: row.error ?? parseError,
-    finishedAt: row.finishedAt ?? null,
     id: row.id,
     queriedAt: row.queriedAt,
-    result: parsed,
-    worksheetId: row.worksheetId
+    worksheetId: row.worksheetId,
+    ...toQueryState({
+      error: row.error,
+      finishedAt: row.finishedAt,
+      result: parseStoredResult(row.result)
+    })
   }
 }

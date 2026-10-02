@@ -2,6 +2,9 @@ import { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { queriesTable } from '@/database/schema'
+import { canceledQueryMessage } from '@/glue/queries'
+import { AppDatabase } from '@/server/services/app-database'
 import { QueryRunner } from '@/server/services/query-runner'
 import {
   makeAuthorizedClient,
@@ -23,7 +26,7 @@ const queryInput = {
   worksheetId: 'worksheet-1'
 }
 
-type TestContext = HttpClient.HttpClient | QueryRunner
+type TestContext = AppDatabase | HttpClient.HttpClient | QueryRunner
 
 function run<A, E>(
   effect: Effect.Effect<A, E, TestContext>,
@@ -59,15 +62,110 @@ describe('query routes', () => {
       })
     )
 
-    expect(immediate.query.finishedAt).toBeNull()
-    expect(immediate.query.result).toBeNull()
-    expect(finished.query.finishedAt).toEqual(expect.any(Number))
-    expect(finished.query.result).toEqual({
-      fields: [{ name: 'value' }],
-      rowCount: 1,
-      rows: [{ value: 1 }],
-      truncated: false
+    expect(immediate.query).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      id: 'query-1',
+      queriedAt: 1_000,
+      status: 'running',
+      worksheetId: 'worksheet-1'
     })
+    expect(finished.query).toEqual({
+      content: 'select 1',
+      databaseId: expect.any(String),
+      finishedAt: expect.any(Number),
+      id: 'query-1',
+      queriedAt: 1_000,
+      result: {
+        fields: [{ name: 'value' }],
+        rowCount: 1,
+        rows: [{ value: 1 }],
+        truncated: false
+      },
+      status: 'succeeded',
+      worksheetId: 'worksheet-1'
+    })
+  })
+
+  // One row the response schema refused used to answer the whole history
+  // with a 400. These are rows a real database holds from earlier versions.
+  it('lists a history that holds legacy rows', async () => {
+    const queries = await run(
+      Effect.gen(function* () {
+        const appDatabase = yield* AppDatabase
+        const client = yield* makeAuthorizedClient
+
+        const { database } = yield* client.databases.create({
+          payload: { connectionInfo, name: 'Pagila', type: 'postgres' }
+        })
+
+        yield* appDatabase.execute((sqlite) =>
+          sqlite.insert(queriesTable).values([
+            {
+              ...queryInput,
+              databaseId: database.id,
+              finishedAt: 2_000,
+              id: 'before-truncated',
+              queriedAt: 3_000,
+              result: JSON.stringify({
+                fields: [{ name: 'value' }],
+                rowCount: 1,
+                rows: [{ value: 1 }]
+              })
+            },
+            {
+              ...queryInput,
+              databaseId: database.id,
+              finishedAt: 2_000,
+              id: 'unreadable',
+              queriedAt: 2_000,
+              result: 'not json at all'
+            },
+            {
+              ...queryInput,
+              databaseId: database.id,
+              error: canceledQueryMessage,
+              finishedAt: 2_000,
+              id: 'canceled',
+              queriedAt: 1_000
+            }
+          ])
+        )
+
+        const response = yield* client.queries.list()
+
+        return response.queries
+      })
+    )
+
+    expect(queries).toEqual([
+      {
+        ...queryInput,
+        databaseId: expect.any(String),
+        finishedAt: 2_000,
+        id: 'before-truncated',
+        queriedAt: 3_000,
+        result: { rowCount: 1, truncated: false },
+        status: 'succeeded'
+      },
+      {
+        ...queryInput,
+        databaseId: expect.any(String),
+        error: 'Stored result could not be read.',
+        finishedAt: 2_000,
+        id: 'unreadable',
+        queriedAt: 2_000,
+        status: 'failed'
+      },
+      {
+        ...queryInput,
+        databaseId: expect.any(String),
+        finishedAt: 2_000,
+        id: 'canceled',
+        queriedAt: 1_000,
+        status: 'canceled'
+      }
+    ])
   })
 
   it('answers the status poll and the list with the result size but not its rows', async () => {
@@ -95,11 +193,11 @@ describe('query routes', () => {
     const summary = {
       content: 'select 1',
       databaseId: expect.any(String),
-      error: null,
       finishedAt: expect.any(Number),
       id: 'query-1',
       queriedAt: 1_000,
       result: { rowCount: 1, truncated: false },
+      status: 'succeeded',
       worksheetId: 'worksheet-1'
     }
 

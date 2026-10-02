@@ -34,11 +34,9 @@ const worksheetDto = makeWorksheet({
 const queryDto: QueryDto = {
   content: 'select 1',
   databaseId: 'db-123',
-  error: null,
-  finishedAt: null,
   id: 'query-1',
   queriedAt: 1704067200000,
-  result: null,
+  status: 'running',
   worksheetId: 'ws-123'
 }
 

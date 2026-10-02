@@ -1,7 +1,6 @@
 import { BanIcon } from 'lucide-react'
 import { ReactElement, useEffect, useState } from 'react'
 
-import { canceledQueryMessage, isQueryInFlight } from '@/glue/queries'
 import type { QueryResultDto, QuerySummaryDto } from '@/glue/api/schemas'
 
 import { QueryResultEmpty } from './QueryResultEmpty'
@@ -26,57 +25,67 @@ export function QueryResultContent({
   resultError,
   search
 }: QueryResultContentProps): ReactElement {
-  if (isQueryInFlight(query)) {
-    return (
-      <RunningQuery
-        databaseName={databaseName}
-        since={query.queriedAt}
-      />
-    )
-  }
-
-  if (query?.error !== undefined && query?.error !== null) {
-    return (
-      <FailedQuery
-        error={query.error}
-        durationMs={
-          query.finishedAt === null ? null : query.finishedAt - query.queriedAt
-        }
-      />
-    )
-  }
-
-  if (query?.result) {
-    if (result !== undefined) {
-      // DML and DDL come back with no fields and no rows. There are no columns
-      // to head a grid with, so say what happened instead of drawing an empty
-      // one.
-      if (result.fields.length === 0 && result.rows.length === 0) {
-        return <NoResultSet rowCount={result.rowCount} />
-      }
-
-      return (
-        <QueryResultTable
-          queryId={query.id}
-          result={result}
-          search={search}
-        />
-      )
-    }
-
-    if (resultError !== undefined) {
+  switch (query?.status) {
+    case undefined:
+      return <QueryResultEmpty />
+    case 'canceled':
+      return <CanceledQuery />
+    case 'failed':
       return (
         <FailedQuery
-          error={resultError}
-          durationMs={null}
+          error={query.error}
+          durationMs={query.finishedAt - query.queriedAt}
         />
       )
-    }
-
-    return <LoadingResult />
+    case 'running':
+      return (
+        <RunningQuery
+          databaseName={databaseName}
+          since={query.queriedAt}
+        />
+      )
+    case 'succeeded':
+      break
   }
 
-  return <QueryResultEmpty />
+  if (result !== undefined) {
+    // DML and DDL come back with no fields and no rows. There are no columns
+    // to head a grid with, so say what happened instead of drawing an empty
+    // one.
+    if (result.fields.length === 0 && result.rows.length === 0) {
+      return <NoResultSet rowCount={result.rowCount} />
+    }
+
+    return (
+      <QueryResultTable
+        queryId={query.id}
+        result={result}
+        search={search}
+      />
+    )
+  }
+
+  if (resultError !== undefined) {
+    return (
+      <FailedQuery
+        error={resultError}
+        durationMs={null}
+      />
+    )
+  }
+
+  return <LoadingResult />
+}
+
+function CanceledQuery(): ReactElement {
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="flex items-center gap-2 text-[12.5px] text-text2">
+        <BanIcon className="size-4 shrink-0" />
+        Query canceled.
+      </div>
+    </div>
+  )
 }
 
 function LoadingResult(): ReactElement {
@@ -96,17 +105,6 @@ function FailedQuery({
   durationMs: number | null
   error: string
 }): ReactElement {
-  if (error === canceledQueryMessage) {
-    return (
-      <div className="flex h-full items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-[12.5px] text-text2">
-          <BanIcon className="size-4 shrink-0" />
-          Query canceled.
-        </div>
-      </div>
-    )
-  }
-
   const { detail, title } = toQueryErrorParts(error)
 
   return (

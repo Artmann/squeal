@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QueryDto, QueryResultDto } from '@/glue/api/schemas'
 import { DatabaseDto } from '@/glue/databases'
 
 import { makeDatabase } from '../test-fixtures'
@@ -57,11 +57,11 @@ function count(value: number): string {
   return new Intl.NumberFormat().format(value)
 }
 
-function query(overrides: Partial<QueryDto> = {}): QueryDto {
+// A query that succeeded, with whatever its result should say differently.
+function query(result: Partial<QueryResultDto> = {}): QueryDto {
   return {
     content: 'SELECT * FROM film',
     databaseId: 'database-1',
-    error: null,
     finishedAt: 3373,
     id: 'q-1',
     queriedAt: 1000,
@@ -69,10 +69,11 @@ function query(overrides: Partial<QueryDto> = {}): QueryDto {
       fields: [{ name: 'title' }],
       rowCount: 100,
       rows: [{ title: 'Alien' }],
-      truncated: false
+      truncated: false,
+      ...result
     },
-    worksheetId: 'ws-1',
-    ...overrides
+    status: 'succeeded',
+    worksheetId: 'ws-1'
   }
 }
 
@@ -147,17 +148,7 @@ describe('StatusBar', () => {
   // result had no readers and is gone. These cases are what stop the remaining
   // one from being dropped or inverted unnoticed.
   it('marks a truncated row count so the number is not read as a total', () => {
-    renderStatusBar(
-      testDatabase,
-      query({
-        result: {
-          fields: [{ name: 'title' }],
-          rowCount: 100,
-          rows: [{ title: 'Alien' }],
-          truncated: true
-        }
-      })
-    )
+    renderStatusBar(testDatabase, query({ truncated: true }))
 
     expect(
       screen.getByText(`${count(100)}+ rows in 2.37 s`)
@@ -179,17 +170,7 @@ describe('StatusBar', () => {
   // no longer the number — `notation: 'compact'` renders `1.2M`, which the
   // absence alone waves through.
   it('groups a large row count so the digits can be read', () => {
-    renderStatusBar(
-      testDatabase,
-      query({
-        result: {
-          fields: [{ name: 'title' }],
-          rowCount: 1234567,
-          rows: [{ title: 'Alien' }],
-          truncated: false
-        }
-      })
-    )
+    renderStatusBar(testDatabase, query({ rowCount: 1234567 }))
 
     const summary = screen.getByText(/rows in 2\.37 s$/).textContent
 

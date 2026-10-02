@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 
-import { canceledQueryMessage } from '@/glue/queries'
 import type { QuerySummaryDto } from '@/glue/api/schemas'
 
 import { toQueryErrorParts } from '../components/query-error-parts'
@@ -31,32 +30,33 @@ function firstLine(text: string): string {
 function toOutcomeMessage(
   query: QuerySummaryDto
 ): WorksheetMessage | undefined {
-  const timestamp = query.finishedAt ?? query.queriedAt
+  switch (query.status) {
+    case 'canceled':
+      return {
+        id: `${query.id}:error`,
+        text: 'Query canceled.',
+        timestamp: query.finishedAt
+      }
+    case 'failed':
+      return {
+        id: `${query.id}:error`,
+        text: toQueryErrorParts(query.error).title,
+        timestamp: query.finishedAt
+      }
+    case 'running':
+      return undefined
+    case 'succeeded': {
+      const duration = query.finishedAt - query.queriedAt
+      const rowCount = Intl.NumberFormat().format(query.result.rowCount)
+      const suffix = query.result.truncated ? '+' : ''
+      const noun = query.result.rowCount === 1 ? 'row' : 'rows'
 
-  if (query.error !== null) {
-    return {
-      id: `${query.id}:error`,
-      text:
-        query.error === canceledQueryMessage
-          ? 'Query canceled.'
-          : toQueryErrorParts(query.error).title,
-      timestamp
+      return {
+        id: `${query.id}:result`,
+        text: `${rowCount}${suffix} ${noun} in ${Intl.NumberFormat().format(duration)} ms`,
+        timestamp: query.finishedAt
+      }
     }
-  }
-
-  if (query.result === null) {
-    return undefined
-  }
-
-  const duration = timestamp - query.queriedAt
-  const rowCount = Intl.NumberFormat().format(query.result.rowCount)
-  const suffix = query.result.truncated ? '+' : ''
-  const noun = query.result.rowCount === 1 ? 'row' : 'rows'
-
-  return {
-    id: `${query.id}:result`,
-    text: `${rowCount}${suffix} ${noun} in ${Intl.NumberFormat().format(duration)} ms`,
-    timestamp
   }
 }
 

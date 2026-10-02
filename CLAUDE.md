@@ -208,16 +208,24 @@ change fails it, update the fixture to the DDL you mean to ship.
   (`src/server/errors.ts`) are never in the contract — they become defects and
   surface as a 500.
 - Query execution is async: POST creates query, poll GET `/queries/:id/status`
-  until `finishedAt` is set, then GET `/queries/:id` once for the rows
-  (`useQueryResult`, `staleTime: Infinity`). The status poll and the history
-  list (GET `/queries`) return `QuerySummaryDto` — the result's `rowCount` and
-  `truncated`, never its rows — projected in SQL from the `resultRowCount` /
-  `resultTruncated` columns `saveResult` writes, so neither reads the `result`
-  blob. Rows saved before those columns existed are summarized from the blob
-  with SQLite's JSON functions. The background fiber lives in a `FiberMap` owned
-  by the runtime scope, so shutdown interrupts it; user cancel goes through the
-  adapter (`pg_cancel_backend`), never fiber interruption, and there is
-  deliberately no timeout on user queries.
+  until `status` is no longer `running`, then GET `/queries/:id` once for the
+  rows (`useQueryResult`, `staleTime: Infinity`). `QueryDto` and
+  `QuerySummaryDto` are one union on `status` (`running`, `succeeded`, `failed`,
+  `canceled`), each variant carrying only its own fields; the SQL columns are
+  still independent, and `toQueryState` in `query-runner.ts` is the one place
+  `status` is derived from them. It is total over legacy rows, so one old row
+  cannot fail encoding for the whole list. Canceled is stored as
+  `canceledQueryMessage` in `error`; nothing else compares against it. The
+  queries collection uses `rowUpdateMode: 'full'`, because a merging write would
+  leave a finished row's `result` on a running row. The status poll and the
+  history list (GET `/queries`) return `QuerySummaryDto` — the result's
+  `rowCount` and `truncated`, never its rows — projected in SQL from the
+  `resultRowCount` / `resultTruncated` columns `saveResult` writes, so neither
+  reads the `result` blob. Rows saved before those columns existed are
+  summarized from the blob with SQLite's JSON functions. The background fiber
+  lives in a `FiberMap` owned by the runtime scope, so shutdown interrupts it;
+  user cancel goes through the adapter (`pg_cancel_backend`), never fiber
+  interruption, and there is deliberately no timeout on user queries.
 - Database `connectionInfo` is encrypted at rest with Electron `safeStorage`
   once the user has granted permission (`enc:v1:` prefix in the `databases`
   table; see Secret storage below). API responses never include passwords —

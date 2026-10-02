@@ -4,33 +4,30 @@ import { ReactElement, useState } from 'react'
 import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { QueryDto } from '@/glue/api/schemas'
+import type { QueryDto, QueryResultDto } from '@/glue/api/schemas'
 
 import { stubElementSize } from '../test-element-size'
 import { renderWithProviders } from '../test-utils'
 import { ResultsPane } from './ResultsPane'
 
-function query(overrides: Partial<QueryDto> = {}): QueryDto {
-  return {
-    content: 'SELECT * FROM film',
-    databaseId: 'db-1',
-    error: null,
-    finishedAt: 3373,
-    id: 'q-1',
-    queriedAt: 1000,
-    result: null,
-    worksheetId: 'ws-1',
-    ...overrides
-  }
+const queryFields = {
+  content: 'SELECT * FROM film',
+  databaseId: 'db-1',
+  id: 'q-1',
+  queriedAt: 1000,
+  worksheetId: 'ws-1'
+}
+
+// A query that succeeded with `result`.
+function query(result: QueryResultDto): QueryDto {
+  return { ...queryFields, finishedAt: 3373, result, status: 'succeeded' }
 }
 
 const successfulQuery = query({
-  result: {
-    fields: [{ name: 'title' }],
-    rowCount: 100,
-    rows: [{ title: 'Alien' }],
-    truncated: false
-  }
+  fields: [{ name: 'title' }],
+  rowCount: 100,
+  rows: [{ title: 'Alien' }],
+  truncated: false
 })
 
 // Switching tabs in the app changes which worksheet the pane is showing
@@ -112,7 +109,7 @@ describe('ResultsPane', () => {
   // same place. While that answer arrived as a prop, a caller could make them
   // disagree -- a spinner under a header reading "100 rows", or the reverse.
   it('shows the running body and no meta line for a query still in flight', () => {
-    const runningQuery = query({ ...successfulQuery, finishedAt: null })
+    const runningQuery: QueryDto = { ...queryFields, status: 'running' }
 
     renderWithProviders(
       <ResultsPane
@@ -147,7 +144,12 @@ describe('ResultsPane', () => {
   })
 
   it('summarises a failed run', () => {
-    const failed = query({ error: 'boom', finishedAt: 1143 })
+    const failed: QueryDto = {
+      ...queryFields,
+      error: 'boom',
+      finishedAt: 1143,
+      status: 'failed'
+    }
 
     renderWithProviders(
       <ResultsPane
@@ -288,7 +290,7 @@ const findableResult = {
   truncated: false
 }
 
-const findableQuery = query({ result: findableResult })
+const findableQuery = query(findableResult)
 
 // The same switch as `SwitchablePane`, but with a result behind each worksheet
 // so there is something for find to open onto.
@@ -433,9 +435,7 @@ describe('ResultsPane find in results', () => {
   it('says how far the search reached when the result was cut off', async () => {
     const user = userEvent.setup()
 
-    const truncatedQuery = query({
-      result: { ...findableResult, truncated: true }
-    })
+    const truncatedQuery = query({ ...findableResult, truncated: true })
 
     renderWithProviders(
       <ResultsPane
@@ -526,7 +526,10 @@ describe('ResultsPane find in results', () => {
     const user = userEvent.setup()
 
     const emptyQuery = query({
-      result: { fields: [], rowCount: 0, rows: [], truncated: false }
+      fields: [],
+      rowCount: 0,
+      rows: [],
+      truncated: false
     })
 
     renderWithProviders(

@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { canceledQueryMessage } from '@/glue/queries'
-
 let exporter: typeof import('./exporter')
 let queryTraces: typeof import('./query-traces')
 
@@ -74,7 +72,7 @@ describe('query traces', () => {
 
   it('finishes a successful query as an ok root span', async () => {
     queryTraces.startQueryTrace(query)
-    queryTraces.finishQueryTrace({ error: null, id: 'query-1' })
+    queryTraces.finishQueryTrace({ id: 'query-1', status: 'succeeded' })
 
     const [span] = await flushedSpans()
 
@@ -101,7 +99,8 @@ describe('query traces', () => {
     queryTraces.startQueryTrace(query)
     queryTraces.finishQueryTrace({
       error: 'relation "nope" does not exist',
-      id: 'query-1'
+      id: 'query-1',
+      status: 'failed'
     })
 
     const [span] = await flushedSpans()
@@ -112,10 +111,7 @@ describe('query traces', () => {
 
   it('finishes a canceled query as ok with a cancel event', async () => {
     queryTraces.startQueryTrace(query)
-    queryTraces.finishQueryTrace({
-      error: canceledQueryMessage,
-      id: 'query-1'
-    })
+    queryTraces.finishQueryTrace({ id: 'query-1', status: 'canceled' })
 
     const [span] = await flushedSpans()
 
@@ -128,8 +124,12 @@ describe('query traces', () => {
 
   it('ignores a second finish for the same query', async () => {
     queryTraces.startQueryTrace(query)
-    queryTraces.finishQueryTrace({ error: null, id: 'query-1' })
-    queryTraces.finishQueryTrace({ error: 'late', id: 'query-1' })
+    queryTraces.finishQueryTrace({ id: 'query-1', status: 'succeeded' })
+    queryTraces.finishQueryTrace({
+      error: 'late',
+      id: 'query-1',
+      status: 'failed'
+    })
 
     const spans = await flushedSpans()
 
@@ -139,7 +139,7 @@ describe('query traces', () => {
 
   it('ignores finishing a query that was never started', () => {
     expect(() =>
-      queryTraces.finishQueryTrace({ error: null, id: 'unknown' })
+      queryTraces.finishQueryTrace({ id: 'unknown', status: 'succeeded' })
     ).not.toThrow()
   })
 
@@ -186,7 +186,7 @@ describe('query traces', () => {
 
   it('ignores a finish for a trace that was abandoned', async () => {
     startQueryTraces(activeQueryTraceCap + 1)
-    queryTraces.finishQueryTrace({ error: null, id: 'query-0' })
+    queryTraces.finishQueryTrace({ id: 'query-0', status: 'succeeded' })
 
     const spans = await flushedSpans()
 

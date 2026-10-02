@@ -165,11 +165,9 @@ describe('running a query', () => {
       query: {
         content: 'SELECT 2;',
         databaseId: 'database-1',
-        error: null,
-        finishedAt: null,
         id: 'q-1',
         queriedAt: 1,
-        result: null,
+        status: 'running',
         worksheetId: 'ws-1'
       }
     })
@@ -251,11 +249,9 @@ describe('canceling a query', () => {
   const runningQuery: QuerySummaryDto = {
     content: 'SELECT pg_sleep(30);',
     databaseId: 'database-1',
-    error: null,
-    finishedAt: null,
     id: 'q-1',
     queriedAt: 1,
-    result: null,
+    status: 'running',
     worksheetId: 'ws-1'
   }
 
