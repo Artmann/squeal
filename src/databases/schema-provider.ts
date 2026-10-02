@@ -33,23 +33,48 @@ WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
 ORDER BY c.table_schema, c.table_name, c.ordinal_position
 `
 
+// Read from `pg_constraint` rather than `information_schema`, because only the
+// catalog keeps the two column lists side by side: `conkey[i]` references
+// `confkey[i]`. `constraint_column_usage` has no position at all, so joining it
+// by constraint name paired every column of a composite key with every column
+// it references, and — since constraint names are only unique per table —
+// with the columns of any same-named constraint in another schema too.
+//
+// One row per column pair, ordered by its position in the key, so a consumer
+// can rebuild a composite key from consecutive rows.
 export const postgresForeignKeysQuery = `
 SELECT
-  tc.table_schema,
-  tc.table_name,
-  kcu.column_name,
-  tc.constraint_name,
-  ccu.table_schema AS referenced_table_schema,
-  ccu.table_name AS referenced_table_name,
-  ccu.column_name AS referenced_column_name
-FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu
-  ON tc.constraint_name = kcu.constraint_name
-  AND tc.table_schema = kcu.table_schema
-JOIN information_schema.constraint_column_usage ccu
-  ON ccu.constraint_name = tc.constraint_name
-WHERE tc.constraint_type = 'FOREIGN KEY'
-  AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+  referencing_namespace.nspname AS table_schema,
+  referencing_table.relname AS table_name,
+  referencing_column.attname AS column_name,
+  foreign_key.conname AS constraint_name,
+  referenced_namespace.nspname AS referenced_table_schema,
+  referenced_table.relname AS referenced_table_name,
+  referenced_column.attname AS referenced_column_name
+FROM pg_constraint foreign_key
+CROSS JOIN LATERAL unnest(foreign_key.conkey, foreign_key.confkey)
+  WITH ORDINALITY AS pair(column_number, referenced_column_number, position)
+JOIN pg_class referencing_table
+  ON referencing_table.oid = foreign_key.conrelid
+JOIN pg_namespace referencing_namespace
+  ON referencing_namespace.oid = referencing_table.relnamespace
+JOIN pg_attribute referencing_column
+  ON referencing_column.attrelid = foreign_key.conrelid
+  AND referencing_column.attnum = pair.column_number
+JOIN pg_class referenced_table
+  ON referenced_table.oid = foreign_key.confrelid
+JOIN pg_namespace referenced_namespace
+  ON referenced_namespace.oid = referenced_table.relnamespace
+JOIN pg_attribute referenced_column
+  ON referenced_column.attrelid = foreign_key.confrelid
+  AND referenced_column.attnum = pair.referenced_column_number
+WHERE foreign_key.contype = 'f'
+  AND referencing_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+ORDER BY
+  referencing_namespace.nspname,
+  referencing_table.relname,
+  foreign_key.conname,
+  pair.position
 `
 
 export const mysqlColumnsQuery = `
@@ -67,6 +92,9 @@ WHERE c.TABLE_SCHEMA = DATABASE()
 ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION
 `
 
+// `KEY_COLUMN_USAGE` carries the referenced column on the same row as the
+// referencing one, so composite keys already pair up correctly here. The order
+// is what lets a consumer rebuild one from consecutive rows.
 export const mysqlForeignKeysQuery = `
 SELECT
   kcu.TABLE_SCHEMA as table_schema,
@@ -79,6 +107,11 @@ SELECT
 FROM information_schema.KEY_COLUMN_USAGE kcu
 WHERE kcu.TABLE_SCHEMA = DATABASE()
   AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+ORDER BY
+  kcu.TABLE_SCHEMA,
+  kcu.TABLE_NAME,
+  kcu.CONSTRAINT_NAME,
+  kcu.ORDINAL_POSITION
 `
 
 export interface ColumnRow {
