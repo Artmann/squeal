@@ -4,12 +4,12 @@ import { ReactElement } from 'react'
 import invariant from 'tiny-invariant'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DatabaseDto } from '@/glue/databases'
 import { QuerySummaryDto } from '@/glue/api/schemas'
 import { WorksheetDto } from '@/glue/worksheets'
 import { App, useWorksheetSession } from './App'
 import { useAppSelector } from './store'
 import { selectActiveWorksheetId, tabsActions } from './store/tabs-slice'
+import { makeDatabase, makeWorksheet } from './test-fixtures'
 import { renderWithProviders } from './test-utils'
 
 // `App` loads the editor lazily, and the real one pulls in CodeMirror and the
@@ -45,7 +45,7 @@ vi.mock('./api-client', () => ({
 
 import { apiClient } from './api-client'
 
-const testDatabase: DatabaseDto = {
+const testDatabase = makeDatabase({
   connectionInfo: {
     database: 'pagila',
     host: 'localhost',
@@ -53,22 +53,18 @@ const testDatabase: DatabaseDto = {
     username: 'postgres'
   },
   createdAt: 1,
-  environmentId: null,
   id: 'database-1',
-  name: 'Pagila',
-  sortOrder: null,
-  type: 'postgres'
-}
+  name: 'Pagila'
+})
 
-const testWorksheet: WorksheetDto = {
+const testWorksheet = makeWorksheet({
   content: 'SELECT 1;',
   createdAt: 1,
   databaseId: 'database-1',
   id: 'ws-1',
-  lastOpenedAt: null,
   name: 'Analysis',
   sortOrder: 0
-}
+})
 
 // Drives the session hook without CodeMirror: typing and running are separate
 // events, exactly as they are in the app, so the render between them is the one

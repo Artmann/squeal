@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { computeDatabaseMatch } from './database-explorer-search'
 import { ColumnInfo, SchemaInfo, TableInfo } from '@/databases/adapter'
-import { DatabaseDto } from '@/glue/databases'
+import { makeDatabase } from '../test-fixtures'
 
 function makeColumn(columnName: string, ordinalPosition: number): ColumnInfo {
   return {
@@ -26,18 +26,6 @@ function makeTable(tableName: string, columnNames: string[]): TableInfo {
   }
 }
 
-function makeDatabase(name: string): DatabaseDto {
-  return {
-    connectionInfo: { path: `${name}.db` },
-    createdAt: 0,
-    environmentId: null,
-    id: `db-${name}`,
-    name,
-    sortOrder: null,
-    type: 'sqlite'
-  }
-}
-
 function makeSchema(tables: TableInfo[]): SchemaInfo {
   return {
     databaseName: 'testdb',
@@ -47,14 +35,14 @@ function makeSchema(tables: TableInfo[]): SchemaInfo {
 
 describe('computeDatabaseMatch', () => {
   it('returns null for a blank query', () => {
-    const database = makeDatabase('analytics')
+    const database = makeDatabase({ name: 'analytics' })
     const schema = makeSchema([makeTable('events', ['id'])])
 
     expect(computeDatabaseMatch(database, schema, '   ')).toEqual(null)
   })
 
   it('matches on the database name and returns all tables collapsed', () => {
-    const database = makeDatabase('analytics')
+    const database = makeDatabase({ name: 'analytics' })
     const events = makeTable('events', ['id', 'name'])
     const schema = makeSchema([events])
 
@@ -66,7 +54,7 @@ describe('computeDatabaseMatch', () => {
   })
 
   it('matches on a table name and returns only matching tables', () => {
-    const database = makeDatabase('shop')
+    const database = makeDatabase({ name: 'shop' })
     const users = makeTable('users', ['id', 'email'])
     const orders = makeTable('orders', ['id', 'total'])
     const schema = makeSchema([orders, users])
@@ -79,7 +67,7 @@ describe('computeDatabaseMatch', () => {
   })
 
   it('keeps matching tables in schema order', () => {
-    const database = makeDatabase('shop')
+    const database = makeDatabase({ name: 'shop' })
     const customers = makeTable('customers', ['id'])
     const customerAccounts = makeTable('customerAccounts', ['id'])
     const orders = makeTable('orders', ['id'])
@@ -93,7 +81,7 @@ describe('computeDatabaseMatch', () => {
   })
 
   it('does not match on column names', () => {
-    const database = makeDatabase('shop')
+    const database = makeDatabase({ name: 'shop' })
     const orders = makeTable('orders', ['id', 'customer_id', 'total'])
     const schema = makeSchema([orders])
 
@@ -102,7 +90,7 @@ describe('computeDatabaseMatch', () => {
   })
 
   it('is case insensitive', () => {
-    const database = makeDatabase('shop')
+    const database = makeDatabase({ name: 'shop' })
     const users = makeTable('Users', ['Id'])
     const schema = makeSchema([users])
 
@@ -114,14 +102,14 @@ describe('computeDatabaseMatch', () => {
   })
 
   it('returns null when nothing matches', () => {
-    const database = makeDatabase('shop')
+    const database = makeDatabase({ name: 'shop' })
     const schema = makeSchema([makeTable('orders', ['id', 'total'])])
 
     expect(computeDatabaseMatch(database, schema, 'zzz')).toEqual(null)
   })
 
   it('returns null when the schema has not loaded and the name does not match', () => {
-    const database = makeDatabase('shop')
+    const database = makeDatabase({ name: 'shop' })
 
     expect(computeDatabaseMatch(database, undefined, 'orders')).toEqual(null)
   })

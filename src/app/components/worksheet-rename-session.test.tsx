@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WorksheetDto } from '@/glue/worksheets'
 
+import { makeWorksheet } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { WorksheetExplorer } from './WorksheetExplorer'
 import { WorksheetTabs } from './WorksheetTabs'
@@ -20,20 +21,8 @@ vi.mock('../api-client', () => ({
 
 import { apiClient } from '../api-client'
 
-function worksheet(id: string, name: string): WorksheetDto {
-  return {
-    content: '',
-    createdAt: 1704067200000,
-    databaseId: null,
-    id,
-    lastOpenedAt: null,
-    name,
-    sortOrder: null
-  }
-}
-
-const revenue = worksheet('ws-1', 'Revenue')
-const signups = worksheet('ws-2', 'Signups')
+const revenue = makeWorksheet({ id: 'ws-1', name: 'Revenue' })
+const signups = makeWorksheet({ id: 'ws-2', name: 'Signups' })
 
 const allWorksheets = [revenue, signups]
 
@@ -131,7 +120,7 @@ describe('renaming a worksheet from the sidebar', () => {
 
     invariant(publishWorksheet, 'The create should have been started.')
 
-    publishWorksheet(worksheet('ws-3', 'Untitled Worksheet'))
+    publishWorksheet(makeWorksheet({ id: 'ws-3', name: 'Untitled Worksheet' }))
 
     await waitFor(() => {
       expect(apiClient.updateWorksheet).toHaveBeenCalledWith('ws-1', {

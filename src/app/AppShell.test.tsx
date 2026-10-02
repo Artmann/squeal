@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { AppShell } from './AppShell'
 import { apiClient } from './api-client'
+import { makeDatabase, makeWorksheet } from './test-fixtures'
 import { renderWithProviders } from './test-utils'
-import type { DatabaseDto } from '@/glue/databases'
 import type { WorksheetDto } from '@/glue/worksheets'
 
 vi.mock('./api-client', () => ({
@@ -18,17 +18,14 @@ vi.mock('./api-client', () => ({
   }
 }))
 
-const worksheet: WorksheetDto = {
+const worksheet = makeWorksheet({
   content: 'select 1',
   createdAt: 1,
-  databaseId: null,
   id: 'worksheet-1',
-  lastOpenedAt: null,
-  name: 'My First Worksheet',
-  sortOrder: null
-}
+  name: 'My First Worksheet'
+})
 
-const database: DatabaseDto = {
+const database = makeDatabase({
   connectionInfo: {
     database: 'pagila',
     host: 'localhost',
@@ -36,12 +33,9 @@ const database: DatabaseDto = {
     username: 'postgres'
   },
   createdAt: 1,
-  environmentId: null,
   id: 'database-1',
-  name: 'Local',
-  sortOrder: null,
-  type: 'postgres'
-}
+  name: 'Local'
+})
 
 // Nothing is seeded into the query cache on purpose: the collections have to
 // actually fetch, so the test exercises the real load and error paths.

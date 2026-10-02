@@ -2,9 +2,9 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DatabaseDto } from '@/glue/databases'
 import { WorksheetDto } from '@/glue/worksheets'
 
+import { makeDatabase, makeWorksheet } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { ConnectionPicker } from './ConnectionPicker'
 
@@ -16,36 +16,15 @@ vi.mock('../api-client', () => ({
 
 import { apiClient } from '../api-client'
 
-const testDatabase: DatabaseDto = {
-  connectionInfo: {
-    database: 'testdb',
-    host: 'localhost',
-    port: 5432,
-    username: 'admin'
-  },
-  createdAt: 1704067200000,
-  environmentId: null,
-  id: 'db-1',
-  name: 'Production DB',
-  sortOrder: null,
-  type: 'postgres'
-}
+const testDatabase = makeDatabase({ id: 'db-1', name: 'Production DB' })
 
-const testDatabase2: DatabaseDto = {
-  ...testDatabase,
-  id: 'db-2',
-  name: 'Staging DB'
-}
+const testDatabase2 = makeDatabase({ id: 'db-2', name: 'Staging DB' })
 
-const testWorksheet: WorksheetDto = {
+const testWorksheet = makeWorksheet({
   content: 'SELECT * FROM users',
-  createdAt: 1704067200000,
   databaseId: 'db-1',
-  id: 'ws-123',
-  lastOpenedAt: null,
-  name: 'Test Worksheet',
-  sortOrder: null
-}
+  id: 'ws-123'
+})
 
 const bothDatabases = {
   databases: [testDatabase, testDatabase2],

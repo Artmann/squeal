@@ -1,24 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import type { WorksheetDto } from '@/glue/worksheets'
+import { makeWorksheet } from './test-fixtures'
 import { resolveEditorContent } from './worksheet-editor-content'
-
-function worksheet(id: string, content: string): WorksheetDto {
-  return {
-    content,
-    createdAt: 1,
-    databaseId: null,
-    id,
-    lastOpenedAt: null,
-    name: id,
-    sortOrder: 0
-  }
-}
 
 describe('resolveEditorContent', () => {
   it('falls back to the saved content before anything is typed', () => {
     expect(
-      resolveEditorContent(null, 'ws-1', worksheet('ws-1', 'SELECT 1;'))
+      resolveEditorContent(
+        null,
+        'ws-1',
+        makeWorksheet({ content: 'SELECT 1;', id: 'ws-1' })
+      )
     ).toEqual('SELECT 1;')
   })
 
@@ -27,7 +19,7 @@ describe('resolveEditorContent', () => {
       resolveEditorContent(
         { content: 'SELECT 2;', worksheetId: 'ws-1' },
         'ws-1',
-        worksheet('ws-1', 'SELECT 1;')
+        makeWorksheet({ content: 'SELECT 1;', id: 'ws-1' })
       )
     ).toEqual('SELECT 2;')
   })
@@ -39,7 +31,7 @@ describe('resolveEditorContent', () => {
       resolveEditorContent(
         { content: 'SELECT 2;', worksheetId: 'ws-1' },
         'ws-2',
-        worksheet('ws-2', 'SELECT 3;')
+        makeWorksheet({ content: 'SELECT 3;', id: 'ws-2' })
       )
     ).toEqual('SELECT 3;')
   })

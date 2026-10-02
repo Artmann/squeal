@@ -4,8 +4,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SchemaInfo } from '@/databases/adapter'
 import { DatabaseDto } from '@/glue/databases'
-import { WorksheetDto } from '@/glue/worksheets'
 
+import { makeDatabase, makeWorksheet } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { DatabaseExplorer } from './DatabaseExplorer'
 
@@ -37,20 +37,7 @@ beforeAll(() => {
   } as unknown as typeof window.ResizeObserver
 })
 
-const testDatabase: DatabaseDto = {
-  connectionInfo: {
-    database: 'testdb',
-    host: 'localhost',
-    port: 5432,
-    username: 'admin'
-  },
-  createdAt: 1704067200000,
-  environmentId: null,
-  id: 'db-123',
-  name: 'Test Database',
-  sortOrder: null,
-  type: 'postgres'
-}
+const testDatabase = makeDatabase()
 
 const testSchema: SchemaInfo = {
   databaseName: 'testdb',
@@ -800,15 +787,12 @@ describe('DatabaseExplorer', () => {
   })
 
   describe('querying a table from the context menu', () => {
-    const createdWorksheet: WorksheetDto = {
+    const createdWorksheet = makeWorksheet({
       content: 'SELECT * FROM "users" LIMIT 100',
-      createdAt: 1704067200000,
       databaseId: 'db-123',
       id: 'ws-users',
-      lastOpenedAt: null,
-      name: 'users',
-      sortOrder: null
-    }
+      name: 'users'
+    })
 
     beforeEach(() => {
       vi.clearAllMocks()

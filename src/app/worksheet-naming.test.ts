@@ -1,20 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { WorksheetDto } from '@/glue/worksheets'
-
+import { makeWorksheet } from './test-fixtures'
 import { getDuplicateName, getNextUntitledName } from './worksheet-naming'
-
-function worksheet(name: string): WorksheetDto {
-  return {
-    content: '',
-    createdAt: 0,
-    databaseId: '',
-    id: name,
-    lastOpenedAt: 0,
-    name,
-    sortOrder: 0
-  }
-}
 
 describe('getNextUntitledName', () => {
   it('names the first worksheet Untitled', () => {
@@ -22,52 +9,72 @@ describe('getNextUntitledName', () => {
   })
 
   it('numbers the next untitled worksheet', () => {
-    expect(getNextUntitledName([worksheet('Untitled')])).toEqual('Untitled 2')
+    expect(getNextUntitledName([makeWorksheet({ name: 'Untitled' })])).toEqual(
+      'Untitled 2'
+    )
   })
 
   it('counts existing numbered worksheets', () => {
     expect(
-      getNextUntitledName([worksheet('Untitled'), worksheet('Untitled 2')])
+      getNextUntitledName([
+        makeWorksheet({ name: 'Untitled' }),
+        makeWorksheet({ name: 'Untitled 2' })
+      ])
     ).toEqual('Untitled 3')
   })
 
   it('ignores worksheets with their own names', () => {
     expect(
-      getNextUntitledName([worksheet('Revenue'), worksheet('Untitled notes')])
+      getNextUntitledName([
+        makeWorksheet({ name: 'Revenue' }),
+        makeWorksheet({ name: 'Untitled notes' })
+      ])
     ).toEqual('Untitled')
   })
 
   // Counting the untitled worksheets collides the moment the set has a gap.
   it('does not reuse a name after an earlier untitled worksheet is renamed', () => {
     expect(
-      getNextUntitledName([worksheet('Revenue'), worksheet('Untitled 2')])
+      getNextUntitledName([
+        makeWorksheet({ name: 'Revenue' }),
+        makeWorksheet({ name: 'Untitled 2' })
+      ])
     ).toEqual('Untitled 3')
   })
 
   it('does not reuse a name after an untitled worksheet is deleted', () => {
     expect(
-      getNextUntitledName([worksheet('Untitled'), worksheet('Untitled 3')])
+      getNextUntitledName([
+        makeWorksheet({ name: 'Untitled' }),
+        makeWorksheet({ name: 'Untitled 3' })
+      ])
     ).toEqual('Untitled 4')
   })
 
   it('goes past the highest suffix, not the count', () => {
     expect(
-      getNextUntitledName([worksheet('Untitled'), worksheet('Untitled 9')])
+      getNextUntitledName([
+        makeWorksheet({ name: 'Untitled' }),
+        makeWorksheet({ name: 'Untitled 9' })
+      ])
     ).toEqual('Untitled 10')
   })
 })
 
 describe('getDuplicateName', () => {
   it('adds copy to the name', () => {
-    expect(getDuplicateName([worksheet('Revenue')], 'Revenue')).toEqual(
-      'Revenue copy'
-    )
+    expect(
+      getDuplicateName([makeWorksheet({ name: 'Revenue' })], 'Revenue')
+    ).toEqual('Revenue copy')
   })
 
   it('numbers the copy when one already exists', () => {
     expect(
       getDuplicateName(
-        [worksheet('Revenue'), worksheet('Revenue copy')],
+        [
+          makeWorksheet({ name: 'Revenue' }),
+          makeWorksheet({ name: 'Revenue copy' })
+        ],
         'Revenue'
       )
     ).toEqual('Revenue copy 2')
@@ -76,7 +83,10 @@ describe('getDuplicateName', () => {
   it('goes past the highest copy, not the count', () => {
     expect(
       getDuplicateName(
-        [worksheet('Revenue'), worksheet('Revenue copy 4')],
+        [
+          makeWorksheet({ name: 'Revenue' }),
+          makeWorksheet({ name: 'Revenue copy 4' })
+        ],
         'Revenue'
       )
     ).toEqual('Revenue copy 5')
@@ -86,7 +96,10 @@ describe('getDuplicateName', () => {
   it('numbers a copy of a copy instead of stacking the word', () => {
     expect(
       getDuplicateName(
-        [worksheet('Revenue'), worksheet('Revenue copy')],
+        [
+          makeWorksheet({ name: 'Revenue' }),
+          makeWorksheet({ name: 'Revenue copy' })
+        ],
         'Revenue copy'
       )
     ).toEqual('Revenue copy 2')
@@ -95,15 +108,18 @@ describe('getDuplicateName', () => {
   it('ignores worksheets that only start with the same name', () => {
     expect(
       getDuplicateName(
-        [worksheet('Revenue'), worksheet('Revenue copy of old')],
+        [
+          makeWorksheet({ name: 'Revenue' }),
+          makeWorksheet({ name: 'Revenue copy of old' })
+        ],
         'Revenue'
       )
     ).toEqual('Revenue copy')
   })
 
   it('keeps a name that is nothing but the word copy', () => {
-    expect(getDuplicateName([worksheet(' copy')], ' copy')).toEqual(
-      ' copy copy'
-    )
+    expect(
+      getDuplicateName([makeWorksheet({ name: ' copy' })], ' copy')
+    ).toEqual(' copy copy')
   })
 })

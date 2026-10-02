@@ -4,10 +4,9 @@ import { ReactElement } from 'react'
 import invariant from 'tiny-invariant'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { DatabaseDto } from '@/glue/databases'
-
 import { useAppDispatch, useAppSelector } from '../store'
 import { uiActions } from '../store/ui-slice'
+import { makeDatabase } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { EditorScreen } from './EditorScreen'
 
@@ -24,20 +23,7 @@ beforeAll(() => {
   } as unknown as typeof window.ResizeObserver
 })
 
-const testDatabase: DatabaseDto = {
-  connectionInfo: {
-    database: 'testdb',
-    host: 'localhost',
-    port: 5432,
-    username: 'admin'
-  },
-  createdAt: 1704067200000,
-  environmentId: null,
-  id: 'db-123',
-  name: 'Test Database',
-  sortOrder: null,
-  type: 'postgres'
-}
+const testDatabase = makeDatabase()
 
 describe('EditorScreen', () => {
   describe('edit mode', () => {

@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/errors'
-import type {
-  DatabaseDto,
-  QueryDto,
-  SchemaInfoDto,
-  WorksheetDto
-} from '@/glue/api/schemas'
+import type { QueryDto, SchemaInfoDto } from '@/glue/api/schemas'
 import type { SpanRecord } from '@/glue/tracing/spans'
 
 const mockFetch = vi.fn()
@@ -23,33 +18,18 @@ vi.stubGlobal('fetch', mockFetch)
 
 import { apiClient } from './api-client'
 import { capturedFetch, jsonResponse } from './test-fetch'
+import { makeDatabase, makeWorksheet } from './test-fixtures'
 
 const traceparentPattern = /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/
 
-const databaseDto: DatabaseDto = {
-  connectionInfo: {
-    database: 'testdb',
-    host: 'localhost',
-    port: 5432,
-    username: 'admin'
-  },
-  createdAt: 1704067200000,
-  id: 'db-123',
-  environmentId: null,
-  name: 'Test Database',
-  sortOrder: null,
-  type: 'postgres' as const
-}
+const databaseDto = makeDatabase()
 
-const worksheetDto: WorksheetDto = {
+const worksheetDto = makeWorksheet({
   content: 'select 1',
-  createdAt: 1704067200000,
   databaseId: 'db-123',
   id: 'ws-123',
-  lastOpenedAt: null,
-  name: 'Worksheet 1',
-  sortOrder: null
-}
+  name: 'Worksheet 1'
+})
 
 const queryDto: QueryDto = {
   content: 'select 1',

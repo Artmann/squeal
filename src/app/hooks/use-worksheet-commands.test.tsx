@@ -3,8 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { WorksheetDto } from '@/glue/worksheets'
-
+import { makeWorksheet } from '../test-fixtures'
 import { renderWithProviders } from '../test-utils'
 import { useWorksheets } from './queries'
 import { useOpenWorksheet } from './use-worksheet-commands'
@@ -45,15 +44,7 @@ function SubscribedOpenWorksheetProbe(): ReactElement {
   return <OpenWorksheetProbe />
 }
 
-const otherWorksheet: WorksheetDto = {
-  content: '',
-  createdAt: 1704067200000,
-  databaseId: null,
-  id: 'ws-2',
-  lastOpenedAt: null,
-  name: 'Revenue',
-  sortOrder: null
-}
+const otherWorksheet = makeWorksheet({ id: 'ws-2', name: 'Revenue' })
 
 describe('useOpenWorksheet', () => {
   beforeEach(() => {
