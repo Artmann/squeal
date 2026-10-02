@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import invariant from 'tiny-invariant'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
@@ -26,6 +26,8 @@ import { QueryResultTable } from './QueryResultTable'
 // then records nothing no matter what the menu does, which reads as "the menu
 // item did not fire". Read the text back through userEvent's own stub instead.
 beforeEach(() => {
+  // Resized column widths are remembered across renders.
+  localStorage.clear()
   Element.prototype.scrollTo = vi.fn()
   // The row list is virtualized, so it needs a viewport with a real height.
   stubElementSize()
@@ -105,21 +107,36 @@ describe('QueryResultTable', () => {
   }
 
   it('renders column headers', () => {
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     expect(screen.getByText('id')).toBeInTheDocument()
     expect(screen.getByText('name')).toBeInTheDocument()
   })
 
   it('renders cell values', () => {
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     expect(screen.getByText('Alice')).toBeInTheDocument()
     expect(screen.getByText('Bob')).toBeInTheDocument()
   })
 
   it('numbers rows from one in the gutter cell', () => {
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     const [, firstRow, secondRow] = screen.getAllByRole('row')
 
@@ -136,7 +153,12 @@ describe('QueryResultTable', () => {
     }
 
     it('renders a SQL NULL apart from the string "null"', () => {
-      render(<QueryResultTable result={nullResult} />)
+      render(
+        <QueryResultTable
+          queryId="query-1"
+          result={nullResult}
+        />
+      )
 
       const sqlNull = screen.getByText('NULL')
       const text = screen.getByText('null')
@@ -147,7 +169,12 @@ describe('QueryResultTable', () => {
 
     it('still copies a SQL NULL as null', async () => {
       const user = userEvent.setup()
-      render(<QueryResultTable result={nullResult} />)
+      render(
+        <QueryResultTable
+          queryId="query-1"
+          result={nullResult}
+        />
+      )
 
       await user.pointer({
         keys: '[MouseRight]',
@@ -168,7 +195,12 @@ describe('QueryResultTable', () => {
       truncated: true
     }
 
-    const { container } = render(<QueryResultTable result={largeResult} />)
+    const { container } = render(
+      <QueryResultTable
+        queryId="query-1"
+        result={largeResult}
+      />
+    )
 
     // Found by the property rather than by position: which element publishes
     // it is an implementation detail, since custom properties inherit.
@@ -226,7 +258,12 @@ describe('QueryResultTable', () => {
       truncated: true
     }
 
-    render(<QueryResultTable result={largeResult} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={largeResult}
+      />
+    )
 
     // A 600px viewport of one-row-height rows plus overscan is nowhere near
     // 10,000 —
@@ -237,9 +274,141 @@ describe('QueryResultTable', () => {
     expect(renderedRows.length).toBeGreaterThan(1)
   })
 
+  describe('column resizing', () => {
+    // The colgroup is what sizes the columns under a fixed table layout. The
+    // first <col> is the row number gutter and the last is the filler.
+    function columnWidths(container: HTMLElement): string[] {
+      return Array.from(container.querySelectorAll('col'))
+        .slice(1, -1)
+        .map((column) => column.style.width)
+    }
+
+    function dragHandle(name: string, distance: number): void {
+      const handle = screen.getByRole('separator', {
+        name: `Resize ${name} column`
+      })
+
+      fireEvent.mouseDown(handle, { button: 0, clientX: 100 })
+      fireEvent.mouseMove(document, { clientX: 100 + distance })
+      fireEvent.mouseUp(document)
+    }
+
+    it('widens a column by the distance it is dragged', () => {
+      const { container } = render(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      expect(columnWidths(container)).toEqual(['80px', '80px'])
+
+      dragHandle('id', 60)
+
+      expect(columnWidths(container)).toEqual(['140px', '80px'])
+    })
+
+    it('resizes a column from the keyboard', async () => {
+      const user = userEvent.setup()
+      const { container } = render(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      screen.getByRole('separator', { name: 'Resize name column' }).focus()
+      await user.keyboard('{ArrowRight}{ArrowRight}')
+
+      expect(columnWidths(container)).toEqual(['80px', '100px'])
+    })
+
+    it('keeps a column from being dragged narrower than the minimum', () => {
+      const { container } = render(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      dragHandle('id', -500)
+
+      expect(columnWidths(container)).toEqual(['40px', '80px'])
+    })
+
+    it('remembers the widths for the same result', () => {
+      const { unmount } = render(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      dragHandle('name', 100)
+      unmount()
+
+      const { container } = render(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      expect(columnWidths(container)).toEqual(['80px', '180px'])
+    })
+
+    it('starts another result at its measured widths', () => {
+      const { container, rerender } = render(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      dragHandle('name', 100)
+
+      rerender(
+        <QueryResultTable
+          queryId="query-2"
+          result={{ ...result }}
+        />
+      )
+
+      expect(columnWidths(container)).toEqual(['80px', '80px'])
+
+      rerender(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      expect(columnWidths(container)).toEqual(['80px', '180px'])
+    })
+
+    it('names each header by its column alone', () => {
+      render(
+        <QueryResultTable
+          queryId="query-1"
+          result={result}
+        />
+      )
+
+      expect(
+        screen
+          .getAllByRole('columnheader')
+          .map((header) => header.getAttribute('aria-labelledby') !== null)
+      ).toEqual([false, true, true])
+      expect(
+        screen.getByRole('columnheader', { name: 'name' })
+      ).toBeInTheDocument()
+    })
+  })
+
   it('falls back to the row keys when the adapter returned no field metadata', () => {
     render(
       <QueryResultTable
+        queryId="query-1"
         result={{
           fields: [],
           rowCount: 1,
@@ -257,7 +426,12 @@ describe('QueryResultTable', () => {
 
   it('shows context menu on right-click', async () => {
     const user = userEvent.setup()
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     const cell = screen.getByText('Alice')
     await user.pointer({ keys: '[MouseRight]', target: cell })
@@ -269,7 +443,12 @@ describe('QueryResultTable', () => {
 
   it('copies the cell it was opened on', async () => {
     const user = userEvent.setup()
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     await user.pointer({
       keys: '[MouseRight]',
@@ -282,7 +461,12 @@ describe('QueryResultTable', () => {
 
   it('copies the column name of the cell it was opened on', async () => {
     const user = userEvent.setup()
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     await user.pointer({
       keys: '[MouseRight]',
@@ -295,7 +479,12 @@ describe('QueryResultTable', () => {
 
   // One menu for the whole grid rather than a Radix subtree per rendered cell.
   it('mounts a single context menu trigger for all cells', () => {
-    const { container } = render(<QueryResultTable result={result} />)
+    const { container } = render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     expect(
       container.querySelectorAll('[data-slot="context-menu-trigger"]').length
@@ -306,7 +495,12 @@ describe('QueryResultTable', () => {
   // it to the new cell rather than keep the first one's target.
   it('copies the cell of the latest right-click', async () => {
     const user = userEvent.setup()
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     await user.pointer({
       keys: '[MouseRight]',
@@ -327,7 +521,12 @@ describe('QueryResultTable', () => {
 
   it('copies the row of the cell it was opened on as CSV', async () => {
     const user = userEvent.setup()
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     await user.pointer({
       keys: '[MouseRight]',
@@ -341,7 +540,12 @@ describe('QueryResultTable', () => {
 
   it('opens no menu on the row number gutter', async () => {
     const user = userEvent.setup()
-    render(<QueryResultTable result={result} />)
+    render(
+      <QueryResultTable
+        queryId="query-1"
+        result={result}
+      />
+    )
 
     const [, firstRow] = screen.getAllByRole('row')
 
@@ -368,7 +572,12 @@ describe('QueryResultTable', () => {
     // `text-left` and `text-right` would satisfy a presence-only check while
     // rendering whichever the stylesheet happened to order last.
     it('right-aligns a numeric column header over its values', () => {
-      render(<QueryResultTable result={numericResult} />)
+      render(
+        <QueryResultTable
+          queryId="query-1"
+          result={numericResult}
+        />
+      )
 
       const header = screen.getByRole('columnheader', { name: 'total' })
 
@@ -379,7 +588,12 @@ describe('QueryResultTable', () => {
     })
 
     it('leaves a text column header left-aligned', () => {
-      render(<QueryResultTable result={numericResult} />)
+      render(
+        <QueryResultTable
+          queryId="query-1"
+          result={numericResult}
+        />
+      )
 
       const header = screen.getByRole('columnheader', { name: 'name' })
 
@@ -394,6 +608,7 @@ describe('QueryResultTable', () => {
     it('aligns a null in a numeric column with the rest of the column', () => {
       render(
         <QueryResultTable
+          queryId="query-1"
           result={{
             fields: [{ name: 'total' }],
             rowCount: 2,
@@ -421,7 +636,12 @@ describe('QueryResultTable', () => {
     }
 
     it('renders one header per field', () => {
-      render(<QueryResultTable result={duplicateResult} />)
+      render(
+        <QueryResultTable
+          queryId="query-1"
+          result={duplicateResult}
+        />
+      )
 
       expect(screen.getAllByRole('columnheader')).toHaveLength(4)
     })
@@ -430,7 +650,12 @@ describe('QueryResultTable', () => {
     // both `id` columns still show the first one's value. That is a known limit
     // of fixing the key model without an array row mode in the adapter.
     it('renders one cell per field', () => {
-      render(<QueryResultTable result={duplicateResult} />)
+      render(
+        <QueryResultTable
+          queryId="query-1"
+          result={duplicateResult}
+        />
+      )
 
       const [, firstRow] = screen.getAllByRole('row')
 
@@ -444,7 +669,12 @@ describe('QueryResultTable', () => {
         .mockImplementation(() => undefined)
 
       try {
-        render(<QueryResultTable result={duplicateResult} />)
+        render(
+          <QueryResultTable
+            queryId="query-1"
+            result={duplicateResult}
+          />
+        )
 
         expect(
           consoleError.mock.calls.filter((call) =>
@@ -537,7 +767,12 @@ describe('QueryResultTable find', () => {
   // The plain path has to stay exactly as it was: every result in the app is
   // rendered without a search, so a stray wrapper here would be permanent.
   it('marks nothing when no search is given', () => {
-    const { container } = render(<QueryResultTable result={people} />)
+    const { container } = render(
+      <QueryResultTable
+        queryId="query-1"
+        result={people}
+      />
+    )
 
     expect(container.querySelectorAll('mark')).toHaveLength(0)
   })
@@ -553,6 +788,7 @@ describe('QueryResultTable find', () => {
 
     render(
       <QueryResultTable
+        queryId="query-1"
         result={empty}
         search={searchFor(empty, 'mia', { isFiltering: true })}
       />
@@ -572,6 +808,7 @@ describe('QueryResultTable find', () => {
 
     const { container } = render(
       <QueryResultTable
+        queryId="query-1"
         result={nulls}
         search={searchFor(nulls, 'null')}
       />
@@ -587,6 +824,7 @@ describe('QueryResultTable find', () => {
   it('marks nothing while the find bar is open but empty', () => {
     const { container } = render(
       <QueryResultTable
+        queryId="query-1"
         result={people}
         search={searchFor(people, '')}
       />
@@ -598,6 +836,7 @@ describe('QueryResultTable find', () => {
   it('marks the matched run and leaves the rest of the cell alone', () => {
     const { container } = render(
       <QueryResultTable
+        queryId="query-1"
         result={people}
         search={searchFor(people, 'a3f9')}
       />
@@ -618,6 +857,7 @@ describe('QueryResultTable find', () => {
   it('keeps the cell text intact when the match is only part of it', () => {
     render(
       <QueryResultTable
+        queryId="query-1"
         result={people}
         search={searchFor(people, 'example')}
       />
@@ -631,6 +871,7 @@ describe('QueryResultTable find', () => {
   it('marks the active match apart from the others', () => {
     const { container } = render(
       <QueryResultTable
+        queryId="query-1"
         result={people}
         search={searchFor(people, 'a3f9')}
       />
@@ -645,6 +886,7 @@ describe('QueryResultTable find', () => {
   it('moves the active cell to the row the ordinal points at', () => {
     const { container } = render(
       <QueryResultTable
+        queryId="query-1"
         result={people}
         search={searchFor(people, 'a3f9', { activeIndex: 1 })}
       />
@@ -659,6 +901,7 @@ describe('QueryResultTable find', () => {
   it('marks nothing as active when nothing matches', () => {
     const { container } = render(
       <QueryResultTable
+        queryId="query-1"
         result={people}
         search={searchFor(people, 'nobody')}
       />
@@ -671,6 +914,7 @@ describe('QueryResultTable find', () => {
   it('names the columns the search landed in', () => {
     render(
       <QueryResultTable
+        queryId="query-1"
         result={people}
         search={searchFor(people, 'mia')}
       />
@@ -690,6 +934,7 @@ describe('QueryResultTable find', () => {
     it('shows only the matching rows', () => {
       render(
         <QueryResultTable
+          queryId="query-1"
           result={people}
           search={filtered}
         />
@@ -704,6 +949,7 @@ describe('QueryResultTable find', () => {
     it('keeps each row its original number', () => {
       render(
         <QueryResultTable
+          queryId="query-1"
           result={people}
           search={filtered}
         />
@@ -724,6 +970,7 @@ describe('QueryResultTable find', () => {
 
       render(
         <QueryResultTable
+          queryId="query-1"
           result={people}
           search={filtered}
         />
@@ -743,6 +990,7 @@ describe('QueryResultTable find', () => {
 
       render(
         <QueryResultTable
+          queryId="query-1"
           result={people}
           search={filtered}
         />
@@ -763,6 +1011,7 @@ describe('QueryResultTable find', () => {
     it('says so when nothing matches, keeping the columns visible', () => {
       render(
         <QueryResultTable
+          queryId="query-1"
           result={people}
           search={searchFor(people, 'nobody', { isFiltering: true })}
         />
@@ -781,6 +1030,7 @@ describe('QueryResultTable find', () => {
 
       render(
         <QueryResultTable
+          queryId="query-1"
           result={truncated}
           search={searchFor(truncated, 'nobody', { isFiltering: true })}
         />

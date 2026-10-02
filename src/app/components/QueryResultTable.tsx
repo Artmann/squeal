@@ -6,6 +6,7 @@ import {
   MouseEvent,
   ReactElement,
   useMemo,
+  useId,
   useRef,
   useState
 } from 'react'
@@ -13,6 +14,7 @@ import {
 import { maxResultRows } from '@/databases/adapter'
 import type { QueryResultDto } from '@/glue/api/schemas'
 
+import { useResultColumnWidths } from '../hooks/use-result-column-widths'
 import { useScrollToMatch } from '../hooks/use-scroll-to-match'
 import { cn } from '../lib/utils'
 import {
@@ -28,6 +30,8 @@ import {
 import {
   getResultColumns,
   getResultFieldNames,
+  maximumResizedColumnWidth,
+  minimumResizedColumnWidth,
   type ResultColumn,
   rowNumberColumnWidth
 } from './query-result-columns'
@@ -43,6 +47,7 @@ import {
   type ResultSearchView,
   splitCellText
 } from './query-result-search'
+import { ResizeHandle } from './ResizeHandle'
 
 // The density knob for this grid, and the only definition of `--row-h`:
 // nothing else may declare that property. It is published on the scroll
@@ -68,9 +73,11 @@ const headerHeight = 31
 const overscan = 12
 
 export const QueryResultTable = memo(function QueryResultTable({
+  queryId,
   result,
   search
 }: {
+  queryId: string
   result: QueryResultDto
   search?: ResultSearchView
 }): ReactElement {
@@ -83,6 +90,18 @@ export const QueryResultTable = memo(function QueryResultTable({
         rows: result.rows
       }),
     [result]
+  )
+
+  // Kept apart from `columns` so a drag re-renders the colgroup and the header
+  // and leaves the memoized rows alone.
+  const [resizedWidths, setColumnWidth] = useResultColumnWidths(queryId)
+
+  const columnWidths = columns.map(
+    (column) => resizedWidths[column.key] ?? column.width
+  )
+  const tableWidth = columnWidths.reduce(
+    (total, width) => total + width,
+    rowNumberColumnWidth
   )
 
   // Derived once rather than on every Copy Row.
@@ -143,21 +162,33 @@ export const QueryResultTable = memo(function QueryResultTable({
         } as CSSProperties
       }
     >
-      <table className="min-w-full border-separate border-spacing-0">
+      {/* A fixed layout, so the colgroup is what decides each width and a
+          column can be dragged narrower than its content. The table is as wide
+          as its columns or the pane, whichever is more; when the pane is wider
+          the trailing filler column takes the rest, rather than the browser
+          spreading it over the real columns and undoing a resize. */}
+      <table
+        className="table-fixed border-separate border-spacing-0"
+        style={{ width: `max(100%, ${tableWidth}px)` }}
+      >
         <colgroup>
           <col style={{ width: `${rowNumberColumnWidth}px` }} />
 
-          {columns.map((column) => (
+          {columns.map((column, columnIndex) => (
             <col
               key={column.key}
-              style={{ width: `${column.width}px` }}
+              style={{ width: `${columnWidths[columnIndex]}px` }}
             />
           ))}
+
+          <col />
         </colgroup>
 
         <QueryResultHead
           columnHasMatch={search?.columnHasMatch}
+          columnWidths={columnWidths}
           columns={columns}
+          onResize={setColumnWidth}
         />
 
         <ResultCellContextMenu
@@ -169,7 +200,7 @@ export const QueryResultTable = memo(function QueryResultTable({
             {paddingTop > 0 && (
               <tr aria-hidden="true">
                 <td
-                  colSpan={columns.length + 1}
+                  colSpan={columns.length + 2}
                   style={{ height: `${paddingTop}px` }}
                 />
               </tr>
@@ -193,19 +224,19 @@ export const QueryResultTable = memo(function QueryResultTable({
             {paddingBottom > 0 && (
               <tr aria-hidden="true">
                 <td
-                  colSpan={columns.length + 1}
+                  colSpan={columns.length + 2}
                   style={{ height: `${paddingBottom}px` }}
                 />
               </tr>
             )}
 
             {result.rows.length === 0 && (
-              <NoRowsRow columnCount={columns.length + 1} />
+              <NoRowsRow columnCount={columns.length + 2} />
             )}
 
             {isFiltering && visibleRowCount === 0 && result.rows.length > 0 && (
               <NoMatchesRow
-                columnCount={columns.length + 1}
+                columnCount={columns.length + 2}
                 query={search?.query ?? ''}
                 truncated={result.truncated}
               />
@@ -274,11 +305,17 @@ function NoRowsRow({ columnCount }: { columnCount: number }): ReactElement {
 
 function QueryResultHead({
   columnHasMatch,
-  columns
+  columnWidths,
+  columns,
+  onResize
 }: {
   columnHasMatch: boolean[] | undefined
+  columnWidths: number[]
   columns: ResultColumn[]
+  onResize: (columnKey: string, width: number) => void
 }): ReactElement {
+  const id = useId()
+
   return (
     <thead>
       <tr>
@@ -286,8 +323,11 @@ function QueryResultHead({
 
         {columns.map((column, columnIndex) => (
           <th
+            // Named by its label alone. Named from its content, the header
+            // would also read out the resize handle's label.
+            aria-labelledby={`${id}-${columnIndex}`}
             className={cn(
-              'sticky top-0 z-[5] h-[var(--head-h)] whitespace-nowrap border-b border-border bg-panel2 px-[14px] text-[12px] font-medium text-text2',
+              'sticky top-0 z-[5] h-[var(--head-h)] overflow-hidden text-ellipsis whitespace-nowrap border-b border-border bg-panel2 px-[14px] text-[12px] font-medium text-text2',
               // The header sits over its values, so it takes the column's
               // alignment rather than always hugging the left edge.
               column.align === 'right' ? 'text-right' : 'text-left',
@@ -298,10 +338,39 @@ function QueryResultHead({
             )}
             key={column.key}
             scope="col"
+            title={column.name}
           >
-            {column.name}
+            <span id={`${id}-${columnIndex}`}>{column.name}</span>
+
+            {/* Inside the header's own box, because the header clips its
+                overflow to truncate the name, and because each sticky header
+                is its own stacking context: a handle reaching into the next
+                header would be painted over by it. So the grab area grows
+                leftwards from the edge, and the padding keeps the name clear
+                of it. */}
+            <ResizeHandle
+              ariaLabel={`Resize ${column.name} column`}
+              // The divider shows focus instead of the handle's default fill,
+              // which would paint the whole grab area.
+              className="absolute top-0 right-0 h-full w-[10px] justify-end focus-visible:bg-transparent"
+              maximum={maximumResizedColumnWidth}
+              minimum={minimumResizedColumnWidth}
+              orientation="col"
+              size={columnWidths[columnIndex] ?? column.width}
+              onResize={(width) => onResize(column.key, width)}
+            >
+              {/* A short divider at rest, so the edge reads as something to
+                  grab, and a full-height accent line while it is hovered or
+                  focused. */}
+              <div className="h-[14px] w-px bg-border transition-[height,background-color] group-hover:h-full group-hover:w-[2px] group-hover:bg-accent group-focus-visible:h-full group-focus-visible:w-[2px] group-focus-visible:bg-accent" />
+            </ResizeHandle>
           </th>
         ))}
+
+        <th
+          aria-hidden="true"
+          className="sticky top-0 z-[5] h-[var(--head-h)] border-b border-border bg-panel2"
+        />
       </tr>
     </thead>
   )
@@ -341,6 +410,11 @@ function QueryResultRow({
           rowIndex={rowIndex}
         />
       ))}
+
+      <td
+        aria-hidden="true"
+        className="h-[var(--row-h)] border-b border-border2 group-hover:bg-hover"
+      />
     </tr>
   )
 }
@@ -370,7 +444,7 @@ function QueryResultCell({
   return (
     <td
       className={cn(
-        'h-[var(--row-h)] whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
+        'h-[var(--row-h)] overflow-hidden text-ellipsis whitespace-nowrap border-b border-border2 px-[14px] font-mono text-[12px] group-hover:bg-hover',
         column.align === 'right' ? 'text-right' : 'text-left',
         value === null && 'text-text3 italic'
       )}

@@ -57,6 +57,7 @@ export function QueryResultContent({
 
       return (
         <QueryResultTable
+          queryId={query.id}
           result={result}
           search={search}
         />

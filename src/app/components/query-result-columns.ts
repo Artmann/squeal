@@ -13,6 +13,12 @@ const minimumColumnWidth = 80
 const monoCharacterWidth = 7.2
 const cellPadding = 28
 
+// How far a user may drag a column. Wider than the measured maximum on
+// purpose: the measurement caps a column so one long value does not push the
+// rest off screen, but a user reading that value wants all of it.
+export const maximumResizedColumnWidth = 2000
+export const minimumResizedColumnWidth = 40
+
 export const rowNumberColumnWidth = 44
 
 interface ResultColumnsInput {
