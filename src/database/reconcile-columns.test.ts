@@ -169,16 +169,12 @@ describe('reconcileColumns', () => {
   })
 })
 
-// The guard that would have caught the shipped bug. `tables.ts` is the
-// fresh-install DDL and `schema.ts` is what Drizzle builds queries from; when
-// they disagree, every query on the affected table fails at runtime while every
-// test still passes, because the test helpers build their databases from
-// tables.ts and so never see the drift.
-//
-// The column checks below are driven by `appTables`, which is derived from
-// schema.ts — so a whole table left behind in tables.ts is one they can never
-// look at. That is what the first test covers.
-describe('tables.ts matches schema.ts', () => {
+// `createTables` is generated from schema.ts, which is what Drizzle builds
+// queries from. When the database and the schema disagree, every query on the
+// affected table fails at runtime — the shipped bug above. These check that
+// the generator leaves nothing out; the full comparison of types, defaults and
+// indexes is in tables.test.ts.
+describe('createTables matches schema.ts', () => {
   it('creates exactly the tables schema.ts declares', async () => {
     const database = drizzle(':memory:')
 
