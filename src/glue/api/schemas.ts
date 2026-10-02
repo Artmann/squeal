@@ -330,8 +330,6 @@ const QueryResultSummaryDto = Schema.Struct({
   truncated: Schema.Boolean
 })
 
-export type QueryStatus = 'canceled' | 'failed' | 'running' | 'succeeded'
-
 const queryFields = {
   content: Schema.String,
   databaseId: Schema.String,
