@@ -137,11 +137,13 @@ disposes on `before-quit`.
 - `yarn typecheck` - Runs two projects: `tsconfig.backend.json` (strict, covers
   `src/server` and `src/glue`) and `tsconfig.renderer.json`
 - `yarn test` - Vitest, split by environment: a `backend` project (node) holding
-  `scripts`, `src/build`, `src/glue`, `src/server` **and the main process**
-  (`src/main.ts`, `src/main/**`), and a `renderer` project (jsdom) holding
-  whatever is left. `backendTestPatterns` in `vitest.config.ts` is both the
-  first project's `include` and the second's `exclude`, so a path belongs to
-  exactly one
+  `scripts`, `src/build`, `src/database`, `src/databases`, `src/glue`,
+  `src/server`, `src/test` **and the main process** (`src/main.ts`,
+  `src/main/**`), and a `renderer` project (jsdom) holding whatever is left.
+  `backendTestPatterns` in `vitest.projects.ts` is both the first project's
+  `include` and the second's `exclude`, so a path belongs to exactly one.
+  `src/vitest-projects.test.ts` fails when a folder that `src/server` or
+  `src/main` imports from has a test the list does not cover
 
 Schema changes do **not** go through a migration tool. There is no generated
 migration in the tree and nothing that would apply one; `drizzle-kit` and the
