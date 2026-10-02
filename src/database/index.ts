@@ -3,9 +3,7 @@ import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/libsql'
 import { log } from 'tiny-typescript-logger'
 
-import { appTables } from './app-tables'
 import { databaseFilePath } from './path'
-import { reconcileColumns } from './reconcile-columns'
 import { seedEnvironments } from './seed-environments'
 import { createTables } from './tables'
 
@@ -26,12 +24,9 @@ export async function initializeDatabase() {
   // than a responsive window.
   await database.run(sql`PRAGMA synchronous = NORMAL`)
 
-  await createTables(database)
-
-  // Brings a database created by an older version up to the current schema.
-  // `createTables` cannot do this: `CREATE TABLE IF NOT EXISTS` is a no-op on a
-  // table that already exists, so a column added later never reaches it.
-  const added = await reconcileColumns(database, appTables)
+  // Also brings a database created by an older version up to the current
+  // schema: the columns and indexes it is missing are added.
+  const added = await createTables(database)
 
   if (added.length > 0) {
     log.info(`Added missing database columns: ${added.join(', ')}.`)

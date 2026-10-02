@@ -147,12 +147,19 @@ Schema changes do **not** go through a migration tool. There is no generated
 migration in the tree and nothing that would apply one; `drizzle-kit` and the
 `drizzle/` folder it wrote were deleted, and `migration-tooling.test.ts` fails
 if either comes back without something to run it. `src/database/index.ts` runs
-`createTables` from `src/database/tables.ts` (hand-written
-`CREATE TABLE IF NOT EXISTS` — the real DDL, and what in-memory test databases
-are built from) and then `reconcileColumns`, which ALTER-adds columns missing
-from older databases. A new table or column goes in both
-`src/database/schema.ts` and `tables.ts`; the guard test in
-`reconcile-columns.test.ts` fails if they disagree.
+`createTables` from `src/database/tables.ts`, which generates the DDL from
+`src/database/schema.ts` (via `getTableConfig`) and is also what in-memory test
+databases are built from. On every boot it runs `CREATE TABLE IF NOT EXISTS`,
+then `reconcileColumns` to ALTER-add columns missing from older databases, then
+`CREATE INDEX IF NOT EXISTS` — indexes last, so an index over a new column finds
+the column. A new table, column or index goes in `schema.ts` only. Both paths
+share `columnDefinition` in `reconcile-columns.ts`; only the ALTER path adds a
+backfill default (`''` / `0`) to a NOT NULL `$defaultFn` column. Foreign keys,
+composite primary keys, unique constraints and checks are not generated, and
+`createTables` throws on a table that declares one. `tables.test.ts` keeps the
+DDL a fresh install should get as a fixture and compares the two databases'
+`pragma_table_info`, `pragma_index_list` and `pragma_index_info`; when a schema
+change fails it, update the fixture to the DDL you mean to ship.
 
 ## Notes
 

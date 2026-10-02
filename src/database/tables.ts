@@ -1,119 +1,91 @@
-import { sql, type SQL } from 'drizzle-orm'
+import { is, sql, type SQL } from 'drizzle-orm'
 import type { LibSQLDatabase } from 'drizzle-orm/libsql'
+import {
+  getTableConfig,
+  SQLiteColumn,
+  type AnySQLiteTable,
+  type Index
+} from 'drizzle-orm/sqlite-core'
+import invariant from 'tiny-invariant'
 
-// Order matters: an index has to come after the table it is defined on.
-const statements: SQL[] = [
-  sql`
-    CREATE TABLE IF NOT EXISTS databases (
-      id TEXT PRIMARY KEY NOT NULL,
-      connectionInfo TEXT NOT NULL,
-      createdAt INTEGER NOT NULL,
-      deletedAt INTEGER,
-      environmentId TEXT,
-      lastUsedAt INTEGER,
-      name TEXT NOT NULL,
-      sortOrder INTEGER,
-      type TEXT NOT NULL
-    )
-  `,
+import { appTables } from './app-tables'
+import { columnDefinition, reconcileColumns } from './reconcile-columns'
 
-  sql`
-    CREATE TABLE IF NOT EXISTS environments (
-      id TEXT PRIMARY KEY NOT NULL,
-      createdAt INTEGER NOT NULL,
-      deletedAt INTEGER,
-      hue INTEGER NOT NULL,
-      name TEXT NOT NULL
-    )
-  `,
+type TableConfig = ReturnType<typeof getTableConfig>
 
-  sql`
-    CREATE TABLE IF NOT EXISTS queries (
-      id TEXT PRIMARY KEY NOT NULL,
-      content TEXT NOT NULL,
-      databaseId TEXT NOT NULL,
-      error TEXT,
-      finishedAt INTEGER,
-      queriedAt INTEGER NOT NULL,
-      result TEXT,
-      resultRowCount INTEGER,
-      resultTruncated INTEGER,
-      worksheetId TEXT NOT NULL
-    )
-  `,
+/**
+ * Brings the app database up to `schema.ts`, whatever state it is in: creates
+ * the tables a fresh install lacks, adds the columns an older database lacks,
+ * then creates the indexes either one lacks.
+ *
+ * The DDL is generated from the schema, so there is no second description of
+ * it to drift. Indexes come last on purpose: `CREATE INDEX IF NOT EXISTS` runs
+ * on every boot, which is what carries a new index to existing databases, and
+ * an index over a column added in the same release needs that column to exist
+ * first.
+ *
+ * Returns the columns `reconcileColumns` added, as `table.column`. Shared
+ * between the app database bootstrap and the in-memory test databases.
+ */
+export async function createTables(
+  database: LibSQLDatabase,
+  tables: AnySQLiteTable[] = appTables
+): Promise<string[]> {
+  const configs = tables.map(supportedTableConfig)
 
-  sql`
-    CREATE INDEX IF NOT EXISTS queries_queried_at_index
-    ON queries (queriedAt)
-  `,
-
-  sql`
-    CREATE INDEX IF NOT EXISTS queries_worksheet_id_queried_at_index
-    ON queries (worksheetId, queriedAt)
-  `,
-
-  // Partial on purpose — see the matching declaration in `schema.ts`. Boot
-  // reconciliation wants exactly the rows left unfinished by the previous
-  // process, and it runs before the window can paint.
-  sql`
-    CREATE INDEX IF NOT EXISTS queries_unfinished_index
-    ON queries (finishedAt)
-    WHERE finishedAt IS NULL
-  `,
-
-  sql`
-    CREATE TABLE IF NOT EXISTS settings (
-      id TEXT PRIMARY KEY NOT NULL,
-      createdAt INTEGER NOT NULL,
-      secretStorageMode TEXT NOT NULL DEFAULT 'undecided',
-      updatedAt INTEGER NOT NULL
-    )
-  `,
-
-  sql`
-    CREATE TABLE IF NOT EXISTS spans (
-      id TEXT PRIMARY KEY NOT NULL,
-      attributes TEXT,
-      durationMs REAL NOT NULL,
-      events TEXT,
-      kind TEXT NOT NULL,
-      name TEXT NOT NULL,
-      parentSpanId TEXT,
-      serviceName TEXT NOT NULL,
-      startedAt INTEGER NOT NULL,
-      status TEXT NOT NULL DEFAULT 'unset',
-      statusMessage TEXT,
-      traceId TEXT NOT NULL
-    )
-  `,
-
-  sql`
-    CREATE INDEX IF NOT EXISTS spans_started_at_index
-    ON spans (startedAt)
-  `,
-
-  sql`
-    CREATE INDEX IF NOT EXISTS spans_trace_id_index
-    ON spans (traceId)
-  `,
-
-  sql`
-    CREATE TABLE IF NOT EXISTS worksheets (
-      id TEXT PRIMARY KEY NOT NULL,
-      content TEXT NOT NULL DEFAULT '',
-      createdAt INTEGER NOT NULL,
-      databaseId TEXT,
-      deletedAt INTEGER,
-      lastOpenedAt INTEGER,
-      name TEXT NOT NULL DEFAULT 'Untitled Worksheet',
-      sortOrder INTEGER
-    )
-  `
-]
-
-// Shared between the app database bootstrap and the in-memory test database.
-export async function createTables(database: LibSQLDatabase): Promise<void> {
-  for (const statement of statements) {
-    await database.run(statement)
+  for (const config of configs) {
+    await database.run(createTableStatement(config))
   }
+
+  const added = await reconcileColumns(database, tables)
+
+  for (const config of configs) {
+    for (const tableIndex of config.indexes) {
+      await database.run(createIndexStatement(config.name, tableIndex))
+    }
+  }
+
+  return added
+}
+
+function createIndexStatement(tableName: string, tableIndex: Index): SQL {
+  const { columns, name, unique, where } = tableIndex.config
+  const indexedColumns = columns.map((column) =>
+    is(column, SQLiteColumn) ? sql.identifier(column.name) : column
+  )
+  const parts = [
+    sql`CREATE ${sql.raw(unique ? 'UNIQUE INDEX' : 'INDEX')} IF NOT EXISTS ${sql.identifier(name)}`,
+    sql` ON ${sql.identifier(tableName)} (${sql.join(indexedColumns, sql`, `)})`
+  ]
+
+  if (where !== undefined) {
+    parts.push(sql` WHERE ${where}`)
+  }
+
+  return sql.join(parts)
+}
+
+function createTableStatement(config: TableConfig): SQL {
+  const columns = config.columns.map(columnDefinition)
+
+  return sql`CREATE TABLE IF NOT EXISTS ${sql.identifier(config.name)} (${sql.join(columns, sql`, `)})`
+}
+
+// Only what `schema.ts` uses today is generated. Anything else would be
+// silently left out of every fresh install, so it is refused instead.
+function supportedTableConfig(table: AnySQLiteTable): TableConfig {
+  const config = getTableConfig(table)
+  const unsupported =
+    config.checks.length > 0 ||
+    config.foreignKeys.length > 0 ||
+    config.primaryKeys.length > 0 ||
+    config.uniqueConstraints.length > 0 ||
+    config.columns.some((column) => column.isUnique)
+
+  invariant(
+    !unsupported,
+    `Cannot create ${config.name}: createTables does not generate foreign keys, composite primary keys, unique constraints or checks. Add support for them in src/database/tables.ts first.`
+  )
+
+  return config
 }
